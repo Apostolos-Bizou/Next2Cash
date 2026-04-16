@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Bar, Doughnut, Line } from 'vue-chartjs'
 import {
