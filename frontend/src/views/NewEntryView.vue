@@ -51,7 +51,7 @@ const showSuggestions = ref(false)
 let autocompleteTimer = null
 
 async function onDescriptionInput() {
-  const q = description.value.trim()
+  const q = description.value.replace(/^\d+\s*-\s*/, "").trim()
   if (q.length < 3) { suggestions.value = []; showSuggestions.value = false; return }
   clearTimeout(autocompleteTimer)
   autocompleteTimer = setTimeout(async () => {
