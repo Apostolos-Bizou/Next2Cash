@@ -11,7 +11,7 @@ import api from '@/api'
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale,
   ArcElement, LineElement, PointElement, Filler)
 
-// β”€β”€ Entities β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Entities ────────────────────────────────────────────────────────
 const ENTITIES = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
   house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
@@ -20,17 +20,17 @@ const ENTITIES = {
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const entityId = computed(() => ENTITIES[selectedEntity.value])
 
-// β”€β”€ Period β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Period ───────────────────────────────────────────────────────────
 const periodMode   = ref('year')
 const selectedYear = ref(String(new Date().getFullYear()))
 const selectedMonth = ref('')
 const dateFrom = ref('')
 const dateTo   = ref('')
-const MONTHS = ['Ξ™Ξ±Ξ½ΞΏΟ…Ξ¬ΟΞΉΞΏΟ‚','Ξ¦ΞµΞ²ΟΞΏΟ…Ξ¬ΟΞΉΞΏΟ‚','ΞΞ¬ΟΟ„ΞΉΞΏΟ‚','Ξ‘Ο€ΟΞ―Ξ»ΞΉΞΏΟ‚','ΞΞ¬ΞΉΞΏΟ‚','Ξ™ΞΏΟΞ½ΞΉΞΏΟ‚','Ξ™ΞΏΟΞ»ΞΉΞΏΟ‚','Ξ‘ΟΞ³ΞΏΟ…ΟƒΟ„ΞΏΟ‚','Ξ£ΞµΟ€Ο„Ξ­ΞΌΞ²ΟΞΉΞΏΟ‚','ΞΞΊΟ„ΟΞ²ΟΞΉΞΏΟ‚','ΞΞΏΞ­ΞΌΞ²ΟΞΉΞΏΟ‚','Ξ”ΞµΞΊΞ­ΞΌΞ²ΟΞΉΞΏΟ‚']
-const MONTH_SHORT = ['Ξ™Ξ±Ξ½','Ξ¦ΞµΞ²','ΞΞ±Ο','Ξ‘Ο€Ο','ΞΞ±ΞΉ','Ξ™ΞΏΟ…Ξ½','Ξ™ΞΏΟ…Ξ»','Ξ‘Ο…Ξ³','Ξ£ΞµΟ€','ΞΞΊΟ„','ΞΞΏΞµ','Ξ”ΞµΞΊ']
+const MONTHS = ['Ιανουάριος','Φεβρουάριος','Μάρτιος','Απρίλιος','Μάιος','Ιούνιος','Ιούλιος','Αύγουστος','Σεπτέμβριος','Οκτώβριος','Νοέμβριος','Δεκέμβριος']
+const MONTH_SHORT = ['Ιαν','Φεβ','Μαρ','Απρ','Μαι','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ']
 const years = ['2017','2018','2019','2020','2021','2022','2023','2024','2025','2026']
 
-// β”€β”€ State β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── State ────────────────────────────────────────────────────────────
 const loading  = ref(false)
 const error    = ref(null)
 const kpis     = ref({})
@@ -43,7 +43,7 @@ const balanceTrend = ref([])
 const yearlyData   = ref([])
 const catBreakdown = ref([])
 
-// β”€β”€ Date range β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Date range ───────────────────────────────────────────────────────
 function getDateRange() {
   const y = parseInt(selectedYear.value)
   if (periodMode.value === 'all')    return { from: '2017-01-01', to: '2026-12-31' }
@@ -69,7 +69,7 @@ function getDateRange() {
   return { from: `${y}-01-01`, to: `${y}-12-31` }
 }
 
-// β”€β”€ Load β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Load ─────────────────────────────────────────────────────────────
 async function loadDashboard() {
   loading.value = true
   error.value   = null
@@ -108,7 +108,7 @@ async function loadDashboard() {
       t.paymentStatus === 'urgent' || t.paymentStatus === 'unpaid'
     )
   } catch (e) {
-    error.value = 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± Ο†ΟΟΟ„Ο‰ΟƒΞ·Ο‚ Ξ΄ΞµΞ΄ΞΏΞΌΞ­Ξ½Ο‰Ξ½'
+    error.value = 'Σφάλμα φόρτωσης δεδομένων'
     console.error(e)
   } finally {
     loading.value = false
@@ -118,13 +118,13 @@ async function loadDashboard() {
 function setPeriod(p) { periodMode.value = p; loadDashboard() }
 function applyFilters() { loadDashboard() }
 
-// β”€β”€ Formatters β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Formatters ────────────────────────────────────────────────────────
 function fmt(v) {
-  if (v === null || v === undefined) return '0,00 β‚¬'
+  if (v === null || v === undefined) return '0,00 €'
   return new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(Number(v))
 }
 function fmtDate(d) {
-  if (!d) return 'β€”'
+  if (!d) return '—'
   return new Date(d).toLocaleDateString('el-GR', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 function fmtShortDate(d) {
@@ -136,33 +136,33 @@ function payStatusClass(s) {
   return { paid:'status-paid', received:'status-paid', unpaid:'status-unpaid', urgent:'status-urgent', partial:'status-partial' }[s] || ''
 }
 function payStatusLabel(s) {
-  return { paid:'Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ξ½Ξ·', received:'Ξ•ΞΉΟƒΟ€ΟΞ¬Ο‡ΞΈΞ·ΞΊΞµ', unpaid:'Ξ‘Ο€Ξ»Ξ®ΟΟ‰Ο„Ξ·', urgent:'Ξ•ΞΊΞΊΟΞµΞΌΞ®Ο‚', partial:'ΞΞµΟΞΉΞΊΞ®' }[s] || s
+  return { paid:'Πληρωμένη', received:'Εισπράχθηκε', unpaid:'Απλήρωτη', urgent:'Εκκρεμής', partial:'Μερική' }[s] || s
 }
 function bankIcon(type) {
   return { checking:'fa-building-columns', savings:'fa-piggy-bank', revolut:'fa-mobile-screen', cash:'fa-money-bill-wave' }[type] || 'fa-wallet'
 }
 
-// β”€β”€ Computed β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Computed ──────────────────────────────────────────────────────────
 const cashAvailable = computed(() => bankTotal.value - (Number(kpis.value.urgentTotal) || 0))
 const totalUnpaid   = computed(() => Number(kpis.value.unpaidTotal) || 0)
 
 const periodLabel = computed(() => {
   const map = {
     month: `${selectedMonth.value} ${selectedYear.value}`,
-    quarter: `Ξ¤ΟΞ―ΞΌΞ·Ξ½ΞΏ ${selectedYear.value}`,
-    half: `6ΞΌΞ·Ξ½ΞΏ ${selectedYear.value}`,
-    year: `ΞΟ„ΞΏΟ‚ ${selectedYear.value}`,
-    all: 'ΞΞ»ΞµΟ‚ ΞΏΞΉ Ο€ΞµΟΞ―ΞΏΞ΄ΞΏΞΉ',
-    custom: 'Ξ ΟΞΏΟƒΞ±ΟΞΌΞΏΟƒΞΌΞ­Ξ½ΞΏ'
+    quarter: `Τρίμηνο ${selectedYear.value}`,
+    half: `6μηνο ${selectedYear.value}`,
+    year: `Έτος ${selectedYear.value}`,
+    all: 'Όλες οι περίοδοι',
+    custom: 'Προσαρμοσμένο'
   }
   return map[periodMode.value] || selectedYear.value
 })
 
-// β”€β”€ Category breakdown computed β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Category breakdown computed ───────────────────────────────────────
 const catSummary = computed(() => {
   const map = {}
   catBreakdown.value.forEach(r => {
-    const cat = r.category || 'Ξ†Ξ»Ξ»ΞΏ'
+    const cat = r.category || 'Άλλο'
     if (!map[cat]) map[cat] = { income: 0, expense: 0 }
     map[cat].income  += Number(r.income  || 0)
     map[cat].expense += Number(r.expense || 0)
@@ -182,7 +182,7 @@ const catSummary = computed(() => {
 const subcatSummary = computed(() => {
   const map = {}
   catBreakdown.value.forEach(r => {
-    const key = r.subcategory || 'β€”'
+    const key = r.subcategory || '—'
     if (!map[key]) map[key] = { income: 0, expense: 0 }
     map[key].income  += Number(r.income  || 0)
     map[key].expense += Number(r.expense || 0)
@@ -193,29 +193,29 @@ const subcatSummary = computed(() => {
     .map(([sub, v]) => ({ sub, income: v.income, expense: v.expense, net: v.income - v.expense }))
 })
 
-// β”€β”€ Chart colors β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Chart colors ──────────────────────────────────────────────────────
 const CAT_COLORS = ['#2E75B6','#10b981','#f59e0b','#ef4444','#a855f7','#06b6d4','#f97316','#84cc16']
 
-// β”€β”€ Bar chart (monthly) β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Bar chart (monthly) ───────────────────────────────────────────────
 const barChartData = computed(() => {
   const inc = Array(12).fill(0)
   const exp = Array(12).fill(0)
   monthly.value.forEach(([month, category, total]) => {
     const m = month - 1
-    const isIncome = category && (category.toUpperCase().includes('Ξ•Ξ£ΞΞ”') || category.toUpperCase().includes('Ξ•Ξ™Ξ£Ξ Ξ΅'))
+    const isIncome = category && (category.toUpperCase().includes('ΕΣΟΔ') || category.toUpperCase().includes('ΕΙΣΠΡ'))
     if (isIncome) inc[m] += Number(total)
     else exp[m] += Number(total)
   })
   return {
     labels: MONTH_SHORT,
     datasets: [
-      { label: 'Ξ•ΞΉΟƒΟ€ΟΞ¬ΞΎΞµΞΉΟ‚', data: inc, backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 4 },
-      { label: 'Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚',   data: exp, backgroundColor: 'rgba(239,68,68,0.75)',  borderRadius: 4 },
+      { label: 'Εισπράξεις', data: inc, backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 4 },
+      { label: 'Πληρωμές',   data: exp, backgroundColor: 'rgba(239,68,68,0.75)',  borderRadius: 4 },
     ]
   }
 })
 
-// β”€β”€ Pie chart (categories) β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Pie chart (categories) ────────────────────────────────────────────
 const pieChartData = computed(() => {
   const entries = catSummary.value.filter(r => r.expense > 0).slice(0,6)
   return {
@@ -224,13 +224,13 @@ const pieChartData = computed(() => {
   }
 })
 
-// β”€β”€ Net monthly chart β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Net monthly chart ─────────────────────────────────────────────────
 const netChartData = computed(() => {
   const mo = {}
   monthly.value.forEach(([month, category, total]) => {
     const k = String(month)
     if (!mo[k]) mo[k] = 0
-    const isIncome = category && (category.toUpperCase().includes('Ξ•Ξ£ΞΞ”') || category.toUpperCase().includes('Ξ•Ξ™Ξ£Ξ Ξ΅'))
+    const isIncome = category && (category.toUpperCase().includes('ΕΣΟΔ') || category.toUpperCase().includes('ΕΙΣΠΡ'))
     mo[k] += isIncome ? Number(total) : -Number(total)
   })
   const keys = Object.keys(mo).sort((a,b) => Number(a)-Number(b))
@@ -246,7 +246,7 @@ const netChartData = computed(() => {
   }
 })
 
-// β”€β”€ Balance trend chart β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Balance trend chart ───────────────────────────────────────────────
 const trendChartData = computed(() => {
   const raw = balanceTrend.value
   // Sample max 120 points for performance
@@ -255,7 +255,7 @@ const trendChartData = computed(() => {
   return {
     labels: sampled.map(r => fmtShortDate(r.date)),
     datasets: [{
-      label: 'Ξ¥Ο€ΟΞ»ΞΏΞΉΟ€ΞΏ',
+      label: 'Υπόλοιπο',
       data: sampled.map(r => Number(r.balance)),
       borderColor: '#2E75B6',
       backgroundColor: 'rgba(46,117,182,0.1)',
@@ -267,7 +267,7 @@ const trendChartData = computed(() => {
   }
 })
 
-// β”€β”€ Yearly chart β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Yearly chart ──────────────────────────────────────────────────────
 const yearlyChartData = computed(() => {
   const yrs = [...new Set(yearlyData.value.map(r => String(r.year)))].sort()
   const cats = [...new Set(yearlyData.value.map(r => r.category))]
@@ -293,7 +293,7 @@ const yearlyChartData = computed(() => {
   }
 })
 
-// β”€β”€ Chart options β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Chart options ─────────────────────────────────────────────────────
 const cOpts = {
   responsive: true, maintainAspectRatio: false,
   plugins: {
@@ -333,14 +333,14 @@ onMounted(loadDashboard)
     <!-- Period Bar -->
     <div class="period-bar">
       <div class="quick-btns">
-        <button class="qbtn" :class="{ active: periodMode==='month' }"   @click="setPeriod('month')">ΞΞ®Ξ½Ξ±Ο‚</button>
-        <button class="qbtn" :class="{ active: periodMode==='quarter' }" @click="setPeriod('quarter')">Ξ¤ΟΞ―ΞΌΞ·Ξ½ΞΏ</button>
-        <button class="qbtn" :class="{ active: periodMode==='half' }"    @click="setPeriod('half')">6ΞΌΞ·Ξ½ΞΏ</button>
-        <button class="qbtn" :class="{ active: periodMode==='year' }"    @click="setPeriod('year')">ΞΟ„ΞΏΟ‚</button>
-        <button class="qbtn" :class="{ active: periodMode==='all' }"     @click="setPeriod('all')">ΞΞ»Ξ±</button>
+        <button class="qbtn" :class="{ active: periodMode==='month' }"   @click="setPeriod('month')">Μήνας</button>
+        <button class="qbtn" :class="{ active: periodMode==='quarter' }" @click="setPeriod('quarter')">Τρίμηνο</button>
+        <button class="qbtn" :class="{ active: periodMode==='half' }"    @click="setPeriod('half')">6μηνο</button>
+        <button class="qbtn" :class="{ active: periodMode==='year' }"    @click="setPeriod('year')">Έτος</button>
+        <button class="qbtn" :class="{ active: periodMode==='all' }"     @click="setPeriod('all')">Όλα</button>
       </div>
       <div class="sep"></div>
-      <span class="plbl">ΞΞ®Ξ½Ξ±Ο‚:</span>
+      <span class="plbl">Μήνας:</span>
       <select v-if="periodMode==='month'" v-model="selectedMonth" class="psel">
         <option v-for="m in MONTHS" :key="m">{{ m }}</option>
       </select>
@@ -348,43 +348,43 @@ onMounted(loadDashboard)
         <option v-for="y in years" :key="y">{{ y }}</option>
       </select>
       <div class="sep"></div>
-      <span class="plbl">Ξ‘Ο€Ο:</span>
+      <span class="plbl">Από:</span>
       <input type="date" v-model="dateFrom" class="pinp" />
-      <span class="plbl">ΞΟ‰Ο‚:</span>
+      <span class="plbl">Έως:</span>
       <input type="date" v-model="dateTo" class="pinp" />
       <button class="apply-btn" @click="applyFilters" :disabled="loading">
-        <i class="fas fa-filter"></i> Ξ•Ο†Ξ±ΟΞΌΞΏΞ³Ξ®
+        <i class="fas fa-filter"></i> Εφαρμογή
       </button>
       <span class="period-cur">{{ periodLabel }}</span>
     </div>
 
     <div v-if="error" class="err-bar"><i class="fas fa-exclamation-triangle"></i> {{ error }}</div>
-    <div v-if="loading" class="load-wrap"><span class="spinner"></span> Ξ¦ΟΟΟ„Ο‰ΟƒΞ·...</div>
+    <div v-if="loading" class="load-wrap"><span class="spinner"></span> Φόρτωση...</div>
 
     <template v-if="!loading">
 
-      <!-- β•β•β• 4 PANELS β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β• -->
+      <!-- ═══ 4 PANELS ══════════════════════════════════════════════ -->
       <div class="dash-4col">
 
-        <!-- Ξ¥Ο€ΞΏΟ‡ΟΞµΟΟƒΞµΞΉΟ‚ -->
+        <!-- Υποχρεώσεις -->
         <div class="panel-card">
           <div class="panel-hdr">
-            <span class="ptitle warn"><i class="fas fa-calendar-check"></i> Ξ¥Ο€ΞΏΟ‡ΟΞµΟΟƒΞµΞΉΟ‚</span>
-            <span class="pbadge warn">{{ obligations.length }} ΞµΞΊΞΊΟΞµΞΌΞµΞ―Ο‚</span>
+            <span class="ptitle warn"><i class="fas fa-calendar-check"></i> Υποχρεώσεις</span>
+            <span class="pbadge warn">{{ obligations.length }} εκκρεμείς</span>
           </div>
           <div class="oblig-sum">
             <div class="osum-item">
-              <div class="osum-lbl">β΅ Ξ•ΞΊΞΊΟΞµΞΌΞµΞ―Ο‚</div>
+              <div class="osum-lbl">⚡ Εκκρεμείς</div>
               <div class="osum-val" style="color:#ff6400">{{ fmt(kpis.urgentTotal) }}</div>
             </div>
             <div class="osum-item">
-              <div class="osum-lbl">Ξ£ΟΞ½ΞΏΞ»ΞΏ Ξ‘Ο€Ξ»Ξ®ΟΟ‰Ο„Ο‰Ξ½</div>
+              <div class="osum-lbl">Σύνολο Απλήρωτων</div>
               <div class="osum-val" style="color:var(--danger)">{{ fmt(kpis.unpaidTotal) }}</div>
             </div>
           </div>
           <ul class="oblig-list">
             <li v-if="obligations.length===0" class="olist-empty">
-              <i class="fas fa-check-circle" style="color:var(--success)"></i> ΞΞ±ΞΌΞ―Ξ± ΞµΞΊΞΊΟΞµΞΌΟΟ„Ξ·Ο„Ξ±
+              <i class="fas fa-check-circle" style="color:var(--success)"></i> Καμία εκκρεμότητα
             </li>
             <li v-for="o in obligations.slice(0,8)" :key="o.id" class="olist-item"
                 :class="o.paymentStatus==='urgent' ? 'overdue' : ''">
@@ -393,7 +393,7 @@ onMounted(loadDashboard)
                 <div class="od-mon">{{ MONTH_SHORT[new Date(o.docDate||o.date).getMonth()] }}</div>
               </div>
               <div class="oinfo">
-                <div class="oti">{{ (o.description||'β€”').substring(0,32) }}</div>
+                <div class="oti">{{ (o.description||'—').substring(0,32) }}</div>
                 <div class="ome">{{ o.category }}</div>
               </div>
               <div class="oamt" style="color:var(--danger)">{{ fmt(o.amount) }}</div>
@@ -401,23 +401,23 @@ onMounted(loadDashboard)
           </ul>
         </div>
 
-        <!-- Ξ¤ΟΞ¬Ο€ΞµΞ¶ΞµΟ‚ -->
+        <!-- Τράπεζες -->
         <div class="panel-card">
           <div class="panel-hdr">
-            <span class="ptitle succ"><i class="fas fa-university"></i> Ξ¤ΟΞ¬Ο€ΞµΞ¶ΞµΟ‚</span>
-            <span class="pbadge succ">{{ banks.length }} Ξ»ΞΏΞ³/ΞΌΞΏΞ―</span>
+            <span class="ptitle succ"><i class="fas fa-university"></i> Τράπεζες</span>
+            <span class="pbadge succ">{{ banks.length }} λογ/μοί</span>
           </div>
           <div class="bank-tot">
-            <span class="bt-lbl">Ξ£ΟΞ½ΞΏΞ»ΞΏ Ξ¤ΟΞ±Ο€ΞµΞ¶ΟΞ½</span>
+            <span class="bt-lbl">Σύνολο Τραπεζών</span>
             <span class="bt-amt">{{ fmt(bankTotal) }}</span>
           </div>
           <ul class="bank-list">
-            <li v-if="banks.length===0" class="olist-empty">ΞΞ±Ξ½Ξ­Ξ½Ξ±Ο‚ Ξ»ΞΏΞ³Ξ±ΟΞΉΞ±ΟƒΞΌΟΟ‚</li>
+            <li v-if="banks.length===0" class="olist-empty">Κανένας λογαριασμός</li>
             <li v-for="b in banks" :key="b.id" class="bank-item">
               <div class="bicon"><i class="fas" :class="bankIcon(b.accountType)"></i></div>
               <div class="binfo">
                 <div class="bn">{{ b.accountLabel||b.bankName }}</div>
-                <div class="bt">{{ b.bankName }} Β· {{ b.currency }}</div>
+                <div class="bt">{{ b.bankName }} · {{ b.currency }}</div>
               </div>
               <div class="bbal">
                 <div class="bamt" :style="{color: b.currentBalance>=0?'var(--success)':'var(--danger)'}">{{ fmt(b.currentBalance) }}</div>
@@ -427,143 +427,143 @@ onMounted(loadDashboard)
           </ul>
         </div>
 
-        <!-- Ξ™ΟƒΞΏΟƒΞΊΞµΞ»ΞΉΟƒΞΌΟΟ‚ -->
+        <!-- Ισοσκελισμός -->
         <div class="panel-card">
           <div class="panel-hdr">
-            <span class="ptitle acc"><i class="fas fa-balance-scale"></i> Ξ™ΟƒΞΏΟƒΞΊΞµΞ»ΞΉΟƒΞΌΟΟ‚</span>
+            <span class="ptitle acc"><i class="fas fa-balance-scale"></i> Ισοσκελισμός</span>
             <span class="pbadge acc">{{ fmt(bankTotal) }}</span>
           </div>
           <div class="recon-grid">
             <div class="recon-row">
-              <span class="rc-lbl"><i class="fas fa-university"></i> Ξ£ΟΞ½ΞΏΞ»ΞΏ Ξ¤ΟΞ±Ο€ΞµΞ¶ΟΞ½</span>
+              <span class="rc-lbl"><i class="fas fa-university"></i> Σύνολο Τραπεζών</span>
               <span class="rc-val" style="font-weight:700">{{ fmt(bankTotal) }}</span>
             </div>
             <div class="recon-div"></div>
             <div class="recon-row">
-              <span class="rc-lbl sm"><i class="fas fa-arrow-down"></i> Ξ•ΞΉΟƒΟ€ΟΞ¬ΞΎΞµΞΉΟ‚ Ο€ΞµΟΞΉΟΞ΄ΞΏΟ…</span>
+              <span class="rc-lbl sm"><i class="fas fa-arrow-down"></i> Εισπράξεις περιόδου</span>
               <span class="rc-val" style="color:var(--success);font-size:.85rem">{{ fmt(kpis.totalIncome) }}</span>
             </div>
             <div class="recon-row">
-              <span class="rc-lbl sm"><i class="fas fa-arrow-up"></i> Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚ Ο€ΞµΟΞΉΟΞ΄ΞΏΟ…</span>
+              <span class="rc-lbl sm"><i class="fas fa-arrow-up"></i> Πληρωμές περιόδου</span>
               <span class="rc-val" style="color:var(--danger);font-size:.85rem">{{ fmt(kpis.totalExpense) }}</span>
             </div>
             <div class="recon-div"></div>
             <div class="recon-row">
-              <span class="rc-lbl"><i class="fas fa-balance-scale"></i> ΞΞ±ΞΈΞ±ΟΟ Ο€ΞµΟΞΉΟΞ΄ΞΏΟ…</span>
+              <span class="rc-lbl"><i class="fas fa-balance-scale"></i> Καθαρό περιόδου</span>
               <span class="rc-val" :style="{color: Number(kpis.netBalance)>=0?'var(--success)':'var(--danger)'}">{{ fmt(kpis.netBalance) }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Ξ¤Ξ±ΞΌΞµΞΉΞ±ΞΊΞ¬ Ξ”ΞΉΞ±ΞΈΞ­ΟƒΞΉΞΌΞ± -->
+        <!-- Ταμειακά Διαθέσιμα -->
         <div class="panel-card">
           <div class="panel-hdr">
-            <span class="ptitle succ"><i class="fas fa-coins"></i> Ξ¤Ξ±ΞΌΞµΞΉΞ±ΞΊΞ¬ Ξ”ΞΉΞ±ΞΈΞ­ΟƒΞΉΞΌΞ±</span>
+            <span class="ptitle succ"><i class="fas fa-coins"></i> Ταμειακά Διαθέσιμα</span>
           </div>
           <div class="cash-hero">
             <div class="cash-tot" :style="{color: cashAvailable>=0?'var(--success)':'#ff6400'}">{{ fmt(cashAvailable) }}</div>
-            <div class="cash-lbl">Ξ¤ΟΞ¬Ο€ΞµΞ¶ΞµΟ‚ ΞΌΞµΞ―ΞΏΞ½ Ξ•ΞΊΞΊΟΞµΞΌΞµΞ―Ο‚</div>
+            <div class="cash-lbl">Τράπεζες μείον Εκκρεμείς</div>
           </div>
           <div class="cash-bk">
             <div class="cash-row">
               <div class="cr-ico" style="background:var(--accent-glow);color:var(--accent)"><i class="fas fa-university"></i></div>
-              <span class="cr-lbl">Ξ¤ΟΞ¬Ο€ΞµΞ¶ΞµΟ‚</span>
+              <span class="cr-lbl">Τράπεζες</span>
               <span class="cr-val">{{ fmt(bankTotal) }}</span>
             </div>
             <div class="cash-row urg" v-if="Number(kpis.urgentTotal)>0">
               <div class="cr-ico" style="background:rgba(255,100,0,.15);color:#ff6400"><i class="fas fa-bolt"></i></div>
-              <span class="cr-lbl" style="color:#ff6400;font-weight:700">β΅ Ξ•ΞΊΞΊΟΞµΞΌΞµΞ―Ο‚</span>
+              <span class="cr-lbl" style="color:#ff6400;font-weight:700">⚡ Εκκρεμείς</span>
               <span class="cr-val" style="color:#ff6400;font-weight:800">-{{ fmt(kpis.urgentTotal) }}</span>
             </div>
             <div class="cash-row">
               <div class="cr-ico" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-clock"></i></div>
-              <span class="cr-lbl">Ξ£ΟΞ½ΞΏΞ»ΞΏ Ξ¥Ο€ΞΏΟ‡ΟΞµΟΟƒΞµΟ‰Ξ½</span>
+              <span class="cr-lbl">Σύνολο Υποχρεώσεων</span>
               <span class="cr-val" style="color:var(--danger)">-{{ fmt(totalUnpaid) }}</span>
             </div>
             <div style="height:1px;background:var(--border);margin:4px 0"></div>
             <div class="cash-row avail" :style="{background: cashAvailable>=0?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'}">
               <div class="cr-ico" :style="{background:cashAvailable>=0?'var(--success-bg)':'var(--danger-bg)',color:cashAvailable>=0?'var(--success)':'var(--danger)'}"><i class="fas fa-coins"></i></div>
-              <span class="cr-lbl" style="font-weight:700">ΞΞ±ΞΈΞ±ΟΞ¬ Ξ”ΞΉΞ±ΞΈΞ­ΟƒΞΉΞΌΞ±</span>
+              <span class="cr-lbl" style="font-weight:700">Καθαρά Διαθέσιμα</span>
               <span class="cr-val" :style="{color:cashAvailable>=0?'var(--success)':'var(--danger)',fontWeight:'800',fontSize:'1.05rem'}">{{ fmt(cashAvailable) }}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- β•β•β• KPI CARDS β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β• -->
+      <!-- ═══ KPI CARDS ═════════════════════════════════════════════ -->
       <div class="kpi-grid">
         <div class="kpi-card">
           <div class="kpi-hdr">
             <div class="kpi-ico" style="background:var(--accent-glow);color:var(--accent)"><i class="fas fa-wallet"></i></div>
-            <span class="kpi-chg down" v-if="Number(kpis.netBalance)<0">Ξ‘ΟΞ½Ξ·Ο„ΞΉΞΊΟ</span>
+            <span class="kpi-chg down" v-if="Number(kpis.netBalance)<0">Αρνητικό</span>
           </div>
-          <div class="kpi-lbl">Ξ¤ΟΞ­Ο‡ΞΏΞ½ Ξ¥Ο€ΟΞ»ΞΏΞΉΟ€ΞΏ</div>
+          <div class="kpi-lbl">Τρέχον Υπόλοιπο</div>
           <div class="kpi-val" :style="{color:Number(kpis.netBalance)>=0?'var(--text-primary)':'var(--danger)'}">{{ fmt(kpis.netBalance) }}</div>
-          <div class="kpi-sub">Ξ•ΞΉΟƒΟ€ΟΞ¬ΞΎΞµΞΉΟ‚ β’ Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚</div>
+          <div class="kpi-sub">Εισπράξεις − Πληρωμές</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-hdr"><div class="kpi-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-arrow-down"></i></div></div>
-          <div class="kpi-lbl">Ξ•ΞΉΟƒΟ€ΟΞ¬ΞΎΞµΞΉΟ‚</div>
+          <div class="kpi-lbl">Εισπράξεις</div>
           <div class="kpi-val" style="color:var(--success)">{{ fmt(kpis.totalIncome) }}</div>
-          <div class="kpi-sub">Ο€ΞµΟΞ―ΞΏΞ΄ΞΏΟ‚</div>
+          <div class="kpi-sub">περίοδος</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-hdr"><div class="kpi-ico" style="background:var(--danger-bg);color:var(--danger)"><i class="fas fa-arrow-up"></i></div></div>
-          <div class="kpi-lbl">Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚</div>
+          <div class="kpi-lbl">Πληρωμές</div>
           <div class="kpi-val" style="color:var(--danger)">{{ fmt(kpis.totalExpense) }}</div>
-          <div class="kpi-sub">Ο€ΞµΟΞ―ΞΏΞ΄ΞΏΟ‚</div>
+          <div class="kpi-sub">περίοδος</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-hdr">
             <div class="kpi-ico" :style="{background:Number(kpis.netBalance)>=0?'var(--success-bg)':'var(--danger-bg)',color:Number(kpis.netBalance)>=0?'var(--success)':'var(--danger)'}"><i class="fas fa-balance-scale"></i></div>
           </div>
-          <div class="kpi-lbl">ΞΞ±ΞΈΞ±ΟΟ</div>
+          <div class="kpi-lbl">Καθαρό</div>
           <div class="kpi-val" :style="{color:Number(kpis.netBalance)>=0?'var(--success)':'var(--danger)'}">{{ fmt(kpis.netBalance) }}</div>
-          <div class="kpi-sub">Ξ•ΞΉΟƒΟ€ΟΞ¬ΞΎΞµΞΉΟ‚ β’ Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚</div>
+          <div class="kpi-sub">Εισπράξεις − Πληρωμές</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-hdr"><div class="kpi-ico" style="background:rgba(255,100,0,.12);color:#ff6400"><i class="fas fa-bolt"></i></div></div>
-          <div class="kpi-lbl">β΅ Ξ•ΞΊΞΊΟΞµΞΌΞµΞ―Ο‚</div>
+          <div class="kpi-lbl">⚡ Εκκρεμείς</div>
           <div class="kpi-val" style="color:#ff6400">{{ fmt(kpis.urgentTotal) }}</div>
-          <div class="kpi-sub">Ξ±Ο€Ξ»Ξ®ΟΟ‰Ο„ΞµΟ‚</div>
+          <div class="kpi-sub">απλήρωτες</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-hdr"><div class="kpi-ico" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-clock"></i></div></div>
-          <div class="kpi-lbl">Ξ£ΟΞ½ΞΏΞ»ΞΏ Ξ¥Ο€ΞΏΟ‡ΟΞµΟΟƒΞµΟ‰Ξ½</div>
+          <div class="kpi-lbl">Σύνολο Υποχρεώσεων</div>
           <div class="kpi-val" style="color:var(--warning)">{{ fmt(kpis.unpaidTotal) }}</div>
           <div class="kpi-sub">unpaid + urgent</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-hdr"><div class="kpi-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-university"></i></div></div>
-          <div class="kpi-lbl">Ξ¤ΟΞ¬Ο€ΞµΞ¶ΞµΟ‚</div>
+          <div class="kpi-lbl">Τράπεζες</div>
           <div class="kpi-val" style="color:var(--success)">{{ fmt(bankTotal) }}</div>
-          <div class="kpi-sub">{{ banks.length }} Ξ»ΞΏΞ³Ξ±ΟΞΉΞ±ΟƒΞΌΞΏΞ―</div>
+          <div class="kpi-sub">{{ banks.length }} λογαριασμοί</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-hdr">
             <div class="kpi-ico" :style="{background:cashAvailable>=0?'var(--success-bg)':'var(--danger-bg)',color:cashAvailable>=0?'var(--success)':'#ff6400'}"><i class="fas fa-coins"></i></div>
           </div>
-          <div class="kpi-lbl">Ξ¤Ξ±ΞΌΞµΞΉΞ±ΞΊΞ¬ Ξ”ΞΉΞ±ΞΈΞ­ΟƒΞΉΞΌΞ±</div>
+          <div class="kpi-lbl">Ταμειακά Διαθέσιμα</div>
           <div class="kpi-val" :style="{color:cashAvailable>=0?'var(--success)':'#ff6400'}">{{ fmt(cashAvailable) }}</div>
-          <div class="kpi-sub">Ξ¤ΟΞ¬Ο€ΞµΞ¶ΞµΟ‚ β’ Ξ•ΞΊΞΊΟΞµΞΌΞµΞ―Ο‚</div>
+          <div class="kpi-sub">Τράπεζες − Εκκρεμείς</div>
         </div>
       </div>
 
-      <!-- β•β•β• CHARTS ROW 1: Bar (full) β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β• -->
+      <!-- ═══ CHARTS ROW 1: Bar (full) ══════════════════════════════ -->
       <div class="chart-card mb">
         <div class="card-hdr">
-          <div class="card-ttl"><i class="fas fa-chart-bar"></i> ΞΞ·Ξ½ΞΉΞ±Ξ―Ξ± Ξ£ΟΞ½ΞΏΟΞ·</div>
+          <div class="card-ttl"><i class="fas fa-chart-bar"></i> Μηνιαία Σύνοψη</div>
         </div>
         <div class="chart-wrap" style="height:280px">
           <Bar :data="barChartData" :options="cOpts" />
         </div>
       </div>
 
-      <!-- β•β•β• CHARTS ROW 2: Pie + Net β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β• -->
+      <!-- ═══ CHARTS ROW 2: Pie + Net ══════════════════════════════ -->
       <div class="dash-2equal mb">
         <div class="chart-card">
           <div class="card-hdr">
-            <div class="card-ttl"><i class="fas fa-chart-pie"></i> ΞΞ±Ο„Ξ±Ξ½ΞΏΞΌΞ® Ξ•ΞΎΟΞ΄Ο‰Ξ½</div>
+            <div class="card-ttl"><i class="fas fa-chart-pie"></i> Κατανομή Εξόδων</div>
           </div>
           <div class="chart-wrap" style="height:280px">
             <Doughnut :data="pieChartData" :options="pieOpts" />
@@ -571,7 +571,7 @@ onMounted(loadDashboard)
         </div>
         <div class="chart-card">
           <div class="card-hdr">
-            <div class="card-ttl"><i class="fas fa-arrows-left-right"></i> Net (Ξ•ΞΉΟƒΟ€ΟΞ¬ΞΎΞµΞΉΟ‚ β€“ Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚)</div>
+            <div class="card-ttl"><i class="fas fa-arrows-left-right"></i> Net (Εισπράξεις – Πληρωμές)</div>
           </div>
           <div class="chart-wrap" style="height:280px">
             <Bar :data="netChartData" :options="cOpts" />
@@ -579,30 +579,30 @@ onMounted(loadDashboard)
         </div>
       </div>
 
-      <!-- β•β•β• CHART: Ξ ΞΏΟΞµΞ―Ξ± Ξ¥Ο€ΞΏΞ»ΞΏΞ―Ο€ΞΏΟ… (full) β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β• -->
+      <!-- ═══ CHART: Πορεία Υπολοίπου (full) ══════════════════════ -->
       <div class="chart-card mb" v-if="balanceTrend.length">
         <div class="card-hdr">
-          <div class="card-ttl"><i class="fas fa-chart-line"></i> Ξ ΞΏΟΞµΞ―Ξ± Ξ¥Ο€ΞΏΞ»ΞΏΞ―Ο€ΞΏΟ…</div>
+          <div class="card-ttl"><i class="fas fa-chart-line"></i> Πορεία Υπολοίπου</div>
         </div>
         <div class="chart-wrap" style="height:220px">
           <Line :data="trendChartData" :options="trendOpts" />
         </div>
       </div>
 
-      <!-- β•β•β• ROW: Ξ‘Ξ½Ξ¬Ξ»Ο…ΟƒΞ· ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±Ο‚ + Ξ ΟΟΟƒΟ†Ξ±Ο„ΞµΟ‚ β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β• -->
+      <!-- ═══ ROW: Ανάλυση Κατηγορίας + Πρόσφατες ═════════════════ -->
       <div class="dash-2col mb">
         <div class="chart-card">
           <div class="card-hdr">
-            <div class="card-ttl"><i class="fas fa-table"></i> Ξ‘Ξ½Ξ¬Ξ»Ο…ΟƒΞ· Ξ±Ξ½Ξ¬ ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±</div>
+            <div class="card-ttl"><i class="fas fa-table"></i> Ανάλυση ανά Κατηγορία</div>
           </div>
           <table class="bktable">
             <thead>
               <tr>
-                <th>ΞΞ‘Ξ¤Ξ—Ξ“ΞΞ΅Ξ™Ξ‘</th>
-                <th class="ra">Ξ ΞΞ£Ξ</th>
-                <th>ΞΞ‘Ξ¤Ξ‘ΞΞΞΞ—</th>
+                <th>ΚΑΤΗΓΟΡΙΑ</th>
+                <th class="ra">ΠΟΣΟ</th>
+                <th>ΚΑΤΑΝΟΜΗ</th>
                 <th class="ra">%</th>
-                <th class="ra">Ξ.Ξ./ΞΞ—ΞΞ‘</th>
+                <th class="ra">Μ.Ο./ΜΗΝΑ</th>
               </tr>
             </thead>
             <tbody>
@@ -614,7 +614,7 @@ onMounted(loadDashboard)
                 <td class="ra mono sm">{{ fmt(r.avgMonth) }}</td>
               </tr>
               <tr class="total-row">
-                <td>Ξ£Ξ¥ΞΞΞ›Ξ</td>
+                <td>ΣΥΝΟΛΟ</td>
                 <td class="ra mono">{{ fmt(catSummary.reduce((s,r)=>s+r.expense,0)) }}</td>
                 <td></td>
                 <td class="ra mono sm">100%</td>
@@ -625,14 +625,14 @@ onMounted(loadDashboard)
         </div>
         <div class="chart-card">
           <div class="card-hdr">
-            <div class="card-ttl"><i class="fas fa-list"></i> Ξ ΟΟΟƒΟ†Ξ±Ο„ΞµΟ‚ ΞΞΉΞ½Ξ®ΟƒΞµΞΉΟ‚</div>
-            <router-link to="/transactions" class="see-all">ΞΞ»ΞµΟ‚ <i class="fas fa-arrow-right"></i></router-link>
+            <div class="card-ttl"><i class="fas fa-list"></i> Πρόσφατες Κινήσεις</div>
+            <router-link to="/transactions" class="see-all">Όλες <i class="fas fa-arrow-right"></i></router-link>
           </div>
           <ul class="rec-list">
             <li v-for="t in recent.slice(0,10)" :key="t.id" class="rec-item">
               <div class="ri-l">
-                <span class="ri-d">{{ (t.description||t.category||'β€”').substring(0,35) }}</span>
-                <span class="ri-m">{{ fmtDate(t.docDate) }} Β· {{ t.category }}</span>
+                <span class="ri-d">{{ (t.description||t.category||'—').substring(0,35) }}</span>
+                <span class="ri-m">{{ fmtDate(t.docDate) }} · {{ t.category }}</span>
               </div>
               <span class="ri-a" :class="t.type==='income'?'inf':'out'">
                 {{ t.type==='income'?'+':'-' }}{{ fmt(t.amount) }}
@@ -642,26 +642,26 @@ onMounted(loadDashboard)
         </div>
       </div>
 
-      <!-- β•β•β• ROW: Ξ‘Ξ½Ξ¬ Ξ¥Ο€ΞΏΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ± + Top Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚ β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β• -->
+      <!-- ═══ ROW: Ανά Υποκατηγορία + Top Πληρωμές ════════════════ -->
       <div class="dash-2equal mb">
         <div class="chart-card">
           <div class="card-hdr">
-            <div class="card-ttl"><i class="fas fa-university"></i> Ξ‘Ξ½Ξ¬ Ξ¥Ο€ΞΏΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±</div>
+            <div class="card-ttl"><i class="fas fa-university"></i> Ανά Υποκατηγορία</div>
           </div>
           <table class="bktable">
             <thead>
               <tr>
-                <th>Ξ¥Ξ ΞΞΞ‘Ξ¤Ξ—Ξ“ΞΞ΅Ξ™Ξ‘</th>
-                <th class="ra">Ξ•Ξ™Ξ£Ξ Ξ΅Ξ‘ΞΞ•Ξ™Ξ£</th>
-                <th class="ra">Ξ Ξ›Ξ—Ξ΅Ξ©ΞΞ•Ξ£</th>
+                <th>ΥΠΟΚΑΤΗΓΟΡΙΑ</th>
+                <th class="ra">ΕΙΣΠΡΑΞΕΙΣ</th>
+                <th class="ra">ΠΛΗΡΩΜΕΣ</th>
                 <th class="ra">NET</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="r in subcatSummary" :key="r.sub">
                 <td>{{ r.sub }}</td>
-                <td class="ra mono" style="color:var(--success)">{{ r.income>0?fmt(r.income):'β€”' }}</td>
-                <td class="ra mono" style="color:var(--danger)">{{ r.expense>0?fmt(r.expense):'β€”' }}</td>
+                <td class="ra mono" style="color:var(--success)">{{ r.income>0?fmt(r.income):'—' }}</td>
+                <td class="ra mono" style="color:var(--danger)">{{ r.expense>0?fmt(r.expense):'—' }}</td>
                 <td class="ra mono" :style="{color:r.net>=0?'var(--success)':'var(--danger)'}">{{ fmt(r.net) }}</td>
               </tr>
             </tbody>
@@ -669,13 +669,13 @@ onMounted(loadDashboard)
         </div>
         <div class="chart-card">
           <div class="card-hdr">
-            <div class="card-ttl"><i class="fas fa-trophy"></i> Top Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚</div>
+            <div class="card-ttl"><i class="fas fa-trophy"></i> Top Πληρωμές</div>
           </div>
           <ul class="rec-list">
             <li v-for="t in [...recent].filter(t=>t.type==='expense').sort((a,b)=>b.amount-a.amount).slice(0,10)" :key="'tp'+t.id" class="rec-item">
               <div class="ri-l">
-                <span class="ri-d">{{ (t.description||t.category||'β€”').substring(0,35) }}</span>
-                <span class="ri-m">{{ fmtDate(t.docDate) }} Β· {{ t.category }}</span>
+                <span class="ri-d">{{ (t.description||t.category||'—').substring(0,35) }}</span>
+                <span class="ri-m">{{ fmtDate(t.docDate) }} · {{ t.category }}</span>
               </div>
               <span class="ri-a out">{{ fmt(t.amount) }}</span>
             </li>
@@ -683,10 +683,10 @@ onMounted(loadDashboard)
         </div>
       </div>
 
-      <!-- β•β•β• Ξ•Ο„Ξ®ΟƒΞΉΞ± Ξ£ΟΞ³ΞΊΟΞΉΟƒΞ· (full) β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β• -->
+      <!-- ═══ Ετήσια Σύγκριση (full) ═══════════════════════════════ -->
       <div class="chart-card mb" v-if="yearlyData.length">
         <div class="card-hdr">
-          <div class="card-ttl"><i class="fas fa-calendar-alt"></i> Ξ•Ο„Ξ®ΟƒΞΉΞ± Ξ£ΟΞ³ΞΊΟΞΉΟƒΞ· Ξ±Ξ½Ξ¬ ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±</div>
+          <div class="card-ttl"><i class="fas fa-calendar-alt"></i> Ετήσια Σύγκριση ανά Κατηγορία</div>
         </div>
         <div class="chart-wrap" style="height:280px">
           <Bar :data="yearlyChartData" :options="cOpts" />
