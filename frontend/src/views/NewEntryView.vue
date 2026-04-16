@@ -295,7 +295,7 @@ onMounted(async () => {
       <!-- File upload -->
       <div class="form-group">
         <label>Συνημμένα</label>
-        <label class="upload-area" :class="{uploaded: uploadedFile}">
+        <label class="upload-area" :class="{uploaded: uploadedFile}" v-if="!uploadedFile">
           <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="onFileChange" style="display:none" />
           <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
           <div class="upload-text">Πατήστε για upload αποδεικτικού</div>
