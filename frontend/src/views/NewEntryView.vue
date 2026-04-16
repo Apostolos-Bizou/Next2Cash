@@ -94,6 +94,7 @@ async function loadNextId() {
     })
     if (res.data.success && res.data.data.length > 0) {
       nextId.value = res.data.data[0].id + 1
+      description.value = String(nextId.value) + " - "
     }
   } catch (e) {}
 }
