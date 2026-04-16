@@ -89,11 +89,11 @@ watch(category, () => { subcategory.value = '' })
 // ── Next transaction ID ───────────────────────────────────────────────
 async function loadNextId() {
   try {
-    const res = await api.get('/api/transactions', {
-      params: { entityId: entityId.value, page: 0, perPage: 1 }
+    const res = await api.get('/api/transactions/next-id', {
+      params: { entityId: entityId.value }
     })
-    if (res.data.success && res.data.data.length > 0) {
-      nextId.value = res.data.data[0].id + 1
+    if (res.data.success) {
+      nextId.value = res.data.nextId
       description.value = String(nextId.value) + " - "
     }
   } catch (e) {}

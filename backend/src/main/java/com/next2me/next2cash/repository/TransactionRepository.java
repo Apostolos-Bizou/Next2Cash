@@ -64,6 +64,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND LOWER(t.description) LIKE LOWER(CONCAT('%', :query, '%')) " +
            "ORDER BY t.docDate DESC")
+    java.util.Optional<Transaction> findTopByEntityIdAndRecordStatusOrderByIdDesc(java.util.UUID entityId, String recordStatus);
+
     List<Transaction> searchByDescription(@Param("entityId") UUID entityId,
                                           @Param("query") String query,
                                           Pageable pageable);

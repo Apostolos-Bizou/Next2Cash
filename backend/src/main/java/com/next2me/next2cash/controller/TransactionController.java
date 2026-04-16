@@ -166,6 +166,14 @@ public class TransactionController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    // GET /api/transactions/next-id
+    @GetMapping("/next-id")
+    public ResponseEntity<?> getNextId(@RequestParam UUID entityId) {
+        var last = transactionRepository.findTopByEntityIdAndRecordStatusOrderByIdDesc(entityId, "active");
+        int nextId = last.map(t -> t.getId() + 1).orElse(1);
+        return ResponseEntity.ok(Map.of("success", true, "nextId", nextId));
+    }
+
     // GET /api/transactions/search?entity_id=X&q=ΦΡΟΝΤΙΣΤΗΡΙΟ
     @GetMapping("/search")
     public ResponseEntity<?> searchTransactions(
