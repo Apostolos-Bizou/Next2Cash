@@ -113,9 +113,10 @@ function onFileChange(e) {
   const file = e.target.files[0]
   if (!file) return
   uploadedFile.value = file
-  // Auto-fill description from filename
   const name = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
   if (!description.value) description.value = nextId.value + ' - ' + name
+  const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : ''
+  driveFileName.value = (description.value.trim() || String(nextId.value) + ' - ') + ext
 }
 
 // ── Save ──────────────────────────────────────────────────────────────
