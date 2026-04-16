@@ -69,7 +69,8 @@ async function onDescriptionInput() {
 
 function applySuggestion(t) {
   if (t.category) category.value = t.category
-  description.value = t.description || ''
+  const descText = (t.description || '').replace(/^\d+\s*-\s*/, '')
+  description.value = nextId.value + ' - ' + descText
   if (t.category)   category.value    = t.category
   if (t.account)    subcategory.value = t.account
   if (t.paymentMethod) method.value   = t.paymentMethod
