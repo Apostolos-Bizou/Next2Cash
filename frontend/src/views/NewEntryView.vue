@@ -272,7 +272,7 @@ onMounted(async () => {
       <div class="form-group" style="position:relative">
         <label>Περιγραφή <span class="frequent-label">★ Συχνές</span></label>
         <textarea v-model="description" class="form-input textarea"
-          :placeholder="nextId + ' - '"
+          placeholder=""
           @input="onDescriptionInput"
           @blur="hideDropdown">
         </textarea>
