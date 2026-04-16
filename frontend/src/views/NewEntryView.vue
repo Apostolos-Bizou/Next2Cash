@@ -154,6 +154,8 @@ async function save() {
   }
 }
 
+function hideDropdown() { window.setTimeout(() => { showSuggestions.value = false }, 200) }
+
 function reset() {
   type.value = 'expense'; docDate.value = new Date().toISOString().split('T')[0]
   payDate.value = ''; category.value = ''; subcategory.value = ''
@@ -270,7 +272,7 @@ onMounted(async () => {
         <textarea v-model="description" class="form-input textarea"
           :placeholder="nextId + ' - '"
           @input="onDescriptionInput"
-          @blur="() => { window.setTimeout(() => { showSuggestions = false }, 200) }">
+          @blur="hideDropdown">
         </textarea>
         <!-- Autocomplete dropdown -->
         <div v-if="showSuggestions" class="autocomplete-drop">
