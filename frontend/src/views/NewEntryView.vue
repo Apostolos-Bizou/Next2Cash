@@ -145,7 +145,29 @@ async function save() {
 
     const res = await api.post('/api/transactions', payload)
     if (res.data.success) {
-      successMsg.value = '✅ Καταχωρήθηκε επιτυχώς! ID: #' + res.data.id
+      const newId = res.data.id
+      if (uploadedFile.value) {
+        try {
+          saving.value = true
+          const file = uploadedFile.value
+          const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : ''
+          let fileName = driveFileName.value.trim()
+          if (!fileName) fileName = newId + ' - ' + (description.value.replace(/^\d+\s*-\s*/, '').substring(0,50)) + '.' + ext
+          if (fileName && !fileName.toLowerCase().endsWith('.' + ext)) fileName += '.' + ext
+          const formData = new FormData()
+          formData.append('file', file)
+          formData.append('entityId', entityId.value)
+          formData.append('transactionId', newId)
+          formData.append('fileName', fileName)
+          await api.post('/api/documents/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+          successMsg.value = '✅ Καταχωρήθηκε + αρχείο! ID: #' + newId
+        } catch (fe) {
+          console.warn('File upload failed:', fe)
+          successMsg.value = '✅ Καταχωρήθηκε! ID: #' + newId + ' (αρχείο απέτυχε)'
+        }
+      } else {
+        successMsg.value = '✅ Καταχωρήθηκε επιτυχώς! ID: #' + newId
+      }
       reset()
       await loadNextId()
     } else {
