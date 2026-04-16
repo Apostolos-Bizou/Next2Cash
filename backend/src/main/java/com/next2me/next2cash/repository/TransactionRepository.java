@@ -16,27 +16,21 @@ import java.util.UUID;
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, Integer> {
 
-    // All active transactions for entity (paginated)
     Page<Transaction> findByEntityIdAndRecordStatusOrderByDocDateDesc(
         UUID entityId, String recordStatus, Pageable pageable);
 
-    // Filter by type
     Page<Transaction> findByEntityIdAndRecordStatusAndTypeOrderByDocDateDesc(
         UUID entityId, String recordStatus, String type, Pageable pageable);
 
-    // Filter by payment status
     Page<Transaction> findByEntityIdAndRecordStatusAndPaymentStatusOrderByDocDateDesc(
         UUID entityId, String recordStatus, String paymentStatus, Pageable pageable);
 
-    // Filter by category
     Page<Transaction> findByEntityIdAndRecordStatusAndCategoryOrderByDocDateDesc(
         UUID entityId, String recordStatus, String category, Pageable pageable);
 
-    // Date range
     Page<Transaction> findByEntityIdAndRecordStatusAndDocDateBetweenOrderByDocDateDesc(
         UUID entityId, String recordStatus, LocalDate from, LocalDate to, Pageable pageable);
 
-    // Dashboard KPIs - total income for period
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.type = 'income' AND t.docDate BETWEEN :from AND :to")
@@ -44,7 +38,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
                                           @Param("from") LocalDate from,
                                           @Param("to") LocalDate to);
 
-    // Dashboard KPIs - total expense for period
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.type = 'expense' AND t.docDate BETWEEN :from AND :to")
@@ -52,25 +45,21 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
                                            @Param("from") LocalDate from,
                                            @Param("to") LocalDate to);
 
-    // Urgent transactions (Εκκρεμείς) - used for dashboard cash calculation
     @Query("SELECT COALESCE(SUM(t.amountRemaining), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.paymentStatus = 'urgent'")
     BigDecimal sumUrgentRemaining(@Param("entityId") UUID entityId);
 
-    // Unpaid + urgent
     @Query("SELECT COALESCE(SUM(t.amountRemaining), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.paymentStatus IN ('unpaid', 'urgent')")
     BigDecimal sumUnpaidRemaining(@Param("entityId") UUID entityId);
 
-    // Recent transactions for dashboard
     @Query("SELECT t FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "ORDER BY t.docDate DESC, t.id DESC")
     List<Transaction> findRecentByEntity(@Param("entityId") UUID entityId, Pageable pageable);
 
-    // Search by description (for autocomplete)
     @Query("SELECT t FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND LOWER(t.description) LIKE LOWER(CONCAT('%', :query, '%')) " +
@@ -79,7 +68,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
                                           @Param("query") String query,
                                           Pageable pageable);
 
-    // ZIP export - all documents in date range
     @Query("SELECT t FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.blobFileIds IS NOT NULL AND t.blobFileIds != '' " +
@@ -90,7 +78,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
         @Param("from") LocalDate from,
         @Param("to") LocalDate to);
 
-    // Monthly report
     @Query("SELECT EXTRACT(MONTH FROM t.docDate) as month, " +
            "t.category as category, " +
            "SUM(t.amount) as total " +
@@ -101,4 +88,41 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
            "ORDER BY month")
     List<Object[]> getMonthlyReport(@Param("entityId") UUID entityId,
                                     @Param("year") int year);
+
+    // Balance trend: daily running balance for a period (for line chart)
+    @Query(value = "SELECT t.doc_date, " +
+           "SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END) " +
+           "OVER (ORDER BY t.doc_date, t.id) as running_balance " +
+           "FROM transactions t " +
+           "WHERE t.entity_id = :entityId AND t.record_status = 'active' " +
+           "AND t.doc_date BETWEEN :from AND :to " +
+           "ORDER BY t.doc_date, t.id",
+           nativeQuery = true)
+    List<Object[]> getBalanceTrend(@Param("entityId") UUID entityId,
+                                   @Param("from") LocalDate from,
+                                   @Param("to") LocalDate to);
+
+    // Yearly report by category (for Etisia Sygkrisi chart)
+    @Query("SELECT EXTRACT(YEAR FROM t.docDate) as year, " +
+           "t.category as category, " +
+           "SUM(t.amount) as total " +
+           "FROM Transaction t " +
+           "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND t.type = 'expense' " +
+           "GROUP BY EXTRACT(YEAR FROM t.docDate), t.category " +
+           "ORDER BY year, total DESC")
+    List<Object[]> getYearlyReport(@Param("entityId") UUID entityId);
+
+    // Category breakdown with subcategory for period
+    @Query("SELECT t.category, t.account, " +
+           "SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END) as income, " +
+           "SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END) as expense " +
+           "FROM Transaction t " +
+           "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND t.docDate BETWEEN :from AND :to " +
+           "GROUP BY t.category, t.account " +
+           "ORDER BY expense DESC")
+    List<Object[]> getCategoryBreakdown(@Param("entityId") UUID entityId,
+                                        @Param("from") LocalDate from,
+                                        @Param("to") LocalDate to);
 }
