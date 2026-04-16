@@ -68,6 +68,7 @@ async function onDescriptionInput() {
 }
 
 function applySuggestion(t) {
+  if (t.category) category.value = t.category
   description.value = t.description || ''
   if (t.category)   category.value    = t.category
   if (t.account)    subcategory.value = t.account
