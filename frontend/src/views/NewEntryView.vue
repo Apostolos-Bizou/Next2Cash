@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import api from '@/api'
 
 const ENTITIES = {
@@ -68,13 +68,13 @@ async function onDescriptionInput() {
 }
 
 function applySuggestion(t) {
-  if (t.category) category.value = t.category
   const descText = (t.description || '').replace(/^\d+\s*-\s*/, '')
   description.value = nextId.value + ' - ' + descText
-  if (t.category)   category.value    = t.category
-  if (t.account)    subcategory.value = t.account
-  if (t.paymentMethod) method.value   = t.paymentMethod
-  if (t.type)       type.value        = t.type
+  if (t.category)      category.value    = t.category
+  if (t.paymentMethod) method.value      = t.paymentMethod
+  if (t.type)          type.value        = t.type
+  // subcategory ΜΕΤΑ το category (nextTick) για να μην το καθαρίσει το watch
+  if (t.account) nextTick(() => { subcategory.value = t.account })
   showSuggestions.value = false
 }
 
