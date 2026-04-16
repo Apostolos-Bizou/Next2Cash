@@ -270,7 +270,7 @@ onMounted(async () => {
         <textarea v-model="description" class="form-input textarea"
           :placeholder="nextId + ' - '"
           @input="onDescriptionInput"
-          @blur="setTimeout(() => showSuggestions=false, 200)">
+          @blur="() => { window.setTimeout(() => { showSuggestions = false }, 200) }">
         </textarea>
         <!-- Autocomplete dropdown -->
         <div v-if="showSuggestions" class="autocomplete-drop">
