@@ -108,6 +108,7 @@ function applyFrequent(f) {
 
 // ── File upload (placeholder — Google Drive → Azure Blob later) ───────
 const uploadedFile = ref(null)
+const driveFileName = ref("")
 function onFileChange(e) {
   const file = e.target.files[0]
   if (!file) return
@@ -297,9 +298,21 @@ onMounted(async () => {
         <label class="upload-area" :class="{uploaded: uploadedFile}">
           <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="onFileChange" style="display:none" />
           <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
-          <div class="upload-text">{{ uploadedFile ? uploadedFile.name : 'Πατήστε για upload αποδεικτικού' }}</div>
+          <div class="upload-text">Πατήστε για upload αποδεικτικού</div>
           <div class="upload-hint">PDF, JPG, PNG — αυτόματη αποθήκευση στο Drive</div>
         </label>
+        <div v-if="uploadedFile" class="file-preview">
+          <div class="file-preview-row">
+            <i class="fas fa-file-pdf file-icon"></i>
+            <span class="file-name">{{ uploadedFile.name }}</span>
+            <span class="file-size">{{ Math.round(uploadedFile.size/1024) }}KB</span>
+            <button class="remove-file" @click="uploadedFile=null; driveFileName=''"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="drive-row">
+            <span class="drive-lbl"><i class="fas fa-arrow-right"></i> Drive:</span>
+            <input type="text" v-model="driveFileName" class="drive-input" />
+          </div>
+        </div>
       </div>
 
       <!-- Doc status -->
@@ -378,4 +391,13 @@ onMounted(async () => {
 .btn-save { background:var(--success); border:none; color:#fff; padding:10px 28px; border-radius:var(--radius-md); cursor:pointer; font-size:.9rem; font-weight:700; font-family:var(--font); transition:all .2s; }
 .btn-save:hover:not(:disabled) { opacity:.9; transform:translateY(-1px); }
 .btn-save:disabled { opacity:.5; cursor:not-allowed; }
+.file-preview { margin-top:8px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:8px 12px; }
+.file-preview-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.file-icon { color:var(--danger); font-size:1rem; }
+.file-name { flex:1; font-size:.82rem; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-size { font-size:.75rem; color:var(--text-muted); white-space:nowrap; }
+.remove-file { background:none; border:none; color:var(--danger); cursor:pointer; font-size:.85rem; }
+.drive-row { display:flex; align-items:center; gap:8px; }
+.drive-lbl { font-size:.68rem; color:var(--success); font-weight:600; white-space:nowrap; }
+.drive-input { flex:1; padding:6px 10px; font-size:.82rem; font-weight:500; background:var(--bg-input); border:1px solid var(--success); border-radius:var(--radius-sm); color:var(--success); font-family:var(--font); }
 </style>
