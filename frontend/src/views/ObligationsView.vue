@@ -115,9 +115,9 @@ const stats = computed(() => {
   const urgent = all.filter(o => o.status === 'urgent')
   const partial = all.filter(o => o.status === 'partial')
   const paid = all.filter(o => o.status === 'paid')
-  const unpaidUrgent = [...unpaid, ...urgent]
-  const cash = unpaidUrgent.filter(o => ['Μετρητά', 'Απόδειξη'].includes(o.paymentMethod))
-  const bank = unpaidUrgent.filter(o => !['Μετρητά', 'Απόδειξη'].includes(o.paymentMethod) && o.paymentMethod)
+  const unpaidAll = [...unpaid, ...urgent]
+  const cash = unpaidAll.filter(o => ['Μετρητά', 'Απόδειξη'].includes(o.paymentMethod))
+  const bank = unpaidAll.filter(o => !['Μετρητά', 'Απόδειξη'].includes(o.paymentMethod) && o.paymentMethod)
 
   const sum = arr => arr.reduce((s, o) => s + o.amount, 0)
   const sumRem = arr => arr.reduce((s, o) => s + o.remaining, 0)
@@ -125,7 +125,7 @@ const stats = computed(() => {
   return {
     totalCount: all.length, totalAmount: sum(all),
     paidCount: paid.length, paidAmount: sum(paid),
-    unpaidCount: unpaid.length, unpaidAmount: sumRem(unpaid),
+    unpaidCount: unpaidAll.length, unpaidAmount: sumRem(unpaidAll),
     cashCount: cash.length, cashAmount: sumRem(cash),
     bankCount: bank.length, bankAmount: sumRem(bank),
     partialCount: partial.length, partialAmount: sumRem(partial),
