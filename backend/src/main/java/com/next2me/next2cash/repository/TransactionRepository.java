@@ -125,4 +125,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     List<Object[]> getCategoryBreakdown(@Param("entityId") UUID entityId,
                                         @Param("from") LocalDate from,
                                         @Param("to") LocalDate to);
+
+
+    // Get max entity_number for a specific entity (for auto-assigning next entity_number)
+    @Query("SELECT MAX(t.entityNumber) FROM Transaction t WHERE t.entityId = :entityId")
+    Integer findMaxEntityNumberByEntityId(@Param("entityId") UUID entityId);
 }

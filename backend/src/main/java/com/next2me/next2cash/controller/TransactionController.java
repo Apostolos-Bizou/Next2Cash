@@ -67,7 +67,7 @@ public class TransactionController {
 
         return ResponseEntity.ok(Map.of(
             "success", true,
-            "data",    result.getContent(),  // data[] — ακριβώς ως legacy
+            "data",    result.getContent(),  // data[] Ξ²β‚¬β€ ΞΒ±ΞΞΞΒΞΞ‰ΞΒ²ΞΒΞβ€ Ξβ€°Ξβ€ legacy
             "total",   result.getTotalElements(),
             "page",    result.getNumber(),
             "pages",   result.getTotalPages()
@@ -94,6 +94,10 @@ public class TransactionController {
         String userId = jwtUtil.getUserIdFromToken(token);
         transaction.setCreatedBy(UUID.fromString(userId));
         transaction.setRecordStatus("active");
+
+        // Auto-assign entity_number (next sequential number per entity)
+        Integer maxEntityNumber = transactionRepository.findMaxEntityNumberByEntityId(transaction.getEntityId());
+        transaction.setEntityNumber(maxEntityNumber == null ? 1 : maxEntityNumber + 1);
 
         // Calculate amount_remaining
         if (transaction.getAmountPaid() == null) {
@@ -149,7 +153,7 @@ public class TransactionController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    // DELETE /api/transactions/{id} — soft delete (void)
+    // DELETE /api/transactions/{id} Ξ²β‚¬β€ soft delete (void)
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     public ResponseEntity<?> voidTransaction(
@@ -166,7 +170,15 @@ public class TransactionController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    // GET /api/transactions/search?entity_id=X&q=ΦΡΟΝΤΙΣΤΗΡΙΟ
+    // GET /api/transactions/next-number?entityId=X - returns next entity_number for this entity
+    @GetMapping("/next-number")
+    public ResponseEntity<?> getNextNumber(@RequestParam UUID entityId) {
+        Integer maxNumber = transactionRepository.findMaxEntityNumberByEntityId(entityId);
+        int nextNumber = (maxNumber == null) ? 1 : maxNumber + 1;
+        return ResponseEntity.ok(Map.of("success", true, "nextNumber", nextNumber));
+    }
+
+    // GET /api/transactions/search?entity_id=X&q=ΞΒ¦ΞΞ…ΞΒΞΒΞΒ¤Ξβ„ΆΞΒ£ΞΒ¤Ξβ€”ΞΞ…Ξβ„ΆΞΒ
     @GetMapping("/search")
     public ResponseEntity<?> searchTransactions(
             @RequestParam UUID entityId,

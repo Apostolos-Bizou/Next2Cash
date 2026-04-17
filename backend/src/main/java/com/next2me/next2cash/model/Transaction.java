@@ -25,6 +25,8 @@ public class Transaction {
 
     @Column(name = "entity_id", nullable = false)
     private UUID entityId;
+    @Column(name = "entity_number")
+    private Integer entityNumber;
 
     @Column(nullable = false, length = 10)
     private String type; // income / expense
