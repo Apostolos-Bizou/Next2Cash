@@ -10,11 +10,12 @@ const ENTITIES = {
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const entityId = computed(() => ENTITIES[selectedEntity.value])
 
-// ── Config from backend ───────────────────────────────────────────────
+// ── Config from backend ──────────────────────────────────────────────
 const categories     = ref([])
 const allSubcats     = ref([])
 const accounts       = ref([])
 const paymentMethods = ref([])
+const bankAccounts   = ref([])
 
 async function loadConfig() {
   try {
@@ -25,10 +26,15 @@ async function loadConfig() {
       accounts.value       = res.data.accounts       || []
       paymentMethods.value = res.data.paymentMethods || []
     }
+    // Load bank accounts for Μέθοδος Πληρωμής dropdown
+    const bankRes = await api.get('/api/bank-accounts', { params: { entityId: entityId.value } })
+    if (bankRes.data.success) {
+      bankAccounts.value = bankRes.data.accounts || []
+    }
   } catch (e) { console.error('Config error:', e) }
 }
 
-// ── Form state ────────────────────────────────────────────────────────
+// ── Form state ──────────────────────────────────────────────────────
 const type        = ref('expense')
 const docDate     = ref(new Date().toISOString().split('T')[0])
 const payDate     = ref('')
@@ -45,7 +51,7 @@ const successMsg  = ref('')
 const errorMsg    = ref('')
 const nextId      = ref('...')
 
-// ── Autocomplete ──────────────────────────────────────────────────────
+// ── Autocomplete ────────────────────────────────────────────────────
 const suggestions     = ref([])
 const showSuggestions = ref(false)
 let autocompleteTimer = null
@@ -78,7 +84,7 @@ function applySuggestion(t) {
   showSuggestions.value = false
 }
 
-// ── Subcategories filtered by category ───────────────────────────────
+// ── Subcategories filtered by category ──────────────────────────────
 const subcategories = computed(() => {
   if (!category.value) return []
   return allSubcats.value.filter(s => s.parentKey === category.value)
@@ -86,7 +92,7 @@ const subcategories = computed(() => {
 
 watch(category, () => { subcategory.value = '' })
 
-// ── Next transaction ID ───────────────────────────────────────────────
+// ── Next transaction ID ─────────────────────────────────────────────
 async function loadNextId() {
   try {
     const res = await api.get('/api/transactions', {
@@ -99,14 +105,14 @@ async function loadNextId() {
   } catch (e) {}
 }
 
-// ── Frequent entries ──────────────────────────────────────────────────
-const frequentEntries = ['ΕNOIKIO', 'MICROSOFT AZURE', 'ΠΑΠΑΚΙ', 'ΚΙΝΗΤΟ', 'ΜΑΛΑΜΙΤΣΗΣ', 'ΤΑΛΙΑΔΟΡΟΣ']
+// ── Frequent entries ────────────────────────────────────────────────
+const frequentEntries = ['ΕNOIKIO', 'MICROSOFT AZURE', 'ΠΑΠΑΚΙ', 'ΚΙΝΗΤΟ', 'ΜΑΛΑΜΙΤΣΗΣ', 'ΤΑΛΙΑΔΩΡΟΣ']
 
 function applyFrequent(f) {
   description.value = nextId.value + ' - ' + f
 }
 
-// ── File upload (placeholder — Google Drive → Azure Blob later) ───────
+// ── File upload (placeholder — Google Drive → Azure Blob later) ─────
 const uploadedFile = ref(null)
 const driveFileName = ref("")
 function onFileChange(e) {
@@ -119,7 +125,7 @@ function onFileChange(e) {
   driveFileName.value = (description.value.trim() || String(nextId.value) + ' - ') + ext
 }
 
-// ── Save ──────────────────────────────────────────────────────────────
+// ── Save ────────────────────────────────────────────────────────────
 async function save() {
   errorMsg.value = ''; successMsg.value = ''
   if (!category.value)  { errorMsg.value = 'Επιλέξτε Κατηγορία'; return }
@@ -191,7 +197,12 @@ function reset() {
   uploadedFile.value = null; suggestions.value = []; showSuggestions.value = false
 }
 
-const docStatuses = ['Τράπεζα', 'Απόδειξη', 'Μετρητά', 'Χωρίς']
+const docStatuses = [
+  { value: 'bank',    label: 'Τράπεζα' },
+  { value: 'receipt', label: 'Απόδειξη' },
+  { value: 'cash',    label: 'Μετρητά' },
+  { value: '',        label: 'Χωρίς' }
+]
 
 onMounted(async () => {
   await loadConfig()
@@ -275,7 +286,7 @@ onMounted(async () => {
           <label>Μέθοδος Πληρωμής</label>
           <select v-model="method" class="form-input">
             <option value="">— Επιλέξτε —</option>
-            <option v-for="m in accounts" :key="m.key" :value="m.key">{{ m.value || m.key }}</option>
+            <option v-for="b in bankAccounts" :key="b.id" :value="b.accountLabel">{{ b.accountLabel }}</option>
           </select>
         </div>
       </div>
@@ -289,7 +300,7 @@ onMounted(async () => {
         </label>
         <div class="status-btns" v-if="isPending">
           <button :class="['status-btn', {active: !isUrgent}]" @click="isUrgent=false">ΑΠΛΗΡΩΤΗ</button>
-          <button :class="['status-btn', 'orange', {active: isUrgent}]" @click="isUrgent=true">⚡ Εκκρεμής</button>
+          <button :class="['status-btn', 'orange', {active: isUrgent}]" @click="isUrgent=true">⏵ Εκκρεμής</button>
         </div>
       </div>
 
@@ -340,9 +351,9 @@ onMounted(async () => {
 
       <!-- Doc status -->
       <div class="doc-status-btns">
-        <button v-for="s in docStatuses" :key="s"
-          :class="['doc-btn', {active: docStatus===s}]" @click="docStatus=s">
-          {{ s }}
+        <button v-for="s in docStatuses" :key="s.value"
+          :class="['doc-btn', {active: docStatus===s.value}]" @click="docStatus=s.value">
+          {{ s.label }}
         </button>
       </div>
 
