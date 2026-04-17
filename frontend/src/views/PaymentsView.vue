@@ -98,19 +98,20 @@ const categories = computed(() => {
 
 const stats = computed(() => {
   const all = filteredPayments.value
-  const unpaid = all.filter(p => p.status === 'unpaid' || p.status === 'urgent')
-  const partial = all.filter(p => p.status === 'partial')
-  const paid = all.filter(p => p.status === 'paid')
-  const received = all.filter(p => p.status === 'received')
+  const expenses = all.filter(p => p.type === 'expense')
+  const incomes = all.filter(p => p.type === 'income')
+  const unpaid = expenses.filter(p => p.status === 'unpaid' || p.status === 'urgent')
+  const partial = expenses.filter(p => p.status === 'partial')
+  const paid = expenses.filter(p => p.status === 'paid')
+  const received = incomes.filter(p => p.status === 'received' || p.status === 'paid')
 
   const sum = arr => arr.reduce((s, p) => s + p.amount, 0)
   const sumRem = arr => arr.reduce((s, p) => s + p.remaining, 0)
-  const sumPaid = arr => arr.reduce((s, p) => s + p.paid, 0)
 
   return {
-    total: all.length, totalAmount: sum(all),
+    total: expenses.length, totalAmount: sum(expenses),
     unpaid: unpaid.length, unpaidAmount: sumRem(unpaid),
-    partial: partial.length, partialAmount: sumPaid(partial),
+    partial: partial.length, partialAmount: sumRem(partial),
     paid: paid.length, paidAmount: sum(paid),
     received: received.length, receivedAmount: sum(received)
   }
