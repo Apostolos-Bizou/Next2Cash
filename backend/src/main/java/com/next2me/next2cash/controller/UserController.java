@@ -23,12 +23,14 @@ import java.util.stream.Collectors;
 
 /**
  * User management endpoints (Admin Panel).
- * Access: ADMIN and USER roles (DELETE is ADMIN only — enforced in SecurityConfig).
+ * Access: ADMIN and USER roles (DELETE + reset-password are ADMIN only — enforced in SecurityConfig).
  *
  * Rules:
- *  - Password is set ONLY on create (POST) or via self-service /api/auth/change-password
+ *  - Password is set ONLY on create (POST), self-service /api/auth/change-password,
+ *    or admin reset via POST /{id}/reset-password
  *  - Self-delete is blocked
- *  - Self role downgrade is blocked (prevents admin losing their privileges accidentally)
+ *  - Self-reset via admin endpoint is blocked (must use self-service)
+ *  - Self role downgrade is blocked
  *  - Username is immutable after creation
  *  - For user_entities: ADMIN/USER allow empty set (= all entities), ACCOUNTANT/VIEWER require >=1
  */
@@ -107,7 +109,7 @@ public class UserController {
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  PUT /api/admin/users/{id} — Update user info
+    //  PUT /api/admin/users/{id} — Update user info (NOT password)
     // ═══════════════════════════════════════════════════════════
     @PutMapping("/{id}")
     public ResponseEntity<?> updateUser(
@@ -124,7 +126,7 @@ public class UserController {
         boolean isSelf = currentUsername != null && currentUsername.equals(u.getUsername());
 
         if (request.containsKey("password") || request.containsKey("passwordHash")) {
-            return badRequest("Password cannot be changed here. Use /api/auth/change-password for self-service.");
+            return badRequest("Password cannot be changed here. Use POST /{id}/reset-password (admin) or POST /api/auth/change-password (self-service).");
         }
         if (request.containsKey("username")) {
             return badRequest("Username is immutable after creation");
@@ -148,7 +150,6 @@ public class UserController {
                 return badRequest("Cannot downgrade your own admin/user role. Ask another admin.");
             }
 
-            // If changing TO accountant/viewer, ensure user has entities assigned
             if (RESTRICTED_ROLES.contains(newRole) && !RESTRICTED_ROLES.contains(u.getRole())) {
                 List<UUID> existingEntities = userEntityRepository.findEntityIdsByUserId(id);
                 if (existingEntities.isEmpty()) {
@@ -180,7 +181,7 @@ public class UserController {
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  DELETE /api/admin/users/{id} — Soft delete
+    //  DELETE /api/admin/users/{id} — Soft delete (ADMIN only)
     // ═══════════════════════════════════════════════════════════
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteUser(
@@ -212,8 +213,58 @@ public class UserController {
     }
 
     // ═══════════════════════════════════════════════════════════
+    //  POST /api/admin/users/{id}/reset-password — Admin resets user's password
+    //  Access: ADMIN only (enforced in SecurityConfig)
+    //  Body: { "newPassword": "..." }
+    //  Rules:
+    //    - newPassword >= 8 chars
+    //    - User must exist and be active
+    //    - Admin cannot reset own password here (must use self-service)
+    // ═══════════════════════════════════════════════════════════
+    @PostMapping("/{id}/reset-password")
+    public ResponseEntity<?> resetPassword(
+            @PathVariable UUID id,
+            @RequestBody Map<String, Object> request,
+            Authentication authentication) {
+
+        User u = userRepository.findById(id).orElse(null);
+        if (u == null) {
+            return notFound("User not found");
+        }
+
+        String currentUsername = authentication != null ? authentication.getName() : null;
+
+        // Self-protection: admin must use self-service for own password
+        if (currentUsername != null && currentUsername.equals(u.getUsername())) {
+            return badRequest("Use POST /api/auth/change-password to change your own password");
+        }
+
+        // User must be active
+        if (Boolean.FALSE.equals(u.getIsActive())) {
+            return badRequest("Cannot reset password for inactive user. Reactivate first.");
+        }
+
+        String newPassword = str(request.get("newPassword"));
+        if (isBlank(newPassword)) {
+            return badRequest("newPassword is required");
+        }
+        if (newPassword.length() < 8) {
+            return badRequest("Password must be at least 8 characters");
+        }
+
+        // Set new password
+        u.setPasswordHash(passwordEncoder.encode(newPassword));
+        u.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(u);
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "message", "Password reset successfully for user: " + u.getUsername()
+        ));
+    }
+
+    // ═══════════════════════════════════════════════════════════
     //  GET /api/admin/users/{id}/entities — List user's assigned entities
-    //  Returns [] for admin/user users with no explicit assignment (= all entities)
     // ═══════════════════════════════════════════════════════════
     @GetMapping("/{id}/entities")
     public ResponseEntity<?> getUserEntities(@PathVariable UUID id) {
@@ -227,7 +278,6 @@ public class UserController {
             .map(this::entityToDto)
             .collect(Collectors.toList());
 
-        // Helpful meta: explains what empty list means for this role
         String meta;
         boolean accessAll = data.isEmpty() && !RESTRICTED_ROLES.contains(u.getRole());
         if (accessAll) {
@@ -250,7 +300,6 @@ public class UserController {
 
     // ═══════════════════════════════════════════════════════════
     //  PUT /api/admin/users/{id}/entities — Replace user's entity assignment
-    //  Body: { "entityIds": ["uuid-1", "uuid-2", ...] }
     // ═══════════════════════════════════════════════════════════
     @PutMapping("/{id}/entities")
     @Transactional
@@ -263,7 +312,6 @@ public class UserController {
             return notFound("User not found");
         }
 
-        // Extract entityIds (accept array of strings or UUIDs)
         Object raw = request.get("entityIds");
         if (!(raw instanceof List<?> rawList)) {
             return badRequest("entityIds must be an array");
@@ -279,13 +327,11 @@ public class UserController {
             }
         }
 
-        // Rule: ACCOUNTANT/VIEWER must have >=1 entity
         if (RESTRICTED_ROLES.contains(u.getRole()) && entityIds.isEmpty()) {
             return badRequest("User with role '" + u.getRole() +
                 "' must have at least one entity assigned");
         }
 
-        // Validate all entities exist and are active
         for (UUID entityId : entityIds) {
             CompanyEntity e = companyEntityRepository.findById(entityId).orElse(null);
             if (e == null) {
@@ -296,13 +342,11 @@ public class UserController {
             }
         }
 
-        // Replace-all: delete existing rows, insert new ones
         userEntityRepository.deleteAllForUser(id);
         for (UUID entityId : entityIds) {
             userEntityRepository.insertUserEntity(id, entityId);
         }
 
-        // Return the new state
         List<CompanyEntity> current = userEntityRepository.findEntitiesByUserId(id);
         List<Map<String, Object>> data = current.stream()
             .map(this::entityToDto)

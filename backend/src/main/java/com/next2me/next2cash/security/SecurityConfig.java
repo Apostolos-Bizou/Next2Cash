@@ -45,6 +45,8 @@ public class SecurityConfig {
                 // Public endpoints
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/health").permitAll()
+                // Admin password reset — ADMIN only (more specific, must come first)
+                .requestMatchers(HttpMethod.POST, "/api/admin/users/*/reset-password").hasRole("ADMIN")
                 // DELETE on admin users — ADMIN only
                 .requestMatchers(HttpMethod.DELETE, "/api/admin/users/**").hasRole("ADMIN")
                 // Other admin endpoints — ADMIN and USER
