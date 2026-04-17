@@ -207,6 +207,11 @@ const docStatuses = [
 onMounted(async () => {
   await loadConfig()
   await loadNextId()
+  window.addEventListener('entity-changed', async () => {
+    selectedEntity.value = localStorage.getItem('n2c_entity') || 'next2me'
+    await loadConfig()
+    await loadNextId()
+  })
 })
 </script>
 

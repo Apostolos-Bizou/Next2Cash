@@ -12,8 +12,17 @@ const logout = () => {
   router.push('/login')
 }
 
-const selectedEntity = ref('Next2Me')
-const entities = ['Next2Me', 'House']
+const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
+const entities = [
+  { key: 'next2me', label: 'Next2Me' },
+  { key: 'house',   label: 'House' }
+]
+function selectEntity(e) {
+  selectedEntity.value = e.key
+  localStorage.setItem('n2c_entity', e.key)
+  showEntityMenu.value = false
+  window.dispatchEvent(new Event('entity-changed'))
+}
 const showEntityMenu = ref(false)
 
 const navSections = [
@@ -60,11 +69,11 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 
       <div class="entity-selector" v-if="!ui.sidebarCollapsed">
         <div class="entity-btn" @click="showEntityMenu = !showEntityMenu">
-          <span>{{ selectedEntity }}</span>
+          <span>{{ entities.find(e => e.key === selectedEntity)?.label || 'Next2Me' }}</span>
           <span>▾</span>
         </div>
         <div class="entity-menu" v-if="showEntityMenu">
-          <div v-for="e in entities" :key="e" class="entity-option" :class="{ active: e === selectedEntity }" @click="selectedEntity = e; showEntityMenu = false">{{ e }}</div>
+          <div v-for="e in entities" :key="e.key" class="entity-option" :class="{ active: e.key === selectedEntity }" @click="selectEntity(e)">{{ e.label }}</div>
         </div>
       </div>
 
