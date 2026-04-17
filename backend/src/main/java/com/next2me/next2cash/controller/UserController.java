@@ -1,14 +1,19 @@
 package com.next2me.next2cash.controller;
 
+import com.next2me.next2cash.model.CompanyEntity;
 import com.next2me.next2cash.model.User;
+import com.next2me.next2cash.repository.CompanyEntityRepository;
+import com.next2me.next2cash.repository.UserEntityRepository;
 import com.next2me.next2cash.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +30,7 @@ import java.util.stream.Collectors;
  *  - Self-delete is blocked
  *  - Self role downgrade is blocked (prevents admin losing their privileges accidentally)
  *  - Username is immutable after creation
+ *  - For user_entities: ADMIN/USER allow empty set (= all entities), ACCOUNTANT/VIEWER require >=1
  */
 @RestController
 @RequestMapping("/api/admin/users")
@@ -32,9 +38,12 @@ import java.util.stream.Collectors;
 public class UserController {
 
     private static final Set<String> ALLOWED_ROLES = Set.of("admin", "user", "accountant", "viewer");
+    private static final Set<String> RESTRICTED_ROLES = Set.of("accountant", "viewer");
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserEntityRepository userEntityRepository;
+    private final CompanyEntityRepository companyEntityRepository;
 
     // ═══════════════════════════════════════════════════════════
     //  GET /api/admin/users — List all users
@@ -55,7 +64,6 @@ public class UserController {
 
     // ═══════════════════════════════════════════════════════════
     //  POST /api/admin/users — Create new user
-    //  Body: { username, password, displayName?, email?, role }
     // ═══════════════════════════════════════════════════════════
     @PostMapping
     public ResponseEntity<?> createUser(@RequestBody Map<String, Object> request) {
@@ -66,7 +74,6 @@ public class UserController {
         String email       = str(request.get("email"));
         String role        = strOrDefault(request.get("role"), "user").toLowerCase();
 
-        // Validation
         if (isBlank(username) || isBlank(password)) {
             return badRequest("username and password are required");
         }
@@ -80,7 +87,6 @@ public class UserController {
             return badRequest("Username already exists");
         }
 
-        // Create
         User u = new User();
         u.setUsername(username);
         u.setPasswordHash(passwordEncoder.encode(password));
@@ -102,8 +108,6 @@ public class UserController {
 
     // ═══════════════════════════════════════════════════════════
     //  PUT /api/admin/users/{id} — Update user info
-    //  Body: { displayName?, email?, role?, isActive? }
-    //  NOT allowed: password, username
     // ═══════════════════════════════════════════════════════════
     @PutMapping("/{id}")
     public ResponseEntity<?> updateUser(
@@ -116,11 +120,9 @@ public class UserController {
             return notFound("User not found");
         }
 
-        // Get the user performing the action
         String currentUsername = authentication != null ? authentication.getName() : null;
         boolean isSelf = currentUsername != null && currentUsername.equals(u.getUsername());
 
-        // Explicitly reject password / username changes
         if (request.containsKey("password") || request.containsKey("passwordHash")) {
             return badRequest("Password cannot be changed here. Use /api/auth/change-password for self-service.");
         }
@@ -128,7 +130,6 @@ public class UserController {
             return badRequest("Username is immutable after creation");
         }
 
-        // Apply allowed updates
         if (request.containsKey("displayName")) {
             String displayName = str(request.get("displayName"));
             u.setDisplayName(isBlank(displayName) ? null : displayName);
@@ -142,17 +143,26 @@ public class UserController {
             if (!ALLOWED_ROLES.contains(newRole)) {
                 return badRequest("Invalid role. Allowed: admin, user, accountant, viewer");
             }
-            // Self-protection: can't downgrade your own admin/user privileges
             if (isSelf && ("admin".equals(u.getRole()) || "user".equals(u.getRole()))
                       && !("admin".equals(newRole) || "user".equals(newRole))) {
                 return badRequest("Cannot downgrade your own admin/user role. Ask another admin.");
             }
+
+            // If changing TO accountant/viewer, ensure user has entities assigned
+            if (RESTRICTED_ROLES.contains(newRole) && !RESTRICTED_ROLES.contains(u.getRole())) {
+                List<UUID> existingEntities = userEntityRepository.findEntityIdsByUserId(id);
+                if (existingEntities.isEmpty()) {
+                    return badRequest("Cannot change role to '" + newRole +
+                        "' without first assigning at least one entity. " +
+                        "Use PUT /api/admin/users/" + id + "/entities first.");
+                }
+            }
+
             u.setRole(newRole);
         }
         if (request.containsKey("isActive")) {
             Object val = request.get("isActive");
             boolean newActive = Boolean.TRUE.equals(val) || "true".equalsIgnoreCase(String.valueOf(val));
-            // Self-protection: can't deactivate yourself
             if (isSelf && !newActive) {
                 return badRequest("Cannot deactivate your own account");
             }
@@ -170,8 +180,7 @@ public class UserController {
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  DELETE /api/admin/users/{id} — Soft delete (ADMIN only)
-    //  Sets is_active = false (retains audit trail)
+    //  DELETE /api/admin/users/{id} — Soft delete
     // ═══════════════════════════════════════════════════════════
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteUser(
@@ -183,18 +192,15 @@ public class UserController {
             return notFound("User not found");
         }
 
-        // Self-delete protection
         String currentUsername = authentication != null ? authentication.getName() : null;
         if (currentUsername != null && currentUsername.equals(u.getUsername())) {
             return badRequest("Cannot delete your own account");
         }
 
-        // Already inactive?
         if (Boolean.FALSE.equals(u.getIsActive())) {
             return badRequest("User is already inactive");
         }
 
-        // Soft delete
         u.setIsActive(false);
         u.setUpdatedAt(LocalDateTime.now());
         userRepository.save(u);
@@ -206,10 +212,114 @@ public class UserController {
     }
 
     // ═══════════════════════════════════════════════════════════
+    //  GET /api/admin/users/{id}/entities — List user's assigned entities
+    //  Returns [] for admin/user users with no explicit assignment (= all entities)
+    // ═══════════════════════════════════════════════════════════
+    @GetMapping("/{id}/entities")
+    public ResponseEntity<?> getUserEntities(@PathVariable UUID id) {
+        User u = userRepository.findById(id).orElse(null);
+        if (u == null) {
+            return notFound("User not found");
+        }
+
+        List<CompanyEntity> entities = userEntityRepository.findEntitiesByUserId(id);
+        List<Map<String, Object>> data = entities.stream()
+            .map(this::entityToDto)
+            .collect(Collectors.toList());
+
+        // Helpful meta: explains what empty list means for this role
+        String meta;
+        boolean accessAll = data.isEmpty() && !RESTRICTED_ROLES.contains(u.getRole());
+        if (accessAll) {
+            meta = "No explicit assignment — this user has access to ALL entities (role: " + u.getRole() + ")";
+        } else if (data.isEmpty()) {
+            meta = "No entities assigned — this user has NO access (role: " + u.getRole() + " requires >=1)";
+        } else {
+            meta = "User has explicit access to " + data.size() + " entit" + (data.size() == 1 ? "y" : "ies");
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "success",   true,
+            "userRole",  u.getRole(),
+            "accessAll", accessAll,
+            "data",      data,
+            "count",     data.size(),
+            "meta",      meta
+        ));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  PUT /api/admin/users/{id}/entities — Replace user's entity assignment
+    //  Body: { "entityIds": ["uuid-1", "uuid-2", ...] }
+    // ═══════════════════════════════════════════════════════════
+    @PutMapping("/{id}/entities")
+    @Transactional
+    public ResponseEntity<?> setUserEntities(
+            @PathVariable UUID id,
+            @RequestBody Map<String, Object> request) {
+
+        User u = userRepository.findById(id).orElse(null);
+        if (u == null) {
+            return notFound("User not found");
+        }
+
+        // Extract entityIds (accept array of strings or UUIDs)
+        Object raw = request.get("entityIds");
+        if (!(raw instanceof List<?> rawList)) {
+            return badRequest("entityIds must be an array");
+        }
+
+        List<UUID> entityIds = new ArrayList<>();
+        for (Object o : rawList) {
+            if (o == null) continue;
+            try {
+                entityIds.add(UUID.fromString(String.valueOf(o).trim()));
+            } catch (IllegalArgumentException ex) {
+                return badRequest("Invalid UUID format: " + o);
+            }
+        }
+
+        // Rule: ACCOUNTANT/VIEWER must have >=1 entity
+        if (RESTRICTED_ROLES.contains(u.getRole()) && entityIds.isEmpty()) {
+            return badRequest("User with role '" + u.getRole() +
+                "' must have at least one entity assigned");
+        }
+
+        // Validate all entities exist and are active
+        for (UUID entityId : entityIds) {
+            CompanyEntity e = companyEntityRepository.findById(entityId).orElse(null);
+            if (e == null) {
+                return badRequest("Entity not found: " + entityId);
+            }
+            if (Boolean.FALSE.equals(e.getIsActive())) {
+                return badRequest("Entity is inactive: " + e.getCode() + " (" + entityId + ")");
+            }
+        }
+
+        // Replace-all: delete existing rows, insert new ones
+        userEntityRepository.deleteAllForUser(id);
+        for (UUID entityId : entityIds) {
+            userEntityRepository.insertUserEntity(id, entityId);
+        }
+
+        // Return the new state
+        List<CompanyEntity> current = userEntityRepository.findEntitiesByUserId(id);
+        List<Map<String, Object>> data = current.stream()
+            .map(this::entityToDto)
+            .collect(Collectors.toList());
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "message", "User entities updated successfully",
+            "data",    data,
+            "count",   data.size()
+        ));
+    }
+
+    // ═══════════════════════════════════════════════════════════
     //  HELPERS
     // ═══════════════════════════════════════════════════════════
 
-    /** Convert User entity to safe DTO (never includes passwordHash). */
     private Map<String, Object> toDto(User u) {
         LinkedHashMap<String, Object> dto = new LinkedHashMap<>();
         dto.put("id",           u.getId());
@@ -221,6 +331,17 @@ public class UserController {
         dto.put("lastLogin",    u.getLastLogin());
         dto.put("createdAt",    u.getCreatedAt());
         dto.put("updatedAt",    u.getUpdatedAt());
+        return dto;
+    }
+
+    private Map<String, Object> entityToDto(CompanyEntity e) {
+        LinkedHashMap<String, Object> dto = new LinkedHashMap<>();
+        dto.put("id",       e.getId());
+        dto.put("code",     e.getCode());
+        dto.put("name",     e.getName());
+        dto.put("currency", e.getCurrency());
+        dto.put("country",  e.getCountry());
+        dto.put("isActive", e.getIsActive());
         return dto;
     }
 
