@@ -142,3 +142,34 @@ app_logs/
 app_logs.zip
 migration/*.xlsx
 *.zip
+
+# =======================================================
+# Next2Cash specific ignores (added 17 Apr 2026)
+# =======================================================
+
+# Backup files created during development (local only, never commit)
+*.backup
+*.backup_*
+*.backup[0-9]_*
+
+# Database backups (contain sensitive production data)
+backups/
+*.dump
+*_backup_*.sql
+
+# Temporary SQL scripts (one-off fixes, not reusable)
+insert_missing_*.sql
+
+# IDE / OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Java / Maven
+target/
+*.class
+
+# Logs
+*.log
