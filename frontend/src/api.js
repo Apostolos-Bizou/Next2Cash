@@ -1,8 +1,12 @@
-﻿import axios from 'axios'
+import axios from 'axios'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'https://next2cash-api.azurewebsites.net',
   timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json'
+  }
 })
 
 // Attach JWT token to every request
