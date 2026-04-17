@@ -10,7 +10,7 @@ const ENTITIES = {
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const entityId = computed(() => ENTITIES[selectedEntity.value])
 
-// β”€β”€ Config from backend β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Config from backend ──────────────────────────────────────────────
 const categories     = ref([])
 const allSubcats     = ref([])
 const accounts       = ref([])
@@ -26,7 +26,7 @@ async function loadConfig() {
       accounts.value       = res.data.accounts       || []
       paymentMethods.value = res.data.paymentMethods || []
     }
-    // Load bank accounts for ΞΞ­ΞΈΞΏΞ΄ΞΏΟ‚ Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ®Ο‚ dropdown
+    // Load bank accounts for Μέθοδος Πληρωμής dropdown
     const bankRes = await api.get('/api/bank-accounts', { params: { entityId: entityId.value } })
     if (bankRes.data.success) {
       bankAccounts.value = bankRes.data.accounts || []
@@ -34,7 +34,7 @@ async function loadConfig() {
   } catch (e) { console.error('Config error:', e) }
 }
 
-// β”€β”€ Form state β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Form state ──────────────────────────────────────────────────────
 const type        = ref('expense')
 const docDate     = ref(new Date().toISOString().split('T')[0])
 const payDate     = ref('')
@@ -51,7 +51,7 @@ const successMsg  = ref('')
 const errorMsg    = ref('')
 const nextId      = ref('...')
 
-// β”€β”€ Autocomplete β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Autocomplete ────────────────────────────────────────────────────
 const suggestions     = ref([])
 const showSuggestions = ref(false)
 let autocompleteTimer = null
@@ -79,12 +79,12 @@ function applySuggestion(t) {
   if (t.category)      category.value    = t.category
   if (t.paymentMethod) method.value      = t.paymentMethod
   if (t.type)          type.value        = t.type
-  // subcategory ΞΞ•Ξ¤Ξ‘ Ο„ΞΏ category (nextTick) Ξ³ΞΉΞ± Ξ½Ξ± ΞΌΞ·Ξ½ Ο„ΞΏ ΞΊΞ±ΞΈΞ±ΟΞ―ΟƒΞµΞΉ Ο„ΞΏ watch
+  // subcategory ΜΕΤΑ το category (nextTick) για να μην το καθαρίσει το watch
   if (t.account) nextTick(() => { subcategory.value = t.account })
   showSuggestions.value = false
 }
 
-// β”€β”€ Subcategories filtered by category β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Subcategories filtered by category ──────────────────────────────
 const subcategories = computed(() => {
   if (!category.value) return []
   return allSubcats.value.filter(s => s.parentKey === category.value)
@@ -92,7 +92,7 @@ const subcategories = computed(() => {
 
 watch(category, () => { subcategory.value = '' })
 
-// β”€β”€ Next transaction ID β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Next transaction ID ─────────────────────────────────────────────
 async function loadNextId() {
   try {
     const res = await api.get('/api/transactions/next-number', {
@@ -105,14 +105,14 @@ async function loadNextId() {
   } catch (e) { console.error('loadNextId error:', e) }
 }
 
-// β”€β”€ Frequent entries β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
-const frequentEntries = ['Ξ•NOIKIO', 'MICROSOFT AZURE', 'Ξ Ξ‘Ξ Ξ‘ΞΞ™', 'ΞΞ™ΞΞ—Ξ¤Ξ', 'ΞΞ‘Ξ›Ξ‘ΞΞ™Ξ¤Ξ£Ξ—Ξ£', 'Ξ¤Ξ‘Ξ›Ξ™Ξ‘Ξ”Ξ©Ξ΅ΞΞ£']
+// ── Frequent entries ────────────────────────────────────────────────
+const frequentEntries = ['ΕNOIKIO', 'MICROSOFT AZURE', 'ΠΑΠΑΚΙ', 'ΚΙΝΗΤΟ', 'ΜΑΛΑΜΙΤΣΗΣ', 'ΤΑΛΙΑΔΩΡΟΣ']
 
 function applyFrequent(f) {
   description.value = nextId.value + ' - ' + f
 }
 
-// β”€β”€ File upload (placeholder β€” Google Drive β†’ Azure Blob later) β”€β”€β”€β”€β”€
+// ── File upload (placeholder — Google Drive → Azure Blob later) ─────
 const uploadedFile = ref(null)
 const driveFileName = ref("")
 function onFileChange(e) {
@@ -125,11 +125,11 @@ function onFileChange(e) {
   driveFileName.value = (description.value.trim() || String(nextId.value) + ' - ') + ext
 }
 
-// β”€β”€ Save β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Save ────────────────────────────────────────────────────────────
 async function save() {
   errorMsg.value = ''; successMsg.value = ''
-  if (!category.value)  { errorMsg.value = 'Ξ•Ο€ΞΉΞ»Ξ­ΞΎΟ„Ξµ ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±'; return }
-  if (!amount.value || Number(amount.value) <= 0) { errorMsg.value = 'Ξ£Ο…ΞΌΟ€Ξ»Ξ·ΟΟΟƒΟ„Ξµ Ξ ΞΏΟƒΟ'; return }
+  if (!category.value)  { errorMsg.value = 'Επιλέξτε Κατηγορία'; return }
+  if (!amount.value || Number(amount.value) <= 0) { errorMsg.value = 'Συμπληρώστε Ποσό'; return }
 
   saving.value = true
   try {
@@ -166,21 +166,21 @@ async function save() {
           formData.append('transactionId', newId)
           formData.append('fileName', fileName)
           await api.post('/api/documents/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
-          successMsg.value = 'β… ΞΞ±Ο„Ξ±Ο‡Ο‰ΟΞ®ΞΈΞ·ΞΊΞµ + Ξ±ΟΟ‡ΞµΞ―ΞΏ! ID: #' + newId
+          successMsg.value = '✅ Καταχωρήθηκε + αρχείο! ID: #' + newId
         } catch (fe) {
           console.warn('File upload failed:', fe)
-          successMsg.value = 'β… ΞΞ±Ο„Ξ±Ο‡Ο‰ΟΞ®ΞΈΞ·ΞΊΞµ! ID: #' + newId + ' (Ξ±ΟΟ‡ΞµΞ―ΞΏ Ξ±Ο€Ξ­Ο„Ο…Ο‡Ξµ)'
+          successMsg.value = '✅ Καταχωρήθηκε! ID: #' + newId + ' (αρχείο απέτυχε)'
         }
       } else {
-        successMsg.value = 'β… ΞΞ±Ο„Ξ±Ο‡Ο‰ΟΞ®ΞΈΞ·ΞΊΞµ ΞµΟ€ΞΉΟ„Ο…Ο‡ΟΟ‚! ID: #' + newId
+        successMsg.value = '✅ Καταχωρήθηκε επιτυχώς! ID: #' + newId
       }
       reset()
       await loadNextId()
     } else {
-      errorMsg.value = 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± Ξ±Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·Ο‚'
+      errorMsg.value = 'Σφάλμα αποθήκευσης'
     }
   } catch (e) {
-    errorMsg.value = 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± ΟƒΟΞ½Ξ΄ΞµΟƒΞ·Ο‚: ' + (e.message || '')
+    errorMsg.value = 'Σφάλμα σύνδεσης: ' + (e.message || '')
     console.error(e)
   } finally {
     saving.value = false
@@ -198,10 +198,10 @@ function reset() {
 }
 
 const docStatuses = [
-  { value: 'bank',    label: 'Ξ¤ΟΞ¬Ο€ΞµΞ¶Ξ±' },
-  { value: 'receipt', label: 'Ξ‘Ο€ΟΞ΄ΞµΞΉΞΎΞ·' },
-  { value: 'cash',    label: 'ΞΞµΟ„ΟΞ·Ο„Ξ¬' },
-  { value: '',        label: 'Ξ§Ο‰ΟΞ―Ο‚' }
+  { value: 'bank',    label: 'Τράπεζα' },
+  { value: 'receipt', label: 'Απόδειξη' },
+  { value: 'cash',    label: 'Μετρητά' },
+  { value: '',        label: 'Χωρίς' }
 ]
 
 onMounted(async () => {
@@ -216,16 +216,16 @@ onMounted(async () => {
 
       <!-- Header -->
       <div class="entry-header">
-        <div class="entry-title"><i class="fas fa-plus-circle"></i> ΞΞ­Ξ± ΞΞ±Ο„Ξ±Ο‡ΟΟΞΉΟƒΞ·</div>
+        <div class="entry-title"><i class="fas fa-plus-circle"></i> Νέα Καταχώριση</div>
         <div class="entry-meta">
           <div class="meta-badge">
-            <div class="meta-label">Ξ‘Ξ΅. ΞΞ‘Ξ¤Ξ‘Ξ§Ξ©Ξ΅Ξ™Ξ£Ξ—Ξ£</div>
+            <div class="meta-label">ΑΡ. ΚΑΤΑΧΩΡΙΣΗΣ</div>
             <div class="meta-value">#{{ nextId }}</div>
           </div>
           <div class="meta-badge">
-            <div class="meta-label">Ξ ΞΞ£Ξ</div>
+            <div class="meta-label">ΠΟΣΟ</div>
             <div class="meta-value" :style="{color: type==='income'?'var(--success)':'var(--danger)'}">
-              {{ amount ? Number(amount).toLocaleString('el-GR', {minimumFractionDigits:2}) + ' β‚¬' : '0,00 β‚¬' }}
+              {{ amount ? Number(amount).toLocaleString('el-GR', {minimumFractionDigits:2}) + ' €' : '0,00 €' }}
             </div>
           </div>
         </div>
@@ -238,39 +238,39 @@ onMounted(async () => {
       <!-- Type Toggle -->
       <div class="type-toggle">
         <button :class="['type-btn', 'expense', {active: type==='expense'}]" @click="type='expense'">
-          <i class="fas fa-arrow-up"></i> Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ®
+          <i class="fas fa-arrow-up"></i> Πληρωμή
         </button>
         <button :class="['type-btn', 'income', {active: type==='income'}]" @click="type='income'">
-          <i class="fas fa-arrow-down"></i> Ξ•Ξ―ΟƒΟ€ΟΞ±ΞΎΞ·
+          <i class="fas fa-arrow-down"></i> Είσπραξη
         </button>
       </div>
 
       <!-- Dates -->
       <div class="form-row">
         <div class="form-group">
-          <label>Ξ—ΞΌ/Ξ½Ξ―Ξ± Ξ Ξ±ΟΞ±ΟƒΟ„Ξ±Ο„ΞΉΞΊΞΏΟ <span class="req">*</span></label>
+          <label>Ημ/νία Παραστατικού <span class="req">*</span></label>
           <input v-model="docDate" type="date" class="form-input" />
         </div>
         <div class="form-group">
-          <label>Ξ—ΞΌ/Ξ½Ξ―Ξ± Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ®Ο‚</label>
+          <label>Ημ/νία Πληρωμής</label>
           <input v-model="payDate" type="date" class="form-input" />
-          <span class="hint">ΞΞµΞ½Ξ® = Ξ―Ξ΄ΞΉΞ± ΞΌΞµ Ο€Ξ±ΟΞ±ΟƒΟ„Ξ±Ο„ΞΉΞΊΞΏΟ</span>
+          <span class="hint">Κενή = ίδια με παραστατικού</span>
         </div>
       </div>
 
       <!-- Category -->
       <div class="form-row">
         <div class="form-group">
-          <label>ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ± <span class="req">*</span></label>
+          <label>Κατηγορία <span class="req">*</span></label>
           <select v-model="category" class="form-input">
-            <option value="">β€” Ξ•Ο€ΞΉΞ»Ξ­ΞΎΟ„Ξµ β€”</option>
+            <option value="">— Επιλέξτε —</option>
             <option v-for="c in categories" :key="c.key" :value="c.key">{{ c.value || c.key }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Ξ¥Ο€ΞΏΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ± <span class="req">*</span></label>
+          <label>Υποκατηγορία <span class="req">*</span></label>
           <select v-model="subcategory" class="form-input" :disabled="!category">
-            <option value="">β€” Ξ•Ο€ΞΉΞ»Ξ­ΞΎΟ„Ξµ ΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ± Ο€ΟΟΟ„Ξ± β€”</option>
+            <option value="">— Επιλέξτε κατηγορία πρώτα —</option>
             <option v-for="s in subcategories" :key="s.key" :value="s.key">{{ s.value || s.key }}</option>
           </select>
         </div>
@@ -279,13 +279,13 @@ onMounted(async () => {
       <!-- Amount & Method -->
       <div class="form-row">
         <div class="form-group">
-          <label>Ξ ΞΏΟƒΟ (β‚¬) <span class="req">*</span></label>
+          <label>Ποσό (€) <span class="req">*</span></label>
           <input v-model="amount" type="number" step="0.01" min="0" placeholder="0.00" class="form-input" />
         </div>
         <div class="form-group">
-          <label>ΞΞ­ΞΈΞΏΞ΄ΞΏΟ‚ Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ®Ο‚</label>
+          <label>Μέθοδος Πληρωμής</label>
           <select v-model="method" class="form-input">
-            <option value="">β€” Ξ•Ο€ΞΉΞ»Ξ­ΞΎΟ„Ξµ β€”</option>
+            <option value="">— Επιλέξτε —</option>
             <option v-for="b in bankAccounts" :key="b.id" :value="b.accountLabel">{{ b.accountLabel }}</option>
           </select>
         </div>
@@ -295,18 +295,18 @@ onMounted(async () => {
       <div class="pending-row">
         <label class="checkbox-label">
           <input type="checkbox" v-model="isPending" />
-          <span>Ξ•ΞΊΞΊΟΞµΞΌΞµΞ― Ο€Ξ»Ξ·ΟΟ‰ΞΌΞ®</span>
-          <span class="hint-small">(ΞΈΞ± ΞµΞΌΟ†Ξ±Ξ½ΞΉΟƒΟ„ΞµΞ― ΟƒΟ„ΞΉΟ‚ Ξ¥Ο€ΞΏΟ‡ΟΞµΟΟƒΞµΞΉΟ‚)</span>
+          <span>Εκκρεμεί πληρωμή</span>
+          <span class="hint-small">(θα εμφανιστεί στις Υποχρεώσεις)</span>
         </label>
         <div class="status-btns" v-if="isPending">
-          <button :class="['status-btn', {active: !isUrgent}]" @click="isUrgent=false">Ξ‘Ξ Ξ›Ξ—Ξ΅Ξ©Ξ¤Ξ—</button>
-          <button :class="['status-btn', 'orange', {active: isUrgent}]" @click="isUrgent=true">βµ Ξ•ΞΊΞΊΟΞµΞΌΞ®Ο‚</button>
+          <button :class="['status-btn', {active: !isUrgent}]" @click="isUrgent=false">ΑΠΛΗΡΩΤΗ</button>
+          <button :class="['status-btn', 'orange', {active: isUrgent}]" @click="isUrgent=true">⏵ Εκκρεμής</button>
         </div>
       </div>
 
       <!-- Description with autocomplete -->
       <div class="form-group" style="position:relative">
-        <label>Ξ ΞµΟΞΉΞ³ΟΞ±Ο†Ξ® <span class="frequent-label">β… Ξ£Ο…Ο‡Ξ½Ξ­Ο‚</span></label>
+        <label>Περιγραφή <span class="frequent-label">★ Συχνές</span></label>
         <textarea v-model="description" class="form-input textarea"
           placeholder=""
           @input="onDescriptionInput"
@@ -316,7 +316,7 @@ onMounted(async () => {
         <div v-if="showSuggestions" class="autocomplete-drop">
           <div v-for="s in suggestions" :key="s.id" class="autocomplete-item" @mousedown="applySuggestion(s)">
             <span class="ac-desc">{{ s.description }}</span>
-            <span class="ac-meta">{{ s.category }} Β· {{ s.account }}</span>
+            <span class="ac-meta">{{ s.category }} · {{ s.account }}</span>
           </div>
         </div>
       </div>
@@ -328,12 +328,12 @@ onMounted(async () => {
 
       <!-- File upload -->
       <div class="form-group">
-        <label>Ξ£Ο…Ξ½Ξ·ΞΌΞΌΞ­Ξ½Ξ±</label>
+        <label>Συνημμένα</label>
         <label class="upload-area" :class="{uploaded: uploadedFile}" v-if="!uploadedFile">
           <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="onFileChange" style="display:none" />
           <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
-          <div class="upload-text">Ξ Ξ±Ο„Ξ®ΟƒΟ„Ξµ Ξ³ΞΉΞ± upload Ξ±Ο€ΞΏΞ΄ΞµΞΉΞΊΟ„ΞΉΞΊΞΏΟ</div>
-          <div class="upload-hint">PDF, JPG, PNG β€” Ξ±Ο…Ο„ΟΞΌΞ±Ο„Ξ· Ξ±Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ· ΟƒΟ„ΞΏ Drive</div>
+          <div class="upload-text">Πατήστε για upload αποδεικτικού</div>
+          <div class="upload-hint">PDF, JPG, PNG — αυτόματη αποθήκευση στο Drive</div>
         </label>
         <div v-if="uploadedFile" class="file-preview">
           <div class="file-preview-row">
@@ -359,9 +359,9 @@ onMounted(async () => {
 
       <!-- Actions -->
       <div class="action-btns">
-        <button class="btn-reset" @click="reset"><i class="fas fa-undo"></i> ΞΞ±ΞΈΞ±ΟΞΉΟƒΞΌΟΟ‚</button>
+        <button class="btn-reset" @click="reset"><i class="fas fa-undo"></i> Καθαρισμός</button>
         <button class="btn-save" @click="save" :disabled="saving">
-          <i class="fas fa-save"></i> {{ saving ? 'Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·...' : 'Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·' }}
+          <i class="fas fa-save"></i> {{ saving ? 'Αποθήκευση...' : 'Αποθήκευση' }}
         </button>
       </div>
 
