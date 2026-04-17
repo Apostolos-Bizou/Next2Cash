@@ -11,9 +11,11 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = 'Bearer ' + token
   }
-  // Force charset=utf-8 for Greek characters (fixes Tomcat 403 issue)
-  config.headers['Content-Type'] = 'application/json; charset=utf-8'
-  config.headers['Accept'] = 'application/json'
+  // Force charset=utf-8 ONLY for JSON requests (not multipart/form-data uploads)
+  if (!(config.data instanceof FormData)) {
+    config.headers['Content-Type'] = 'application/json; charset=utf-8'
+    config.headers['Accept'] = 'application/json'
+  }
   return config
 })
 
