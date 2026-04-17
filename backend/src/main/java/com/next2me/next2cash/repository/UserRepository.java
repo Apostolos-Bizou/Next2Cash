@@ -15,6 +15,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByUsername(String username);
 
-    // List all users, ordered by username (for Admin Panel listing)
+    // For PUT: check if another user (not this one) has the same username
+    boolean existsByUsernameAndIdNot(String username, UUID id);
+
+    // List all users for Admin Panel (ordered by username)
     List<User> findAllByOrderByUsernameAsc();
 }

@@ -40,12 +40,20 @@ public class SecurityConfig {
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // CORS preflight — always public
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                // Public endpoints
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/health").permitAll()
+                // DELETE on admin users — ADMIN only
+                .requestMatchers(HttpMethod.DELETE, "/api/admin/users/**").hasRole("ADMIN")
+                // Other admin endpoints — ADMIN and USER
                 .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "USER")
+                // ZIP export — ADMIN and ACCOUNTANT
                 .requestMatchers("/api/documents/export").hasAnyRole("ADMIN", "ACCOUNTANT")
+                // Self-service password change — any authenticated user
                 .requestMatchers("/api/auth/change-password").authenticated()
+                // Everything else — require authentication
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
