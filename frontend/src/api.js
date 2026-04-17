@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'https://next2cash-api.azurewebsites.net',
-  timeout: 10000,
+  timeout: 60000,
 })
 
 // Attach JWT token + force UTF-8 charset on every request
