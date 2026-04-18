@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import api from '@/api'
 import CardFormModal from '@/components/CardFormModal.vue'
+import ExportFilenameModal from '@/components/ExportFilenameModal.vue'
 
 // ──────────────────────────────────────────────────────────────
 // Phase H v2 — Karteles (user-defined cards with rule engine)
@@ -155,6 +156,91 @@ async function onCardSaved(savedCard) {
   await loadCards()
   if (keepId && cards.value.some(c => c.id === keepId)) {
     await selectCard(keepId)
+  }
+}
+
+// ─── Export state + handlers ─────────────────────────────
+const exportDialog   = ref(false)
+const exportFormat   = ref('excel')  // 'excel' | 'pdf'
+const exportBusy     = ref(false)
+const exportErrorMsg = ref('')
+
+function openExcelModal() {
+  if (!selectedCard.value) return
+  exportFormat.value = 'excel'
+  exportErrorMsg.value = ''
+  exportDialog.value = true
+}
+
+function openPdfModal() {
+  if (!selectedCard.value) return
+  exportFormat.value = 'pdf'
+  exportErrorMsg.value = ''
+  exportDialog.value = true
+}
+
+function closeExportDialog() {
+  if (exportBusy.value) return
+  exportDialog.value = false
+  exportErrorMsg.value = ''
+}
+
+/**
+ * Download handler. Called by ExportFilenameModal's @confirm event.
+ * Overrides Accept header because api.js hardcodes application/json,
+ * which would make the Spring controller return 406 for xlsx/pdf.
+ */
+async function runExport(userFilename) {
+  if (!selectedCard.value || exportBusy.value) return
+  exportBusy.value = true
+  exportErrorMsg.value = ''
+
+  const isPdf = exportFormat.value === 'pdf'
+  const url = `/api/config/cards/${selectedCard.value.id}/export/${isPdf ? 'pdf' : 'excel'}`
+  const ext = isPdf ? '.pdf' : '.xlsx'
+  const acceptHeader = isPdf
+    ? 'application/pdf'
+    : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+  try {
+    const res = await api.get(url, {
+      params: { entityId: currentEntityId.value, filename: userFilename },
+      responseType: 'blob',
+      headers: { Accept: acceptHeader }
+    })
+
+    let downloadName = userFilename + ext
+    const cd = res.headers['content-disposition'] || res.headers['Content-Disposition'] || ''
+    const match = cd.match(/filename\s*=\s*"?([^";]+)"?/i)
+    if (match && match[1]) downloadName = match[1].trim()
+
+    const blobUrl = window.URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = downloadName
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(blobUrl)
+
+    exportDialog.value = false
+  } catch (e) {
+    console.error('export error:', e)
+    let msg = 'Αποτυχία εξαγωγής'
+    if (e?.response?.data instanceof Blob) {
+      try {
+        const text = await e.response.data.text()
+        const json = JSON.parse(text)
+        msg = json.error || json.message || msg
+      } catch { /* default */ }
+    } else if (e?.response?.data?.error) {
+      msg = e.response.data.error
+    } else if (e?.message) {
+      msg = e.message
+    }
+    exportErrorMsg.value = msg
+  } finally {
+    exportBusy.value = false
   }
 }
 
@@ -350,7 +436,21 @@ const ruleLabel = computed(() => {
             <span class="rule-badge" :title="selectedCard.parentKey">{{ ruleLabel }}</span>
           </div>
           <div class="kartela-actions">
-            <button class="btn-icon" @click="openEditModal" title="Επεξεργασία">✏️ Edit</button>
+            <button
+            class="btn-icon btn-export-excel"
+            @click="openExcelModal"
+            :disabled="!selectedCard"
+            title="Εξαγωγή σε Excel">
+            📊 Excel
+          </button>
+          <button
+            class="btn-icon btn-export-pdf"
+            @click="openPdfModal"
+            :disabled="!selectedCard"
+            title="Εξαγωγή σε PDF">
+            📄 PDF
+          </button>
+          <button class="btn-icon" @click="openEditModal" title="Επεξεργασία">✏️ Edit</button>
             <button class="btn-icon btn-danger" @click="confirmDelete" title="Διαγραφή">🗑 Delete</button>
           </div>
         </div>
@@ -475,7 +575,18 @@ const ruleLabel = computed(() => {
       @saved="onCardSaved"
     />
 
-    <!-- Delete confirmation dialog -->
+    <!-- Export filename dialog -->
+      <ExportFilenameModal
+        :show="exportDialog"
+        :format="exportFormat"
+        :card-name="selectedCard?.configValue || ''"
+        :busy="exportBusy"
+        @confirm="runExport"
+        @cancel="closeExportDialog"
+      />
+      <p v-if="exportErrorMsg" class="export-error-toast">⚠ {{ exportErrorMsg }}</p>
+
+      <!-- Delete confirmation dialog -->
     <div v-if="deleteDialog" class="modal-backdrop" @click.self="closeDeleteDialog">
       <div class="delete-dialog">
         <div class="delete-header">
