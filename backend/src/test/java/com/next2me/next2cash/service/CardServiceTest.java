@@ -87,6 +87,29 @@ class CardServiceTest extends BaseIntegrationTest {
         return transactionRepository.save(t);
     }
 
+    /**
+     * Overload used by summary tests — lets us set type, amountPaid, remaining, paymentStatus.
+     */
+    private Transaction saveTxnFull(UUID entityId, String type, String desc,
+                                     String cat, String cparty,
+                                     String amount, String paid, String remaining,
+                                     String paymentStatus) {
+        Transaction t = new Transaction();
+        setField(t, "id",              new java.util.Random().nextInt(Integer.MAX_VALUE));
+        setField(t, "entityId",        entityId);
+        setField(t, "type",            type);
+        setField(t, "docDate",         LocalDate.of(2026, 1, 1));
+        setField(t, "description",     desc);
+        setField(t, "category",        cat);
+        setField(t, "counterparty",    cparty);
+        setField(t, "amount",          new BigDecimal(amount));
+        setField(t, "amountPaid",      new BigDecimal(paid));
+        setField(t, "amountRemaining", new BigDecimal(remaining));
+        setField(t, "paymentStatus",   paymentStatus);
+        setField(t, "recordStatus",    "active");
+        return transactionRepository.save(t);
+    }
+
     private Config saveCard(UUID entityId, String key, String displayName, String rule) {
         Config c = new Config();
         c.setEntityId(entityId);
@@ -210,5 +233,105 @@ class CardServiceTest extends BaseIntegrationTest {
             () -> cardService.createCard(entity.getId(), payload));
 
         assertEquals(400, ex.getStatusCode().value());
+    }
+
+    // ─────────────────────────────────────────────
+    // 8. Summary — expenses only (no income, no urgent)
+    // ─────────────────────────────────────────────
+    @Test
+    void summary_expensesOnly() {
+        CompanyEntity e = tdb.createEntity("SUM1", "Summary Expenses Only");
+
+        saveTxnFull(e.getId(), "expense", "Rent Jan", "RENT", null, "1000.00", "1000.00",   "0.00", "paid");
+        saveTxnFull(e.getId(), "expense", "Rent Feb", "RENT", null, "1000.00",  "500.00", "500.00", "partial");
+        saveTxnFull(e.getId(), "expense", "Rent Mar", "RENT", null, "1000.00",    "0.00","1000.00", "unpaid");
+
+        Config card = saveCard(e.getId(), "rent_sum", "Rent", "category:RENT");
+
+        CardService.CardSummary s = cardService.getCardSummary(card.getId(), e.getId());
+
+        assertEquals(new BigDecimal("3000.00"), s.total());
+        assertEquals(new BigDecimal("1500.00"), s.paid());
+        assertEquals(new BigDecimal("1500.00"), s.unpaid());
+        assertEquals(0, s.income().compareTo(BigDecimal.ZERO));
+        assertEquals(0, s.urgent().compareTo(BigDecimal.ZERO));
+        assertEquals(3, s.countTotal());
+        assertEquals(2, s.countPaid());    // 2 txns with paid > 0
+        assertEquals(2, s.countUnpaid());  // 2 txns with remaining > 0
+        assertEquals(0, s.countIncome());
+        assertEquals(0, s.countUrgent());
+    }
+
+    // ─────────────────────────────────────────────
+    // 9. Summary — mixed expenses + income + urgent
+    // ─────────────────────────────────────────────
+    @Test
+    void summary_mixedWithIncomeAndUrgent() {
+        CompanyEntity e = tdb.createEntity("SUM2", "Summary Mixed");
+
+        // 2 expenses (one urgent), 1 income
+        saveTxnFull(e.getId(), "expense", "DEH bill",   null, "DEH", "200.00", "0.00",   "200.00", "urgent");
+        saveTxnFull(e.getId(), "expense", "DEH bill 2", null, "DEH", "100.00", "100.00",   "0.00", "paid");
+        saveTxnFull(e.getId(), "income",  "DEH refund", null, "DEH", "50.00",  "50.00",    "0.00", "received");
+
+        Config card = saveCard(e.getId(), "deh_sum", "DEH", "counterparty:DEH");
+
+        CardService.CardSummary s = cardService.getCardSummary(card.getId(), e.getId());
+
+        assertEquals(new BigDecimal("300.00"), s.total());
+        assertEquals(new BigDecimal("100.00"), s.paid());
+        assertEquals(new BigDecimal("200.00"), s.unpaid());
+        assertEquals(new BigDecimal("50.00"),  s.income());
+        assertEquals(new BigDecimal("200.00"), s.urgent());
+        assertEquals(2, s.countTotal());
+        assertEquals(1, s.countPaid());
+        assertEquals(1, s.countUnpaid());
+        assertEquals(1, s.countIncome());
+        assertEquals(1, s.countUrgent());
+    }
+
+    // ─────────────────────────────────────────────
+    // 10. Summary — empty card (no matches, all zeros)
+    // ─────────────────────────────────────────────
+    @Test
+    void summary_emptyCard() {
+        CompanyEntity e = tdb.createEntity("SUM3", "Summary Empty");
+        Config card = saveCard(e.getId(), "nobody", "Nobody", "counterparty:DOES_NOT_EXIST");
+
+        CardService.CardSummary s = cardService.getCardSummary(card.getId(), e.getId());
+
+        // compareTo == 0 means numeric equality regardless of scale (0 vs 0.00)
+        assertEquals(0, s.total().compareTo(BigDecimal.ZERO));
+        assertEquals(0, s.paid().compareTo(BigDecimal.ZERO));
+        assertEquals(0, s.unpaid().compareTo(BigDecimal.ZERO));
+        assertEquals(0, s.income().compareTo(BigDecimal.ZERO));
+        assertEquals(0, s.urgent().compareTo(BigDecimal.ZERO));
+        assertEquals(0, s.countTotal());
+        assertEquals(0, s.countPaid());
+        assertEquals(0, s.countUnpaid());
+        assertEquals(0, s.countIncome());
+        assertEquals(0, s.countUrgent());
+    }
+
+    // ─────────────────────────────────────────────
+    // 11. Summary — urgent is subset of unpaid, NOT separate bucket
+    // ─────────────────────────────────────────────
+    @Test
+    void summary_urgentIsSubsetOfUnpaid() {
+        CompanyEntity e = tdb.createEntity("SUM4", "Summary Urgent Subset");
+
+        // Both have remaining > 0, only one is urgent
+        saveTxnFull(e.getId(), "expense", "Bill A", "UTIL", null, "500.00", "0.00", "500.00", "unpaid");
+        saveTxnFull(e.getId(), "expense", "Bill B", "UTIL", null, "300.00", "0.00", "300.00", "urgent");
+
+        Config card = saveCard(e.getId(), "util_sum", "Utils", "category:UTIL");
+
+        CardService.CardSummary s = cardService.getCardSummary(card.getId(), e.getId());
+
+        // Unpaid counts BOTH (800), urgent is the subset (300)
+        assertEquals(new BigDecimal("800.00"), s.unpaid());
+        assertEquals(new BigDecimal("300.00"), s.urgent());
+        assertEquals(2, s.countUnpaid());
+        assertEquals(1, s.countUrgent());
     }
 }

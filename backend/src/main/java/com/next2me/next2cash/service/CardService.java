@@ -215,7 +215,97 @@ public class CardService {
         catch (NumberFormatException e) { return defaultValue; }
     }
 
+    // ─── Summary (KPIs) ───
+
+    /**
+     * Computes KPI aggregates for a card:
+     *   - total        : SUM(amount) where type='expense'
+     *   - paid         : SUM(amountPaid) where type='expense'
+     *   - unpaid       : SUM(amountRemaining) where type='expense'
+     *   - income       : SUM(amount) where type='income'
+     *   - urgent       : SUM(amountRemaining) where type='expense' AND paymentStatus='urgent'
+     *
+     * Plus a count for each bucket. Reuses the same rule-matching pipeline
+     * as getTransactionsForCard for consistency (no parity risk).
+     *
+     * @param cardId   card UUID
+     * @param entityId entity scope
+     * @return summary with 5 money aggregates + 5 counts
+     */
+    public CardSummary getCardSummary(UUID cardId, UUID entityId) {
+        Config card = getCard(cardId, entityId);
+
+        String[] parts = card.getParentKey().split(":", 2);
+        if (parts.length != 2) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                "Card has malformed rule: " + card.getParentKey());
+        }
+        String filterType = parts[0];
+        List<String> values = Arrays.stream(parts[1].split(","))
+            .map(s -> s.trim().toUpperCase())
+            .filter(s -> !s.isEmpty())
+            .toList();
+
+        List<Transaction> all = transactionRepository
+            .findByEntityIdAndRecordStatusOrderByDocDateDesc(entityId, RECORD_STATUS_ACTIVE);
+
+        // Init with scale=2 so empty cards still return "0.00" not "0"
+        java.math.BigDecimal totalExpense  = new java.math.BigDecimal("0.00");
+        java.math.BigDecimal totalPaid     = new java.math.BigDecimal("0.00");
+        java.math.BigDecimal totalUnpaid   = new java.math.BigDecimal("0.00");
+        java.math.BigDecimal totalIncome   = new java.math.BigDecimal("0.00");
+        java.math.BigDecimal totalUrgent   = new java.math.BigDecimal("0.00");
+        int countExpense = 0, countPaid = 0, countUnpaid = 0, countIncome = 0, countUrgent = 0;
+
+        for (Transaction t : all) {
+            if (!matches(t, filterType, values)) continue;
+
+            java.math.BigDecimal amount    = t.getAmount()          != null ? t.getAmount()          : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal paid      = t.getAmountPaid()      != null ? t.getAmountPaid()      : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal remaining = t.getAmountRemaining() != null ? t.getAmountRemaining() : java.math.BigDecimal.ZERO;
+
+            if ("expense".equals(t.getType())) {
+                totalExpense = totalExpense.add(amount);
+                countExpense++;
+
+                totalPaid = totalPaid.add(paid);
+                if (paid.signum() > 0) countPaid++;
+
+                totalUnpaid = totalUnpaid.add(remaining);
+                if (remaining.signum() > 0) countUnpaid++;
+
+                if ("urgent".equals(t.getPaymentStatus())) {
+                    totalUrgent = totalUrgent.add(remaining);
+                    countUrgent++;
+                }
+            } else if ("income".equals(t.getType())) {
+                totalIncome = totalIncome.add(amount);
+                countIncome++;
+            }
+        }
+
+        return new CardSummary(
+            card,
+            totalExpense, totalPaid, totalUnpaid, totalIncome, totalUrgent,
+            countExpense, countPaid, countUnpaid, countIncome, countUrgent
+        );
+    }
+
     // ─── DTO ───
+
+    public record CardSummary(
+        Config card,
+        java.math.BigDecimal total,
+        java.math.BigDecimal paid,
+        java.math.BigDecimal unpaid,
+        java.math.BigDecimal income,
+        java.math.BigDecimal urgent,
+        int countTotal,
+        int countPaid,
+        int countUnpaid,
+        int countIncome,
+        int countUrgent
+    ) {}
 
     public record CardTransactions(
         Config card,

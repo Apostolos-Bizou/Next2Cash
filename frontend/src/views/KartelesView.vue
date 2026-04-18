@@ -1,80 +1,111 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import api from '@/api'
+import CardFormModal from '@/components/CardFormModal.vue'
 
-// ─────────────────────────────────────────────────────────
-// Entity selection (consistent with other views)
-// ─────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+// Phase H v2 — Karteles (user-defined cards with rule engine)
+//
+// Data flow:
+//   1. On mount: GET /api/config/cards?entityId → sidebar list
+//   2. On select: GET /api/config/cards/{id}/summary     (KPI block)
+//                 GET /api/config/cards/{id}/transactions (table)
+//
+// CRUD:
+//   - Create/Edit: CardFormModal (Phase 3)
+//   - Delete: confirmation (Phase 4)
+// ──────────────────────────────────────────────────────────────
+
+// ─── Entity selection (match other views' convention) ─────────
 const ENTITIES = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
   house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
   polaris: '50317f44-9961-4fb4-add0-7a118e32dc14'
 }
 const entityKey = ref(localStorage.getItem('n2c_entity') || 'next2me')
+const currentEntityId = computed(() => ENTITIES[entityKey.value])
 
-// ─────────────────────────────────────────────────────────
-// State
-// ─────────────────────────────────────────────────────────
-const loadingList = ref(false)
-const loadingTxns = ref(false)
-const errorMsg = ref('')
-const karteles = ref([])            // [{counterparty, count, incomeCount, expenseCount, total, paid, remaining}]
-const selectedCounterparty = ref(null)
-const transactions = ref([])
+// ─── State ────────────────────────────────────────────────────
+const loadingList    = ref(false)
+const loadingSummary = ref(false)
+const loadingTxns    = ref(false)
+const errorMsg       = ref('')
 
-// Filters (client-side on the selected kartela)
-const search = ref('')
-const dateFrom = ref('')
-const dateTo = ref('')
-const statusFilter = ref('all')     // all | paid | unpaid | urgent | partial
-const typeFilter = ref('all')       // all | income | expense
+const cards          = ref([])        // [{ id, configKey, configValue, parentKey, icon, sortOrder }]
+const selectedCardId = ref(null)
+const selectedCard   = ref(null)      // full object after GET
+const summary        = ref(null)      // { total, paid, unpaid, income, urgent, counts... }
+const transactions   = ref([])        // from /cards/{id}/transactions
 
-// ─────────────────────────────────────────────────────────
-// API calls
-// ─────────────────────────────────────────────────────────
-async function loadKarteles() {
+// ─── Filters (client-side on the current page of transactions) ─
+const search       = ref('')
+const dateFrom     = ref('')
+const dateTo       = ref('')
+const statusFilter = ref('all') // all | paid | unpaid | urgent | partial | received
+const typeFilter   = ref('all') // all | income | expense
+
+// ─── API ──────────────────────────────────────────────────────
+async function loadCards() {
   loadingList.value = true
   errorMsg.value = ''
   try {
-    const entityId = ENTITIES[entityKey.value]
-    const res = await api.get('/api/transactions/counterparties', { params: { entityId } })
-    if (res.data && res.data.success) {
-      karteles.value = res.data.data || []
-      // Auto-select first kartela if nothing selected or previous not in list
-      if (karteles.value.length > 0) {
-        const stillThere = selectedCounterparty.value &&
-          karteles.value.some(k => k.counterparty === selectedCounterparty.value)
-        if (!stillThere) {
-          selectedCounterparty.value = karteles.value[0].counterparty
-          await loadTransactions()
-        }
-      } else {
-        selectedCounterparty.value = null
+    const res = await api.get('/api/config/cards', {
+      params: { entityId: currentEntityId.value }
+    })
+    if (res.data?.success) {
+      cards.value = res.data.data || []
+
+      if (cards.value.length === 0) {
+        selectedCardId.value = null
+        selectedCard.value = null
+        summary.value = null
         transactions.value = []
+      } else {
+        // Keep selection if still present, else pick first
+        const stillThere = selectedCardId.value &&
+          cards.value.some(c => c.id === selectedCardId.value)
+        if (!stillThere) {
+          await selectCard(cards.value[0].id)
+        }
       }
     } else {
-      errorMsg.value = 'Αποτυχία φόρτωσης καρτελών'
+      errorMsg.value = 'Αποτυχία φόρτωσης καρτέλων'
     }
   } catch (e) {
-    console.error('loadKarteles error:', e)
+    console.error('loadCards error:', e)
     errorMsg.value = e?.response?.data?.error || 'Σφάλμα σύνδεσης με τον server'
   } finally {
     loadingList.value = false
   }
 }
 
-async function loadTransactions() {
-  if (!selectedCounterparty.value) {
-    transactions.value = []
-    return
+async function loadSummary(cardId) {
+  loadingSummary.value = true
+  try {
+    const res = await api.get(`/api/config/cards/${cardId}/summary`, {
+      params: { entityId: currentEntityId.value }
+    })
+    if (res.data?.success) {
+      summary.value = res.data.data
+    } else {
+      summary.value = null
+    }
+  } catch (e) {
+    console.error('loadSummary error:', e)
+    summary.value = null
+  } finally {
+    loadingSummary.value = false
   }
+}
+
+async function loadTransactions(cardId) {
   loadingTxns.value = true
   try {
-    const entityId = ENTITIES[entityKey.value]
-    const res = await api.get('/api/transactions/by-counterparty', {
-      params: { entityId, counterparty: selectedCounterparty.value }
+    const res = await api.get(`/api/config/cards/${cardId}/transactions`, {
+      params: { entityId: currentEntityId.value, limit: 2000, offset: 0 }
     })
-    if (res.data && res.data.success) {
+    if (res.data?.success) {
+      selectedCard.value = res.data.card || null
       transactions.value = res.data.data || []
     } else {
       transactions.value = []
@@ -87,200 +118,302 @@ async function loadTransactions() {
   }
 }
 
-function selectKartela(cp) {
-  selectedCounterparty.value = cp
-  // Reset filters when switching
+async function selectCard(cardId) {
+  selectedCardId.value = cardId
+  // Reset local filters on selection change
   search.value = ''
   dateFrom.value = ''
   dateTo.value = ''
   statusFilter.value = 'all'
   typeFilter.value = 'all'
-  loadTransactions()
+  // Fire in parallel
+  await Promise.all([loadSummary(cardId), loadTransactions(cardId)])
 }
 
+// ─── Modal state ──────────────────────────────────────────────
+const modalVisible = ref(false)
+const modalMode    = ref('create') // 'create' | 'edit'
+const modalCard    = ref(null)
+
+function openCreateModal() {
+  modalMode.value = 'create'
+  modalCard.value = null
+  modalVisible.value = true
+}
+
+function openEditModal() {
+  if (!selectedCard.value) return
+  modalMode.value = 'edit'
+  modalCard.value = { ...selectedCard.value }
+  modalVisible.value = true
+}
+
+async function onCardSaved(savedCard) {
+  modalVisible.value = false
+  // Reload sidebar list; if edit, keep selection (select by returned id)
+  const keepId = modalMode.value === 'edit' ? selectedCardId.value : (savedCard?.id || null)
+  await loadCards()
+  if (keepId && cards.value.some(c => c.id === keepId)) {
+    await selectCard(keepId)
+  }
+}
+
+// ─── Delete state + handlers ──────────────────────────────────
+const deleteDialog   = ref(false)
+const deleteTarget   = ref(null)  // card object being deleted
+const deleting       = ref(false)
+const deleteErrorMsg = ref('')
+
+function confirmDelete() {
+  if (!selectedCard.value) return
+  deleteTarget.value = selectedCard.value
+  deleteErrorMsg.value = ''
+  deleteDialog.value = true
+}
+
+function closeDeleteDialog() {
+  if (deleting.value) return
+  deleteDialog.value = false
+  deleteTarget.value = null
+  deleteErrorMsg.value = ''
+}
+
+async function executeDelete() {
+  if (!deleteTarget.value || deleting.value) return
+  deleting.value = true
+  deleteErrorMsg.value = ''
+  try {
+    const res = await api.delete(
+      `/api/config/cards/${deleteTarget.value.id}`,
+      { params: { entityId: currentEntityId.value } }
+    )
+    if (res.data?.success) {
+      // Clear current selection and reload list
+      selectedCardId.value = null
+      selectedCard.value = null
+      summary.value = null
+      transactions.value = []
+      deleteDialog.value = false
+      deleteTarget.value = null
+      await loadCards()
+    } else {
+      deleteErrorMsg.value = res.data?.error || 'Αποτυχία διαγραφής'
+    }
+  } catch (e) {
+    console.error('delete error:', e)
+    const serverMsg = e?.response?.data?.error || e?.response?.data?.message
+    if (e?.response?.status === 404) {
+      deleteErrorMsg.value = 'Η καρτέλα δεν βρέθηκε — πιθανόν να διαγράφηκε από αλλού. Η λίστα θα ανανεωθεί.'
+      // Background refresh + close dialog after 2s
+      setTimeout(async () => {
+        deleteDialog.value = false
+        deleteTarget.value = null
+        selectedCardId.value = null
+        selectedCard.value = null
+        await loadCards()
+      }, 2000)
+    } else {
+      deleteErrorMsg.value = serverMsg || 'Σφάλμα σύνδεσης με τον server'
+    }
+  } finally {
+    deleting.value = false
+  }
+}
+
+// ─── Entity switcher integration ──────────────────────────────
 function onEntityChanged() {
   entityKey.value = localStorage.getItem('n2c_entity') || 'next2me'
-  selectedCounterparty.value = null
+  selectedCardId.value = null
+  selectedCard.value = null
+  summary.value = null
   transactions.value = []
-  loadKarteles()
+  loadCards()
 }
 
 onMounted(() => {
-  loadKarteles()
+  loadCards()
   window.addEventListener('entity-changed', onEntityChanged)
 })
 onUnmounted(() => {
   window.removeEventListener('entity-changed', onEntityChanged)
 })
 
-// ─────────────────────────────────────────────────────────
-// Derived / Filtered data
-// ─────────────────────────────────────────────────────────
-const currentKartela = computed(() => {
-  if (!selectedCounterparty.value) return null
-  return karteles.value.find(k => k.counterparty === selectedCounterparty.value) || null
-})
-
+// ─── Derived / filtered data ──────────────────────────────────
 const filteredTransactions = computed(() => {
-  const s = (search.value || '').trim().toLowerCase()
+  const q = (search.value || '').trim().toLowerCase()
   return transactions.value.filter(t => {
-    if (t.recordStatus === 'void') return false
     if (typeFilter.value !== 'all' && t.type !== typeFilter.value) return false
     if (statusFilter.value !== 'all' && t.paymentStatus !== statusFilter.value) return false
     if (dateFrom.value && t.docDate < dateFrom.value) return false
-    if (dateTo.value && t.docDate > dateTo.value) return false
-    if (s) {
+    if (dateTo.value   && t.docDate > dateTo.value)   return false
+    if (q) {
       const hay = [
-        String(t.entityNumber || t.id || ''),
-        t.description || '',
-        t.category || '',
-        t.subcategory || '',
-        t.paymentMethod || ''
+        String(t.entityNumber ?? t.id ?? ''),
+        t.description   ?? '',
+        t.category      ?? '',
+        t.subcategory   ?? '',
+        t.paymentMethod ?? '',
+        t.counterparty  ?? ''
       ].join(' ').toLowerCase()
-      if (!hay.includes(s)) return false
+      if (!hay.includes(q)) return false
     }
     return true
   })
 })
 
-// KPI cards based on FILTERED transactions
-const kpis = computed(() => {
-  const txns = filteredTransactions.value
-  let total = 0, paid = 0, unpaid = 0, income = 0, urgent = 0
-  let cTotal = 0, cPaid = 0, cUnpaid = 0, cIncome = 0, cUrgent = 0
-  for (const t of txns) {
-    const amt = Number(t.amount || 0)
-    const rem = Number(t.amountRemaining || 0)
-    const paidAmt = Number(t.amountPaid || 0)
-    total += amt; cTotal++
-    if (t.type === 'income') { income += amt; cIncome++ }
-    if (t.paymentStatus === 'paid' || t.paymentStatus === 'received') { paid += paidAmt; cPaid++ }
-    if (t.paymentStatus === 'unpaid' || t.paymentStatus === 'partial') { unpaid += rem; cUnpaid++ }
-    if (t.paymentStatus === 'urgent') { urgent += rem; cUrgent++ }
-  }
-  return { total, paid, unpaid, income, urgent, cTotal, cPaid, cUnpaid, cIncome, cUrgent }
-})
-
-// ─────────────────────────────────────────────────────────
-// Formatting helpers
-// ─────────────────────────────────────────────────────────
+// ─── Formatting helpers ───────────────────────────────────────
 const fmtMoney = (n) => {
   const v = Number(n || 0)
-  return new Intl.NumberFormat('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) + ' €'
+  return new Intl.NumberFormat('el-GR', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  }).format(v) + ' €'
 }
 const fmtDate = (iso) => {
   if (!iso) return '—'
-  const parts = iso.split('-')
+  const parts = String(iso).split('-')
   if (parts.length !== 3) return iso
-  return parts[2] + '/' + parts[1] + '/' + parts[0]
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
 }
 const statusLabel = (s) => ({
-  paid: 'Εξοφλημένη',
+  paid:     'Εξοφλημένη',
   received: 'Εισπράχθηκε',
-  unpaid: 'Απλήρωτη',
-  urgent: 'Επείγον',
-  partial: 'Μερική'
+  unpaid:   'Απλήρωτη',
+  urgent:   'Επείγον',
+  partial:  'Μερική'
 }[s] || s || '—')
 const statusClass = (s) => ({
-  paid: 'badge-green',
+  paid:     'badge-green',
   received: 'badge-green',
-  unpaid: 'badge-red',
-  urgent: 'badge-orange',
-  partial: 'badge-orange'
+  unpaid:   'badge-red',
+  urgent:   'badge-orange',
+  partial:  'badge-orange'
 }[s] || 'badge-gray')
+
+// Pretty rule summary in the header
+const ruleLabel = computed(() => {
+  const pk = selectedCard.value?.parentKey
+  if (!pk) return ''
+  const idx = pk.indexOf(':')
+  if (idx < 0) return pk
+  const type = pk.substring(0, idx)
+  const value = pk.substring(idx + 1)
+  const typeText = {
+    search: 'Αναζήτηση',
+    category: 'Κατηγορία',
+    subcategory: 'Υποκατηγορία',
+    counterparty: 'Αντισυμβαλλόμενος'
+  }[type] || type
+  return `${typeText}: ${value}`
+})
 </script>
 
 <template>
   <div class="karteles-page">
     <div class="karteles-layout">
 
-      <!-- ─── Sidebar ─── -->
+      <!-- ═══════════════════════ Sidebar ═══════════════════════ -->
       <aside class="karteles-sidebar">
         <div class="sidebar-header">
-          <span>📋 Καρτέλες ({{ karteles.length }})</span>
+          <span>📋 Καρτέλες <span class="sidebar-count">({{ cards.length }})</span></span>
+          <button class="btn-plus" @click="openCreateModal" title="Νέα καρτέλα">+</button>
         </div>
 
         <div v-if="loadingList" class="side-msg">Φόρτωση...</div>
         <div v-else-if="errorMsg" class="side-msg error">{{ errorMsg }}</div>
-        <div v-else-if="karteles.length === 0" class="side-msg">Δεν υπάρχουν καρτέλες.</div>
+        <div v-else-if="cards.length === 0" class="side-empty">
+          <div class="side-empty-text">Δεν υπάρχουν καρτέλες ακόμα.</div>
+          <button class="btn-primary btn-small" @click="openCreateModal">
+            + Δημιούργησε την πρώτη
+          </button>
+        </div>
 
         <div
-          v-for="k in karteles"
-          :key="k.counterparty"
+          v-for="c in cards"
+          :key="c.id"
           class="kartela-item"
-          :class="{ active: selectedCounterparty === k.counterparty }"
-          @click="selectKartela(k.counterparty)"
+          :class="{ active: selectedCardId === c.id }"
+          @click="selectCard(c.id)"
         >
-          <span class="kartela-name" :title="k.counterparty">{{ k.counterparty }}</span>
-          <span class="kartela-count">{{ k.count }}</span>
+          <span class="kartela-icon">{{ c.icon || '📂' }}</span>
+          <span class="kartela-name" :title="c.configValue">{{ c.configValue }}</span>
         </div>
       </aside>
 
-      <!-- ─── Main ─── -->
+      <!-- ═══════════════════════ Main ═══════════════════════ -->
       <section class="karteles-main">
 
-        <div class="kartela-header">
-          <h2>
-            📋 {{ selectedCounterparty || 'Επίλεξε καρτέλα' }}
-            <span v-if="currentKartela" class="meta-badge">
-              {{ currentKartela.count }} κινήσεις
-            </span>
-          </h2>
+        <!-- Header -->
+        <div v-if="selectedCard" class="kartela-header">
+          <div class="kartela-title">
+            <span class="kartela-title-icon">{{ selectedCard.icon || '📂' }}</span>
+            <h2>{{ selectedCard.configValue }}</h2>
+            <span class="rule-badge" :title="selectedCard.parentKey">{{ ruleLabel }}</span>
+          </div>
+          <div class="kartela-actions">
+            <button class="btn-icon" @click="openEditModal" title="Επεξεργασία">✏️ Edit</button>
+            <button class="btn-icon btn-danger" @click="confirmDelete" title="Διαγραφή">🗑 Delete</button>
+          </div>
         </div>
 
         <!-- Filters -->
-        <div class="filters-bar" v-if="selectedCounterparty">
-          <input v-model="search" class="filter-input flex-1" placeholder="Αναζήτηση περιγραφή, κατηγορία..." />
-          <input v-model="dateFrom" type="date" class="filter-input" />
-          <input v-model="dateTo" type="date" class="filter-input" />
+        <div class="filters-bar" v-if="selectedCard">
+          <input v-model="search" class="filter-input flex-1"
+                 placeholder="Αναζήτηση περιγραφής, κατηγορίας, αντισυμβαλλόμενου..." />
+          <input v-model="dateFrom" type="date" class="filter-input" title="Από" />
+          <input v-model="dateTo"   type="date" class="filter-input" title="Έως" />
           <select v-model="typeFilter" class="filter-select">
-            <option value="all">Όλοι τύποι</option>
+            <option value="all">Όλοι οι τύποι</option>
             <option value="income">Έσοδα</option>
             <option value="expense">Έξοδα</option>
           </select>
           <select v-model="statusFilter" class="filter-select">
-            <option value="all">Όλες</option>
+            <option value="all">Όλες οι καταστάσεις</option>
             <option value="paid">Εξοφλημένες</option>
             <option value="unpaid">Απλήρωτες</option>
             <option value="urgent">Επείγουσες</option>
             <option value="partial">Μερικές</option>
+            <option value="received">Εισπραχθέντα</option>
           </select>
         </div>
 
-        <!-- KPI cards (real numbers from filtered transactions) -->
-        <div v-if="selectedCounterparty" class="kpi-row">
-          <div class="kpi-card">
-            <div class="kpi-label">Σύνολο</div>
-            <div class="kpi-amount">{{ fmtMoney(kpis.total) }}</div>
-            <div class="kpi-count">{{ kpis.cTotal }} κινήσεις</div>
-          </div>
-          <div class="kpi-card green">
-            <div class="kpi-label">Εξοφλημένες</div>
-            <div class="kpi-amount">{{ fmtMoney(kpis.paid) }}</div>
-            <div class="kpi-count">{{ kpis.cPaid }} κινήσεις</div>
-          </div>
-          <div class="kpi-card red">
-            <div class="kpi-label">Απλήρωτες</div>
-            <div class="kpi-amount">{{ fmtMoney(kpis.unpaid) }}</div>
-            <div class="kpi-count">{{ kpis.cUnpaid }} κινήσεις</div>
-          </div>
-          <div class="kpi-card teal">
-            <div class="kpi-label">Εισπράξεις</div>
-            <div class="kpi-amount">{{ fmtMoney(kpis.income) }}</div>
-            <div class="kpi-count">{{ kpis.cIncome }} κινήσεις</div>
-          </div>
-          <div class="kpi-card orange">
-            <div class="kpi-label">Επείγουσες</div>
-            <div class="kpi-amount">{{ fmtMoney(kpis.urgent) }}</div>
-            <div class="kpi-count">{{ kpis.cUrgent }} κινήσεις</div>
-          </div>
+        <!-- KPI cards (server-side from /summary) -->
+        <div v-if="selectedCard" class="kpi-row">
+          <div v-if="loadingSummary" class="kpi-loading">Υπολογισμός KPIs...</div>
+          <template v-else-if="summary">
+            <div class="kpi-card kpi-neutral">
+              <div class="kpi-label">Σύνολο</div>
+              <div class="kpi-amount">{{ fmtMoney(summary.total) }}</div>
+              <div class="kpi-count">{{ summary.countTotal }} κινήσεις</div>
+            </div>
+            <div class="kpi-card kpi-green">
+              <div class="kpi-label">Εξοφλημένες</div>
+              <div class="kpi-amount">{{ fmtMoney(summary.paid) }}</div>
+              <div class="kpi-count">{{ summary.countPaid }} κινήσεις</div>
+            </div>
+            <div class="kpi-card kpi-red">
+              <div class="kpi-label">Απλήρωτες</div>
+              <div class="kpi-amount">{{ fmtMoney(summary.unpaid) }}</div>
+              <div class="kpi-count">{{ summary.countUnpaid }} κινήσεις</div>
+            </div>
+            <div class="kpi-card kpi-blue">
+              <div class="kpi-label">Εισπράξεις</div>
+              <div class="kpi-amount">{{ fmtMoney(summary.income) }}</div>
+              <div class="kpi-count">{{ summary.countIncome }} κινήσεις</div>
+            </div>
+            <div class="kpi-card kpi-orange">
+              <div class="kpi-label">⚡ Εκκρεμείς</div>
+              <div class="kpi-amount">{{ fmtMoney(summary.urgent) }}</div>
+              <div class="kpi-count">{{ summary.countUrgent }} κινήσεις</div>
+            </div>
+          </template>
         </div>
 
-        <!-- Table -->
-        <div v-if="selectedCounterparty" class="table-wrap">
+        <!-- Transactions table -->
+        <div v-if="selectedCard" class="table-wrap">
           <div v-if="loadingTxns" class="empty-state">Φόρτωση κινήσεων...</div>
           <div v-else-if="filteredTransactions.length === 0" class="empty-state">
-            Καμία κίνηση για αυτά τα φίλτρα.
+            <span v-if="transactions.length === 0">Δεν υπάρχουν κινήσεις για αυτή την καρτέλα.</span>
+            <span v-else>Καμία κίνηση δεν ταιριάζει στα φίλτρα.</span>
           </div>
           <table v-else class="data-table">
             <thead>
@@ -293,7 +426,6 @@ const statusClass = (s) => ({
                 <th class="num">ΠΟΣΟ</th>
                 <th class="num">ΠΛΗΡΩΜΕΝΟ</th>
                 <th class="num">ΥΠΟΛΟΙΠΟ</th>
-                <th>ΗΜ/ΝΙΑ ΠΛΗΡ.</th>
                 <th>STATUS</th>
               </tr>
             </thead>
@@ -305,11 +437,10 @@ const statusClass = (s) => ({
                 <td><span class="cat-badge">{{ t.category || '—' }}</span></td>
                 <td>{{ t.paymentMethod || '—' }}</td>
                 <td class="num">{{ fmtMoney(t.amount) }}</td>
-                <td class="num green">{{ fmtMoney(t.amountPaid) }}</td>
-                <td class="num" :class="Number(t.amountRemaining) > 0 ? 'red' : ''">
+                <td class="num money-green">{{ fmtMoney(t.amountPaid) }}</td>
+                <td class="num" :class="Number(t.amountRemaining) > 0 ? 'money-red' : ''">
                   {{ fmtMoney(t.amountRemaining) }}
                 </td>
-                <td class="meta">{{ fmtDate(t.paymentDate) }}</td>
                 <td>
                   <span class="badge" :class="statusClass(t.paymentStatus)">
                     {{ statusLabel(t.paymentStatus) }}
@@ -320,75 +451,463 @@ const statusClass = (s) => ({
           </table>
         </div>
 
-        <!-- No selection -->
-        <div v-if="!selectedCounterparty && !loadingList" class="empty-state">
+        <!-- No selection / empty repo -->
+        <div v-if="!selectedCard && !loadingList && cards.length > 0" class="empty-state">
           Επίλεξε μια καρτέλα από τη λίστα αριστερά.
         </div>
-      </section>
+        <div v-if="!selectedCard && !loadingList && cards.length === 0" class="empty-state-big">
+          <div class="empty-big-icon">📋</div>
+          <div class="empty-big-title">Δεν υπάρχουν καρτέλες ακόμα</div>
+          <div class="empty-big-sub">Δημιούργησε την πρώτη σου καρτέλα για να ομαδοποιήσεις κινήσεις.</div>
+          <button class="btn-primary" @click="openCreateModal">+ Νέα καρτέλα</button>
+        </div>
 
+      </section>
+    </div>
+
+    <!-- Create/Edit modal -->
+    <CardFormModal
+      :visible="modalVisible"
+      :mode="modalMode"
+      :card="modalCard"
+      :entity-id="currentEntityId"
+      @close="modalVisible = false"
+      @saved="onCardSaved"
+    />
+
+    <!-- Delete confirmation dialog -->
+    <div v-if="deleteDialog" class="modal-backdrop" @click.self="closeDeleteDialog">
+      <div class="delete-dialog">
+        <div class="delete-header">
+          <span class="delete-icon">⚠️</span>
+          <h3>Διαγραφή καρτέλας</h3>
+        </div>
+        <div class="delete-body">
+          <p>Σίγουρα θέλεις να διαγράψεις την καρτέλα:</p>
+          <p class="delete-target">
+            <span class="delete-target-icon">{{ deleteTarget?.icon || '📂' }}</span>
+            <strong>{{ deleteTarget?.configValue }}</strong>
+          </p>
+          <p class="delete-warning">
+            Οι κινήσεις παραμένουν στη βάση — διαγράφεται μόνο η ομαδοποίηση.
+            Η καρτέλα θα εξαφανιστεί από τη λίστα.
+          </p>
+          <div v-if="deleteErrorMsg" class="form-error">⚠ {{ deleteErrorMsg }}</div>
+        </div>
+        <div class="delete-footer">
+          <button class="btn-secondary" @click="closeDeleteDialog" :disabled="deleting">
+            Ακύρωση
+          </button>
+          <button class="btn-danger-solid" @click="executeDelete" :disabled="deleting">
+            <span v-if="deleting">Διαγραφή...</span>
+            <span v-else>Διαγραφή</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.karteles-page { padding: 24px; color: #e0e6ed; height: calc(100vh - 60px); }
-.karteles-layout { display: grid; grid-template-columns: 260px 1fr; gap: 20px; height: 100%; }
+/* ═══════════════════════ Layout ═══════════════════════ */
+.karteles-page {
+  padding: 24px;
+  color: #e0e6ed;
+  height: calc(100vh - 60px);
+}
+.karteles-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  height: 100%;
+}
 
-/* Sidebar */
-.karteles-sidebar { background: #1e3448; border-radius: 10px; padding: 12px; overflow-y: auto; }
-.sidebar-header { padding: 8px 4px 12px; font-size: 0.85rem; font-weight: 600; color: #4FC3A1; border-bottom: 1px solid #2a4a6a; margin-bottom: 8px; }
-.side-msg { padding: 10px 8px; font-size: 0.8rem; color: #8899aa; }
+/* ═══════════════════════ Sidebar ═══════════════════════ */
+.karteles-sidebar {
+  background: #1e3448;
+  border-radius: 10px;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 4px 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #4FC3A1;
+  border-bottom: 1px solid #2a4a6a;
+  margin-bottom: 8px;
+}
+.sidebar-count { color: #8899aa; font-weight: 400; font-size: 0.8rem; }
+.btn-plus {
+  background: #4FC3A1;
+  color: #0f1e2e;
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.btn-plus:hover { background: #3da98a; }
+
+.side-msg {
+  padding: 10px 8px;
+  font-size: 0.82rem;
+  color: #8899aa;
+}
 .side-msg.error { color: #ef5350; }
-.kartela-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; }
+
+.side-empty {
+  padding: 20px 8px;
+  text-align: center;
+}
+.side-empty-text {
+  font-size: 0.82rem;
+  color: #8899aa;
+  margin-bottom: 12px;
+}
+
+.kartela-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.12s;
+}
 .kartela-item:hover { background: #2a4a6a; }
-.kartela-item.active { background: rgba(79,195,161,0.15); color: #4FC3A1; }
-.kartela-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kartela-count { background: #2a4a6a; padding: 1px 6px; border-radius: 10px; font-size: 0.7rem; color: #8899aa; }
-.kartela-item.active .kartela-count { background: #4FC3A1; color: #0f1e2e; }
+.kartela-item.active {
+  background: rgba(79, 195, 161, 0.16);
+  color: #4FC3A1;
+}
+.kartela-icon { font-size: 0.95rem; flex-shrink: 0; }
+.kartela-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-/* Main */
+/* ═══════════════════════ Main panel ═══════════════════════ */
 .karteles-main { overflow-y: auto; }
-.kartela-header { margin-bottom: 16px; }
-.kartela-header h2 { margin: 0; font-size: 1.1rem; color: #29b6f6; display: flex; align-items: center; gap: 10px; }
-.meta-badge { background: #1e3448; padding: 2px 10px; border-radius: 10px; font-size: 0.72rem; color: #8899aa; font-weight: 400; }
 
-/* Filters */
-.filters-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-.filter-input, .filter-select { background: #1e3448; border: 1px solid #2a4a6a; color: #e0e6ed; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; }
-.flex-1 { flex: 1; min-width: 200px; }
+.kartela-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.kartela-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.kartela-title-icon { font-size: 1.3rem; }
+.kartela-title h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #29b6f6;
+  font-weight: 600;
+}
+.rule-badge {
+  background: #1e3448;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  color: #8899aa;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.kartela-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.btn-icon {
+  background: #1e3448;
+  border: 1px solid #2a4a6a;
+  color: #e0e6ed;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-icon:hover { background: #2a4a6a; }
+.btn-icon.btn-danger:hover { background: #e24b4a; color: #fff; border-color: #e24b4a; }
 
-/* KPIs */
-.kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
-.kpi-card { background: #1e3448; border-radius: 8px; padding: 12px 14px; border-top: 3px solid #556677; }
-.kpi-card.green { border-top-color: #4FC3A1; }
-.kpi-card.red { border-top-color: #ef5350; }
-.kpi-card.teal { border-top-color: #29b6f6; }
-.kpi-card.orange { border-top-color: #ff9800; }
-.kpi-label { font-size: 0.68rem; color: #8899aa; margin-bottom: 4px; text-transform: uppercase; }
-.kpi-amount { font-size: 1rem; font-weight: 700; color: #fff; }
-.kpi-card.green .kpi-amount { color: #4FC3A1; }
-.kpi-card.red .kpi-amount { color: #ef5350; }
-.kpi-card.teal .kpi-amount { color: #29b6f6; }
-.kpi-card.orange .kpi-amount { color: #ff9800; }
-.kpi-count { font-size: 0.7rem; color: #8899aa; margin-top: 2px; }
+/* ═══════════════════════ Filters ═══════════════════════ */
+.filters-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.filter-input, .filter-select {
+  background: #1e3448;
+  border: 1px solid #2a4a6a;
+  color: #e0e6ed;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.flex-1 { flex: 1; min-width: 220px; }
 
-/* Table */
-.table-wrap { overflow-x: auto; background: #1a2f45; border-radius: 8px; }
-.data-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
-.data-table th { background: #1a2f45; color: #8899aa; padding: 10px 12px; text-align: left; font-size: 0.72rem; border-bottom: 1px solid #2a4a6a; }
-.data-table td { padding: 8px 12px; border-bottom: 1px solid #1e3448; }
+/* ═══════════════════════ KPI cards ═══════════════════════ */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.kpi-loading {
+  grid-column: 1 / -1;
+  padding: 20px;
+  text-align: center;
+  color: #8899aa;
+  background: #1e3448;
+  border-radius: 8px;
+}
+.kpi-card {
+  background: #1e3448;
+  border-radius: 8px;
+  padding: 12px 14px;
+  border-top: 3px solid #556677;
+}
+.kpi-card.kpi-neutral { border-top-color: #8899aa; }
+.kpi-card.kpi-green   { border-top-color: #1d9e75; }
+.kpi-card.kpi-red     { border-top-color: #e24b4a; }
+.kpi-card.kpi-blue    { border-top-color: #2E75B6; }
+.kpi-card.kpi-orange  { border-top-color: #ef9f27; }
+
+.kpi-label {
+  font-size: 0.68rem;
+  color: #8899aa;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.kpi-amount {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #fff;
+}
+.kpi-card.kpi-green  .kpi-amount { color: #1d9e75; }
+.kpi-card.kpi-red    .kpi-amount { color: #e24b4a; }
+.kpi-card.kpi-blue   .kpi-amount { color: #2E75B6; }
+.kpi-card.kpi-orange .kpi-amount { color: #ef9f27; }
+
+.kpi-count {
+  font-size: 0.7rem;
+  color: #8899aa;
+  margin-top: 2px;
+}
+
+/* ═══════════════════════ Table ═══════════════════════ */
+.table-wrap {
+  overflow-x: auto;
+  background: #1a2f45;
+  border-radius: 8px;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+.data-table th {
+  background: #1a2f45;
+  color: #8899aa;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 0.7rem;
+  border-bottom: 1px solid #2a4a6a;
+  letter-spacing: 0.3px;
+}
+.data-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1e3448;
+}
 .data-table tr:hover { background: #1e3448; }
 .id-col { color: #8899aa; font-size: 0.8rem; }
-.desc-col { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cat-badge { background: #2a4a6a; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; }
+.desc-col {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cat-badge {
+  background: #2a4a6a;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+}
 .num { text-align: right; font-family: monospace; }
-.green { color: #4FC3A1; }
-.red { color: #ef5350; }
-.meta { color: #8899aa; font-size: 0.8rem; }
-.badge { padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
-.badge-green { background: rgba(79,195,161,0.15); color: #4FC3A1; }
-.badge-red { background: rgba(239,83,80,0.15); color: #ef5350; }
-.badge-orange { background: rgba(255,152,0,0.15); color: #ff9800; }
-.badge-gray { background: rgba(136,153,170,0.15); color: #8899aa; }
-.empty-state { padding: 40px 20px; text-align: center; color: #8899aa; font-size: 0.9rem; background: #1a2f45; border-radius: 8px; }
+.money-green { color: #1d9e75; }
+.money-red   { color: #e24b4a; }
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.badge-green  { background: rgba(29, 158, 117, 0.15);  color: #1d9e75; }
+.badge-red    { background: rgba(226, 75, 74, 0.15);   color: #e24b4a; }
+.badge-orange { background: rgba(239, 159, 39, 0.15);  color: #ef9f27; }
+.badge-gray   { background: rgba(136, 153, 170, 0.15); color: #8899aa; }
+
+/* ═══════════════════════ Empty states ═══════════════════════ */
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: #8899aa;
+  font-size: 0.9rem;
+  background: #1a2f45;
+  border-radius: 8px;
+}
+.empty-state-big {
+  padding: 60px 20px;
+  text-align: center;
+  background: #1a2f45;
+  border-radius: 8px;
+}
+.empty-big-icon { font-size: 3rem; margin-bottom: 10px; }
+.empty-big-title {
+  font-size: 1.1rem;
+  color: #e0e6ed;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.empty-big-sub {
+  font-size: 0.88rem;
+  color: #8899aa;
+  margin-bottom: 18px;
+}
+
+.btn-primary {
+  background: #4FC3A1;
+  color: #0f1e2e;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { background: #3da98a; }
+.btn-small {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+/* ═══════════════════════ Delete dialog ═══════════════════════ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.delete-dialog {
+  background: #1a2f45;
+  border-radius: 10px;
+  width: 100%;
+  max-width: 440px;
+  color: #e0e6ed;
+  border: 1px solid #2a4a6a;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.delete-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #2a4a6a;
+}
+.delete-icon { font-size: 1.2rem; }
+.delete-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #e24b4a;
+  font-weight: 600;
+}
+.delete-body {
+  padding: 18px 20px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.delete-body p { margin: 0 0 10px 0; }
+.delete-target {
+  background: #0f1e2e;
+  padding: 10px 14px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 14px 0 !important;
+  border-left: 3px solid #e24b4a;
+}
+.delete-target-icon { font-size: 1.1rem; }
+.delete-target strong { color: #fff; font-weight: 600; }
+.delete-warning {
+  font-size: 0.8rem;
+  color: #8899aa;
+  font-style: italic;
+}
+.form-error {
+  background: rgba(226, 75, 74, 0.12);
+  color: #e24b4a;
+  border: 1px solid rgba(226, 75, 74, 0.3);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  margin-top: 8px;
+}
+.delete-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid #2a4a6a;
+}
+.btn-secondary {
+  background: transparent;
+  color: #8899aa;
+  border: 1px solid #2a4a6a;
+  padding: 9px 18px;
+  border-radius: 6px;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+.btn-secondary:hover:not(:disabled) { background: #1e3448; color: #e0e6ed; }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-danger-solid {
+  background: #e24b4a;
+  color: #fff;
+  border: none;
+  padding: 9px 20px;
+  border-radius: 6px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 120px;
+}
+.btn-danger-solid:hover:not(:disabled) { background: #c93d3c; }
+.btn-danger-solid:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

@@ -163,6 +163,42 @@ public class ConfigController {
     }
 
     /**
+     * GET /api/config/cards/{id}/summary?entityId=X
+     * Returns 5 KPI aggregates for the card (expense total, paid, unpaid,
+     * income, urgent). Read-only, accessible to VIEWER too.
+     */
+    @GetMapping("/cards/{id}/summary")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
+    public ResponseEntity<?> getCardSummary(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId) {
+
+        User currentUser = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(currentUser, entityId);
+
+        CardService.CardSummary s = cardService.getCardSummary(id, entityId);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("total",        s.total());
+        data.put("paid",         s.paid());
+        data.put("unpaid",       s.unpaid());
+        data.put("income",       s.income());
+        data.put("urgent",       s.urgent());
+        data.put("countTotal",   s.countTotal());
+        data.put("countPaid",    s.countPaid());
+        data.put("countUnpaid",  s.countUnpaid());
+        data.put("countIncome",  s.countIncome());
+        data.put("countUrgent",  s.countUrgent());
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "card",    toCardDto(s.card()),
+            "data",    data
+        ));
+    }
+
+    /**
      * POST /api/config/cards?entityId=X
      * Create a new card. VIEWER forbidden.
      */
