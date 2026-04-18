@@ -4,10 +4,13 @@ import com.next2me.next2cash.model.Config;
 import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.ConfigRepository;
+import com.next2me.next2cash.service.CardExportService;
 import com.next2me.next2cash.service.CardService;
 import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -34,6 +37,7 @@ public class ConfigController {
     private final ConfigRepository configRepository;
     private final UserAccessService userAccessService;
     private final CardService cardService;
+    private final CardExportService cardExportService;
 
     /**
      * GET /api/config?entityId=X
@@ -260,6 +264,107 @@ public class ConfigController {
             "success", true,
             "message", "Card deleted"
         ));
+    }
+
+    /**
+     * GET /api/config/cards/{id}/export/excel?entityId=X&filename=YYYY
+     *
+     * Downloads the card as an XLSX file with two sheets:
+     *   - "Σύνοψη" with 5 KPIs and title
+     *   - "Κινήσεις" with a 10-column transaction table, zebra-striped
+     *
+     * @param filename Optional custom filename (without extension).
+     *                 If omitted, defaults to Kartela_[SANITIZED]_DD-MM-YYYY.
+     *                 The frontend modal typically supplies this.
+     *                 Sanitization: Greek → ASCII transliteration, non-alphanumerics
+     *                 collapsed to underscores, uppercased.
+     *
+     * Accessible to ADMIN, USER, VIEWER (read-only op).
+     */
+    @GetMapping("/cards/{id}/export/excel")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
+    public ResponseEntity<byte[]> exportCardExcel(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId,
+            @RequestParam(required = false) String filename) {
+
+        User currentUser = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(currentUser, entityId);
+
+        byte[] bytes = cardExportService.generateExcel(id, entityId);
+
+        String safeName = resolveFilename(filename, "Kartela",
+            cardExportService.sanitizeForFilename(
+                cardService.getCard(id, entityId).getConfigValue()),
+            ".xlsx");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDispositionFormData("attachment", safeName);
+        headers.setContentLength(bytes.length);
+        headers.setCacheControl("no-cache, no-store, must-revalidate");
+
+        return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
+    }
+
+    /**
+     * GET /api/config/cards/{id}/export/pdf?entityId=X&filename=YYYY
+     *
+     * Downloads the card as an A4-landscape PDF with:
+     *   - Header band (CashControl / Next2Me brand + timestamp)
+     *   - Supplier block with card name
+     *   - 5-column KPI row (navy, green, red, navy, orange)
+     *   - Full transaction table, zebra-striped
+     *
+     * Uses embedded DejaVuSans font for full Greek/Unicode support.
+     *
+     * @param filename Optional custom filename (without extension). Same rules as Excel.
+     *
+     * Accessible to ADMIN, USER, VIEWER.
+     */
+    @GetMapping("/cards/{id}/export/pdf")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
+    public ResponseEntity<byte[]> exportCardPdf(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId,
+            @RequestParam(required = false) String filename) {
+
+        User currentUser = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(currentUser, entityId);
+
+        byte[] bytes = cardExportService.generatePdf(id, entityId);
+
+        String safeName = resolveFilename(filename, "Kartela",
+            cardExportService.sanitizeForFilename(
+                cardService.getCard(id, entityId).getConfigValue()),
+            ".pdf");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDispositionFormData("attachment", safeName);
+        headers.setContentLength(bytes.length);
+        headers.setCacheControl("no-cache, no-store, must-revalidate");
+
+        return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
+    }
+
+    /**
+     * Resolves the final filename for an export.
+     * If the user supplied a custom name via the modal, sanitize and use it.
+     * Otherwise fall back to the default pattern: [prefix]_[cardName]_DD-MM-YYYY.ext
+     */
+    private String resolveFilename(String userSupplied, String defaultPrefix,
+                                    String sanitizedCardName, String ext) {
+        if (userSupplied != null && !userSupplied.isBlank()) {
+            String clean = cardExportService.sanitizeForFilename(userSupplied);
+            return clean + ext;
+        }
+        String today = java.time.LocalDate.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+        return defaultPrefix + "_" + sanitizedCardName + "_" + today + ext;
     }
 
     // ─── helper ───
