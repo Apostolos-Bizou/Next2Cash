@@ -13,6 +13,15 @@ const loading = ref(false)
 const allObligations = ref([])
 const activeTab = ref('list')
 
+// Current user role
+const currentUser = computed(() => {
+  try { return JSON.parse(localStorage.getItem('n2c_user') || '{}') } catch { return {} }
+})
+const canModify = computed(() => {
+  const role = (currentUser.value.role || '').toLowerCase()
+  return role === 'admin' || role === 'user'
+})
+
 const search = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
@@ -38,6 +47,18 @@ const statusClass = (s) => ({
   unpaid: 'badge-red', urgent: 'badge-orange', partial: 'badge-orange', paid: 'badge-green'
 }[s] || '')
 
+// ───── Toast ─────
+const toast = ref({ show: false, type: 'success', message: '' })
+let toastTimer = null
+function showToast(type, message) {
+  toast.value = { show: true, type, message }
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value.show = false }, 3500)
+}
+
+// ───── Mark Paid confirm state ─────
+const payConfirm = ref({ show: false, item: null, saving: false })
+
 async function loadObligations() {
   loading.value = true
   try {
@@ -46,7 +67,6 @@ async function loadObligations() {
       params: { entityId, page: 0, perPage: 10000 }
     })
     if (res.data.success) {
-      // ONLY expenses for obligations
       allObligations.value = res.data.data
         .filter(t => t.recordStatus !== 'void' && t.type === 'expense')
         .map(t => {
@@ -66,20 +86,67 @@ async function loadObligations() {
             category: t.category || '',
             account: t.account || '',
             paymentMethod: t.paymentMethod || '',
-            amount, paid, remaining, status
+            amount, paid, remaining, status,
+            _raw: t
           }
         })
     }
   } catch (e) {
     console.error('loadObligations error:', e)
+    showToast('error', 'Σφάλμα φόρτωσης υποχρεώσεων')
   } finally {
     loading.value = false
   }
 }
 
+// ───── MARK PAID ─────
+function openMarkPaid(o) {
+  if (!canModify.value) return
+  if (o.status === 'paid') { showToast('error', 'Η υποχρέωση είναι ήδη πληρωμένη'); return }
+  payConfirm.value = { show: true, item: o, saving: false }
+}
+
+function closeMarkPaid() {
+  if (payConfirm.value.saving) return
+  payConfirm.value.show = false
+}
+
+async function confirmMarkPaid() {
+  const item = payConfirm.value.item
+  if (!item) return
+  payConfirm.value.saving = true
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const payload = {
+      docDate: item._raw.docDate,
+      description: item._raw.description,
+      amount: item._raw.amount,
+      type: item._raw.type,
+      category: item._raw.category,
+      account: item._raw.account,
+      paymentMethod: item._raw.paymentMethod,
+      paymentStatus: 'paid',
+      paymentDate: today,
+      amountPaid: item._raw.amount
+    }
+    const res = await api.put('/api/transactions/' + item.id, payload)
+    if (res.data && res.data.success !== false) {
+      showToast('success', 'Η υποχρέωση εξοφλήθηκε')
+      payConfirm.value.show = false
+      await loadObligations()
+    } else {
+      showToast('error', (res.data && res.data.error) || 'Αποτυχία εξόφλησης')
+    }
+  } catch (e) {
+    console.error('markPaid error:', e)
+    showToast('error', e.response?.data?.error || 'Σφάλμα εξόφλησης')
+  } finally {
+    payConfirm.value.saving = false
+  }
+}
+
 const filteredObligations = computed(() => {
   return allObligations.value.filter(o => {
-    // Status filter
     if (selectedStatus.value === 'unpaid_urgent') {
       if (o.status !== 'unpaid' && o.status !== 'urgent') return false
     } else if (selectedStatus.value !== 'all' && o.status !== selectedStatus.value) {
@@ -133,7 +200,6 @@ const stats = computed(() => {
   }
 })
 
-// Category analysis per month
 const categoryAnalysis = computed(() => {
   const source = filteredObligations.value
   const byCategory = {}
@@ -168,7 +234,7 @@ const monthlyTotals = computed(() => {
 
 const grandTotal = computed(() => monthlyTotals.value.reduce((s, v) => s + v, 0))
 
-const months = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μάι', 'Ιούν', 'Ιούλ', 'Αύγ', 'Σεπ', 'Οκτ', 'Νοέ', 'Δεκ']
+const months = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μάι', 'Ιούν', 'Ιούλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοέ', 'Δεκ']
 const availableYears = computed(() => {
   const yrs = new Set()
   allObligations.value.forEach(o => {
@@ -200,6 +266,15 @@ onUnmounted(() => {
 
 <template>
   <div class="obligations-page">
+
+    <!-- Toast -->
+    <transition name="toast">
+      <div v-if="toast.show" class="toast" :class="'toast-' + toast.type">
+        <span>{{ toast.type === 'success' ? '✓' : '!' }}</span>
+        {{ toast.message }}
+      </div>
+    </transition>
+
     <div class="kpi-grid">
       <div class="kpi-card white">
         <div class="kpi-label">ΣΥΝΟΛΟ ΚΙΝΗΣΕΩΝ</div>
@@ -232,15 +307,15 @@ onUnmounted(() => {
         <div class="kpi-count">{{ stats.partialCount }} κιν.</div>
       </div>
       <div class="kpi-card orange">
-        <div class="kpi-label">⚡ ΕΚΚΡΕΜΕΙΣ</div>
+        <div class="kpi-label">⚠ ΕΚΚΡΕΜΕΙΣ</div>
         <div class="kpi-amount">{{ fmt(stats.urgentAmount) }}</div>
         <div class="kpi-count">{{ stats.urgentCount }} κιν.</div>
       </div>
     </div>
 
     <div class="tabs">
-      <button class="tab-btn" :class="{ active: activeTab === 'list' }" @click="activeTab = 'list'">≡ Λίστα</button>
-      <button class="tab-btn" :class="{ active: activeTab === 'analysis' }" @click="activeTab = 'analysis'">⊞ Ανάλυση ανά Κατηγορία</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'list' }" @click="activeTab = 'list'">☰ Λίστα</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'analysis' }" @click="activeTab = 'analysis'">▤ Ανάλυση ανά Κατηγορία</button>
     </div>
 
     <div v-if="activeTab === 'list'">
@@ -257,7 +332,7 @@ onUnmounted(() => {
         <select v-model="selectedMethod" class="filter-select">
           <option v-for="m in methods" :key="m" :value="m">{{ m === 'all' ? 'Όλες μέθοδοι' : m }}</option>
         </select>
-        <button class="btn-refresh" @click="loadObligations" :disabled="loading">{{ loading ? '⟳' : '↻ Ανανέωση' }}</button>
+        <button class="btn-refresh" @click="loadObligations" :disabled="loading">{{ loading ? '⏳' : '↻ Ανανέωση' }}</button>
       </div>
 
       <div v-if="loading" class="loading-state">Φόρτωση...</div>
@@ -270,6 +345,7 @@ onUnmounted(() => {
               <th>ΚΑΤΗΓΟΡΙΑ</th><th>ΜΕΘΟΔΟΣ</th>
               <th class="num">ΠΟΣΟ</th><th class="num">ΠΛΗΡΩΜΕΝΟ</th>
               <th class="num">ΥΠΟΛΟΙΠΟ</th><th>STATUS</th>
+              <th>ΕΝΕΡΓΕΙΕΣ</th>
             </tr>
           </thead>
           <tbody>
@@ -283,6 +359,16 @@ onUnmounted(() => {
               <td class="num">{{ fmt(o.paid) }}</td>
               <td class="num red">{{ fmt(o.remaining) }}</td>
               <td><span class="badge" :class="statusClass(o.status)">{{ statusLabel(o.status) }}</span></td>
+              <td class="actions">
+                <button
+                  v-if="canModify && o.status !== 'paid'"
+                  class="btn-mark-paid"
+                  @click="openMarkPaid(o)"
+                  title="Μαρκάρισμα ως Εξοφλημένη">
+                  ✓ Εξόφληση
+                </button>
+                <span v-else-if="o.status === 'paid'" class="paid-indicator">✓ Πληρώθηκε</span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -330,11 +416,41 @@ onUnmounted(() => {
         </table>
       </div>
     </div>
+
+    <!-- ═══════ MARK PAID CONFIRM ═══════ -->
+    <div v-if="payConfirm.show" class="modal-backdrop" @click.self="closeMarkPaid">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3>Επιβεβαίωση Εξόφλησης</h3>
+        </div>
+        <div class="modal-body">
+          <p class="confirm-msg">
+            Σίγουρα θέλεις να μαρκάρεις την υποχρέωση
+            <strong>#{{ payConfirm.item?.entityNumber }}</strong> ως εξοφλημένη;
+          </p>
+          <p class="confirm-detail" v-if="payConfirm.item">
+            {{ payConfirm.item.description }}<br>
+            Ποσό: <strong>{{ fmt(payConfirm.item.amount) }}</strong> · Μέθοδος: {{ payConfirm.item.paymentMethod || '—' }}
+          </p>
+          <p class="confirm-info">Ημερομηνία πληρωμής: <strong>σήμερα</strong></p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="closeMarkPaid" :disabled="payConfirm.saving">
+            Ακύρωση
+          </button>
+          <button class="btn-success" @click="confirmMarkPaid" :disabled="payConfirm.saving">
+            <span v-if="payConfirm.saving"><span class="spinner-sm"></span> Αποθήκευση...</span>
+            <span v-else>✓ Εξόφληση</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <style scoped>
-.obligations-page { padding: 24px; color: #e0e6ed; }
+.obligations-page { padding: 24px; color: #e0e6ed; position: relative; }
 .kpi-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 20px; }
 .kpi-card { background: #1e3448; border-radius: 8px; padding: 14px 16px; border-top: 3px solid #4FC3A1; }
 .kpi-card.green { border-top-color: #4FC3A1; }
@@ -379,4 +495,36 @@ onUnmounted(() => {
 .sub-row td { padding-left: 24px; }
 .pl-20 { padding-left: 24px !important; color: #8899aa; }
 .total-row { background: #1a2f45; }
+.actions { white-space: nowrap; }
+.btn-mark-paid { background: #4FC3A1; border: none; color: #0d1f2d; padding: 5px 12px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-mark-paid:hover { background: #5fd4b3; }
+.paid-indicator { color: #4FC3A1; font-size: 0.78rem; font-weight: 600; }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; right: 24px; background: #1e3448; border: 1px solid #2a4a6a; border-radius: 8px; padding: 14px 20px; font-size: 0.9rem; z-index: 2000; box-shadow: 0 4px 20px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; min-width: 240px; color: #e0e6ed; }
+.toast-success { border-left: 4px solid #4FC3A1; }
+.toast-error { border-left: 4px solid #ef5350; }
+.toast-success span { color: #4FC3A1; font-size: 1.2rem; font-weight: bold; }
+.toast-error span { color: #ef5350; font-size: 1.2rem; font-weight: bold; }
+.toast-enter-active, .toast-leave-active { transition: all 0.3s ease; }
+.toast-enter-from { opacity: 0; transform: translateX(30px); }
+.toast-leave-to { opacity: 0; transform: translateX(30px); }
+
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1500; padding: 20px; }
+.modal { background: #1e3448; border: 1px solid #2a4a6a; border-radius: 10px; width: 100%; max-width: 720px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+.modal-sm { max-width: 440px; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #2a4a6a; }
+.modal-header h3 { margin: 0; font-size: 1.05rem; color: #e0e6ed; }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid #2a4a6a; }
+.confirm-msg { font-size: 0.95rem; margin: 0 0 10px; color: #e0e6ed; }
+.confirm-detail { font-size: 0.85rem; color: #b0bec5; margin: 0 0 14px; padding: 10px 12px; background: #1a2f45; border-radius: 6px; line-height: 1.5; }
+.confirm-info { font-size: 0.82rem; color: #8899aa; margin: 0; }
+.btn-secondary { background: #1a2f45; border: 1px solid #2a4a6a; color: #b0bec5; padding: 9px 18px; border-radius: 6px; font-size: 0.86rem; cursor: pointer; }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-success { background: #4FC3A1; border: none; color: #0d1f2d; padding: 9px 18px; border-radius: 6px; font-size: 0.86rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn-success:disabled { opacity: 0.6; cursor: not-allowed; }
+.spinner-sm { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(13,31,45,0.3); border-top-color: #0d1f2d; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
