@@ -1,8 +1,10 @@
 package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.model.BankAccount;
+import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.BankAccountRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.next2me.next2cash.service.UserAccessService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -10,27 +12,56 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.*;
 
+/**
+ * BankAccount endpoints.
+ *
+ * Security model (Phase D, Session #6):
+ *   - ADMIN    : full access (UserAccessService returns all entity IDs).
+ *   - USER     : only bank accounts whose entityId is in assigned entities.
+ *                Legacy rule: user with NO assignments is treated as having ALL
+ *                (handled inside UserAccessService).
+ *   - VIEWER   : read-only, strict entity filter (empty set if no assignments).
+ *   - ACCOUNTANT: 403 (blocked at class level; ZIP export is their only endpoint).
+ */
 @RestController
 @RequestMapping("/api/bank-accounts")
 @CrossOrigin(origins = "*")
+@RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
 public class BankAccountController {
 
-    @Autowired
-    private BankAccountRepository bankAccountRepository;
+    private final BankAccountRepository bankAccountRepository;
+    private final UserAccessService userAccessService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')")
     public ResponseEntity<Map<String, Object>> getBankAccounts(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam(required = false) UUID entityId) {
+
+        User currentUser = userAccessService.getCurrentUser(authHeader);
 
         List<BankAccount> accounts;
 
         if (entityId != null) {
+            // Single-entity request: assert access, then fetch.
+            userAccessService.assertCanAccessEntity(currentUser, entityId);
             accounts = bankAccountRepository
                     .findByEntityIdAndIsActiveTrueOrderBySortOrderAsc(entityId);
         } else {
-            accounts = bankAccountRepository
+            // Aggregate request: fetch all active, then filter by accessible entities.
+            // UserAccessService already handles: admin -> all, legacy user -> all,
+            // viewer/accountant -> strict assignments only.
+            Set<UUID> accessible = userAccessService.getAccessibleEntityIds(currentUser);
+
+            List<BankAccount> all = bankAccountRepository
                     .findByIsActiveTrueOrderByEntityIdAscSortOrderAsc();
+
+            accounts = new ArrayList<>();
+            for (BankAccount a : all) {
+                if (a.getEntityId() != null && accessible.contains(a.getEntityId())) {
+                    accounts.add(a);
+                }
+            }
         }
 
         BigDecimal totalBalance = accounts.stream()
