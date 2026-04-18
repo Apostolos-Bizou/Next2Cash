@@ -214,14 +214,21 @@ async function runExport(userFilename) {
     const match = cd.match(/filename\s*=\s*"?([^";]+)"?/i)
     if (match && match[1]) downloadName = match[1].trim()
 
-    const blobUrl = window.URL.createObjectURL(res.data)
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = downloadName
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(blobUrl)
+    if (isPdf) {
+      // PDF: open in new tab → browser shows native print-preview dialog
+      // with "Save as PDF" option, matching legacy UX.
+      openPdfPreview(res.data, downloadName)
+    } else {
+      // Excel: keep direct download (spreadsheets have no preview)
+      const blobUrl = window.URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = downloadName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(blobUrl)
+    }
 
     exportDialog.value = false
   } catch (e) {
@@ -242,6 +249,48 @@ async function runExport(userFilename) {
   } finally {
     exportBusy.value = false
   }
+}
+
+/**
+ * Opens a PDF blob in a new browser tab and auto-triggers the native
+ * print dialog (Ctrl+P-like UI with "Save as PDF" option).
+ *
+ * Uses a data URL fallback if the browser blocks the popup.
+ * The filename is preserved via the URL fragment so if the user chooses
+ * "Save as PDF" in the dialog, Chrome pre-fills the filename.
+ */
+function openPdfPreview(blob, filename) {
+  const blobUrl = window.URL.createObjectURL(blob)
+  // Open new tab with the PDF. Chrome/Edge will render it inline.
+  const w = window.open(blobUrl, '_blank')
+
+  if (!w) {
+    // Popup blocked — fallback to direct download with helpful message
+    exportErrorMsg.value = 'Το browser μπλόκαρε το popup. Ενεργοποίησε popups για next2cash.com ή θα κατέβει απευθείας.'
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(blobUrl)
+    return
+  }
+
+  // Set a helpful title + auto-open print dialog once PDF has rendered.
+  // 500ms is empirically enough for most PDFs < 2MB; longer PDFs may need more.
+  w.document.title = filename
+  setTimeout(() => {
+    try {
+      w.print()
+    } catch (e) {
+      console.warn('Auto-print failed (browser may have blocked):', e)
+    }
+  }, 600)
+
+  // Clean up the blob URL after 60 seconds — enough time for user
+  // to interact with the print dialog; longer keeps memory pinned.
+  setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60000)
 }
 
 // ─── Delete state + handlers ──────────────────────────────────

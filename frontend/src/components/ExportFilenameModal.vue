@@ -61,6 +61,11 @@ function handleCancel() {
 const formatLabel = () => props.format === 'pdf' ? 'PDF' : 'Excel'
 const formatIcon  = () => props.format === 'pdf' ? '📄' : '📊'
 const extensionHint = () => props.format === 'pdf' ? '.pdf' : '.xlsx'
+// PDF: opens browser's print preview (user can Save as PDF from there).
+// Excel: downloads directly to Downloads folder.
+const actionLabel = () => props.format === 'pdf'
+  ? '🖨 Προεπισκόπηση & Αποθήκευση'
+  : '⬇ Λήψη Excel'
 </script>
 
 <template>
@@ -91,6 +96,10 @@ const extensionHint = () => props.format === 'pdf' ? '.pdf' : '.xlsx'
           <span class="filename-ext">{{ extensionHint() }}</span>
         </div>
 
+        <p v-if="format === 'pdf'" class="export-warn">
+          ⓘ Θα ανοίξει νέα καρτέλα με προεπισκόπηση + native dialog εκτύπωσης.
+          Επίλεξε "Αποθήκευση ως PDF" για download, ή πραγματικό εκτυπωτή.
+        </p>
         <p class="export-warn">
           ⓘ Ελληνικοί χαρακτήρες θα μετατραπούν σε λατινικούς αυτόματα
           (π.χ. ΜΑΛΑΜΙΤΣΗΣ → MALAMITSIS) για συμβατότητα με το filesystem.
@@ -109,7 +118,7 @@ const extensionHint = () => props.format === 'pdf' ? '.pdf' : '.xlsx'
           @click="handleConfirm"
           :disabled="busy || !filename.trim()">
           <span v-if="busy">⏳ Λήψη...</span>
-          <span v-else>⬇ Λήψη {{ formatLabel() }}</span>
+          <span v-else>{{ actionLabel() }}</span>
         </button>
       </div>
 
