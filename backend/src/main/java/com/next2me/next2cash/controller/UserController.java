@@ -8,6 +8,7 @@ import com.next2me.next2cash.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -23,9 +24,15 @@ import java.util.stream.Collectors;
 
 /**
  * User management endpoints (Admin Panel).
- * Access: ADMIN and USER roles (DELETE + reset-password are ADMIN only — enforced in SecurityConfig).
+ * Access: ADMIN and USER roles (DELETE + reset-password are ADMIN only - enforced in SecurityConfig).
  *
- * Rules:
+ * Privilege-escalation rules (Phase F):
+ *  - USER role cannot create users with role=admin
+ *  - USER role cannot change the role of any other user
+ *  - USER role cannot edit admin accounts (role/isActive changes blocked)
+ *  - Last-admin protection: cannot delete or demote the last active admin
+ *
+ * Other rules:
  *  - Password is set ONLY on create (POST), self-service /api/auth/change-password,
  *    or admin reset via POST /{id}/reset-password
  *  - Self-delete is blocked
@@ -47,9 +54,9 @@ public class UserController {
     private final UserEntityRepository userEntityRepository;
     private final CompanyEntityRepository companyEntityRepository;
 
-    // ═══════════════════════════════════════════════════════════
-    //  GET /api/admin/users — List all users
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
+    //  GET /api/admin/users - List all users
+    // ─────────────────────────────────────────────────────────────────
     @GetMapping
     public ResponseEntity<?> listUsers() {
         List<Map<String, Object>> users = userRepository.findAllByOrderByUsernameAsc()
@@ -64,11 +71,14 @@ public class UserController {
         ));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    //  POST /api/admin/users — Create new user
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
+    //  POST /api/admin/users - Create new user
+    //  Phase F: non-admin callers cannot create admin users.
+    // ─────────────────────────────────────────────────────────────────
     @PostMapping
-    public ResponseEntity<?> createUser(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<?> createUser(
+            @RequestBody Map<String, Object> request,
+            Authentication authentication) {
 
         String username    = str(request.get("username"));
         String password    = str(request.get("password"));
@@ -87,6 +97,11 @@ public class UserController {
         }
         if (userRepository.existsByUsername(username)) {
             return badRequest("Username already exists");
+        }
+
+        // Phase F: privilege-escalation guard
+        if ("admin".equals(role) && !callerIsAdmin(authentication)) {
+            return badRequest("Only admins can create users with role 'admin'");
         }
 
         User u = new User();
@@ -108,9 +123,13 @@ public class UserController {
         ));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    //  PUT /api/admin/users/{id} — Update user info (NOT password)
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
+    //  PUT /api/admin/users/{id} - Update user info (NOT password)
+    //  Phase F:
+    //    - Non-admin caller cannot change ANY user's role
+    //    - Non-admin caller cannot edit admin accounts
+    //    - Last-admin protection on role downgrade
+    // ─────────────────────────────────────────────────────────────────
     @PutMapping("/{id}")
     public ResponseEntity<?> updateUser(
             @PathVariable UUID id,
@@ -124,12 +143,18 @@ public class UserController {
 
         String currentUsername = authentication != null ? authentication.getName() : null;
         boolean isSelf = currentUsername != null && currentUsername.equals(u.getUsername());
+        boolean callerIsAdmin = callerIsAdmin(authentication);
 
         if (request.containsKey("password") || request.containsKey("passwordHash")) {
             return badRequest("Password cannot be changed here. Use POST /{id}/reset-password (admin) or POST /api/auth/change-password (self-service).");
         }
         if (request.containsKey("username")) {
             return badRequest("Username is immutable after creation");
+        }
+
+        // Phase F: non-admin cannot edit admin accounts (except themselves for display/email)
+        if (!callerIsAdmin && "admin".equals(u.getRole()) && !isSelf) {
+            return badRequest("Only admins can edit admin accounts");
         }
 
         if (request.containsKey("displayName")) {
@@ -145,9 +170,23 @@ public class UserController {
             if (!ALLOWED_ROLES.contains(newRole)) {
                 return badRequest("Invalid role. Allowed: admin, user, accountant, viewer");
             }
+
+            // Phase F: only admins can change roles
+            if (!callerIsAdmin) {
+                return badRequest("Only admins can change user roles");
+            }
+
             if (isSelf && ("admin".equals(u.getRole()) || "user".equals(u.getRole()))
                       && !("admin".equals(newRole) || "user".equals(newRole))) {
                 return badRequest("Cannot downgrade your own admin/user role. Ask another admin.");
+            }
+
+            // Phase F: last-admin protection on downgrade
+            if ("admin".equals(u.getRole()) && !"admin".equals(newRole)) {
+                long otherActiveAdmins = countOtherActiveAdmins(u.getId());
+                if (otherActiveAdmins == 0) {
+                    return badRequest("Cannot demote the last active admin. Promote another user to admin first.");
+                }
             }
 
             if (RESTRICTED_ROLES.contains(newRole) && !RESTRICTED_ROLES.contains(u.getRole())) {
@@ -167,6 +206,17 @@ public class UserController {
             if (isSelf && !newActive) {
                 return badRequest("Cannot deactivate your own account");
             }
+            // Phase F: non-admin cannot deactivate admin accounts
+            if (!callerIsAdmin && "admin".equals(u.getRole()) && !newActive) {
+                return badRequest("Only admins can deactivate admin accounts");
+            }
+            // Phase F: last-admin protection on deactivate
+            if ("admin".equals(u.getRole()) && !newActive) {
+                long otherActiveAdmins = countOtherActiveAdmins(u.getId());
+                if (otherActiveAdmins == 0) {
+                    return badRequest("Cannot deactivate the last active admin");
+                }
+            }
             u.setIsActive(newActive);
         }
 
@@ -180,9 +230,10 @@ public class UserController {
         ));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    //  DELETE /api/admin/users/{id} — Soft delete (ADMIN only)
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
+    //  DELETE /api/admin/users/{id} - Soft delete (ADMIN only)
+    //  Phase F: last-admin protection
+    // ─────────────────────────────────────────────────────────────────
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteUser(
             @PathVariable UUID id,
@@ -202,6 +253,14 @@ public class UserController {
             return badRequest("User is already inactive");
         }
 
+        // Phase F: last-admin protection
+        if ("admin".equals(u.getRole())) {
+            long otherActiveAdmins = countOtherActiveAdmins(u.getId());
+            if (otherActiveAdmins == 0) {
+                return badRequest("Cannot delete the last active admin. Promote another user to admin first.");
+            }
+        }
+
         u.setIsActive(false);
         u.setUpdatedAt(LocalDateTime.now());
         userRepository.save(u);
@@ -212,15 +271,10 @@ public class UserController {
         ));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    //  POST /api/admin/users/{id}/reset-password — Admin resets user's password
+    // ─────────────────────────────────────────────────────────────────
+    //  POST /api/admin/users/{id}/reset-password - Admin resets user's password
     //  Access: ADMIN only (enforced in SecurityConfig)
-    //  Body: { "newPassword": "..." }
-    //  Rules:
-    //    - newPassword >= 8 chars
-    //    - User must exist and be active
-    //    - Admin cannot reset own password here (must use self-service)
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
     @PostMapping("/{id}/reset-password")
     public ResponseEntity<?> resetPassword(
             @PathVariable UUID id,
@@ -234,12 +288,10 @@ public class UserController {
 
         String currentUsername = authentication != null ? authentication.getName() : null;
 
-        // Self-protection: admin must use self-service for own password
         if (currentUsername != null && currentUsername.equals(u.getUsername())) {
             return badRequest("Use POST /api/auth/change-password to change your own password");
         }
 
-        // User must be active
         if (Boolean.FALSE.equals(u.getIsActive())) {
             return badRequest("Cannot reset password for inactive user. Reactivate first.");
         }
@@ -252,7 +304,6 @@ public class UserController {
             return badRequest("Password must be at least 8 characters");
         }
 
-        // Set new password
         u.setPasswordHash(passwordEncoder.encode(newPassword));
         u.setUpdatedAt(LocalDateTime.now());
         userRepository.save(u);
@@ -263,9 +314,9 @@ public class UserController {
         ));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    //  GET /api/admin/users/{id}/entities — List user's assigned entities
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
+    //  GET /api/admin/users/{id}/entities - List user's assigned entities
+    // ─────────────────────────────────────────────────────────────────
     @GetMapping("/{id}/entities")
     public ResponseEntity<?> getUserEntities(@PathVariable UUID id) {
         User u = userRepository.findById(id).orElse(null);
@@ -281,9 +332,9 @@ public class UserController {
         String meta;
         boolean accessAll = data.isEmpty() && !RESTRICTED_ROLES.contains(u.getRole());
         if (accessAll) {
-            meta = "No explicit assignment — this user has access to ALL entities (role: " + u.getRole() + ")";
+            meta = "No explicit assignment - this user has access to ALL entities (role: " + u.getRole() + ")";
         } else if (data.isEmpty()) {
-            meta = "No entities assigned — this user has NO access (role: " + u.getRole() + " requires >=1)";
+            meta = "No entities assigned - this user has NO access (role: " + u.getRole() + " requires >=1)";
         } else {
             meta = "User has explicit access to " + data.size() + " entit" + (data.size() == 1 ? "y" : "ies");
         }
@@ -298,9 +349,9 @@ public class UserController {
         ));
     }
 
-    // ═══════════════════════════════════════════════════════════
-    //  PUT /api/admin/users/{id}/entities — Replace user's entity assignment
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
+    //  PUT /api/admin/users/{id}/entities - Replace user's entity assignment
+    // ─────────────────────────────────────────────────────────────────
     @PutMapping("/{id}/entities")
     @Transactional
     public ResponseEntity<?> setUserEntities(
@@ -360,9 +411,31 @@ public class UserController {
         ));
     }
 
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
     //  HELPERS
-    // ═══════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
+
+    /** Count active admin users OTHER than the given userId. */
+    private long countOtherActiveAdmins(UUID excludeUserId) {
+        return userRepository.findAllByOrderByUsernameAsc().stream()
+            .filter(usr -> "admin".equals(usr.getRole()))
+            .filter(usr -> Boolean.TRUE.equals(usr.getIsActive()))
+            .filter(usr -> !usr.getId().equals(excludeUserId))
+            .count();
+    }
+
+    /** Check if authenticated caller has ROLE_ADMIN. */
+    private boolean callerIsAdmin(Authentication authentication) {
+        if (authentication == null || authentication.getAuthorities() == null) {
+            return false;
+        }
+        for (GrantedAuthority a : authentication.getAuthorities()) {
+            if ("ROLE_ADMIN".equals(a.getAuthority())) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private Map<String, Object> toDto(User u) {
         LinkedHashMap<String, Object> dto = new LinkedHashMap<>();
