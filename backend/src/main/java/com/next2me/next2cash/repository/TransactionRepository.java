@@ -130,23 +130,4 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     // Get max entity_number for a specific entity (for auto-assigning next entity_number)
     @Query("SELECT MAX(t.entityNumber) FROM Transaction t WHERE t.entityId = :entityId")
     Integer findMaxEntityNumberByEntityId(@Param("entityId") UUID entityId);
-
-    // Full search across multiple fields (entire history, ignores date/type/status/category filters).
-    // Triggered when the user types in the search box - overrides other filters.
-    @Query("SELECT t FROM Transaction t " +
-           "WHERE t.entityId = :entityId AND t.recordStatus = 'active' AND (" +
-           "  LOWER(t.description)   LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "  LOWER(t.category)      LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "  LOWER(t.subcategory)   LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "  LOWER(t.account)       LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "  LOWER(t.counterparty)  LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "  LOWER(t.paymentMethod) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "  LOWER(t.paymentStatus) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
-           "  CAST(t.entityNumber AS string) LIKE CONCAT('%', :q, '%') OR " +
-           "  CAST(t.id AS string)           LIKE CONCAT('%', :q, '%')" +
-           ") " +
-           "ORDER BY t.docDate DESC, t.id DESC")
-    Page<Transaction> searchAcrossFields(@Param("entityId") UUID entityId,
-                                         @Param("q") String q,
-                                         Pageable pageable);
 }

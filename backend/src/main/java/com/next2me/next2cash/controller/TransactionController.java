@@ -42,8 +42,7 @@ public class TransactionController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to,
-            @RequestParam(required = false) String search) {
+            @RequestParam(required = false) String to) {
 
         // SECURITY GUARD: verify the user has access to this entity
         User user = userAccessService.getCurrentUser(authHeader);
@@ -54,13 +53,7 @@ public class TransactionController {
 
         Page<Transaction> result;
 
-        // SEARCH MODE: overrides all other filters (Option 2 behavior).
-        // When the user types in the search box, search the entire history
-        // regardless of active date/type/status/category filters.
-        if (search != null && !search.trim().isEmpty()) {
-            result = transactionRepository.searchAcrossFields(
-                entityId, search.trim(), pageable);
-        } else if (from != null && to != null) {
+        if (from != null && to != null) {
             result = transactionRepository
                 .findByEntityIdAndRecordStatusAndDocDateBetweenOrderByDocDateDesc(
                     entityId, "active",
