@@ -35,6 +35,10 @@ public class Config {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
+    // Explicit no-arg constructor (JPA requirement; made explicit for clarity).
+    public Config() {}
+
+    // Getters
     public UUID getId() { return id; }
     public UUID getEntityId() { return entityId; }
     public String getConfigType() { return configType; }
@@ -44,4 +48,15 @@ public class Config {
     public String getIcon() { return icon; }
     public Integer getSortOrder() { return sortOrder; }
     public Boolean getIsActive() { return isActive; }
+
+    // Setters (added Phase H v2 — required for POST/PUT endpoints)
+    public void setId(UUID id) { this.id = id; }
+    public void setEntityId(UUID entityId) { this.entityId = entityId; }
+    public void setConfigType(String configType) { this.configType = configType; }
+    public void setConfigKey(String configKey) { this.configKey = configKey; }
+    public void setConfigValue(String configValue) { this.configValue = configValue; }
+    public void setParentKey(String parentKey) { this.parentKey = parentKey; }
+    public void setIcon(String icon) { this.icon = icon; }
+    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
 }

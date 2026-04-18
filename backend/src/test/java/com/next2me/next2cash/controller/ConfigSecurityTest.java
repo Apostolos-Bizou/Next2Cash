@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -145,14 +146,17 @@ class ConfigSecurityTest extends BaseIntegrationTest {
     // 6. viewer -> 403 (class-level @PreAuthorize blocks)
     // ────────────────────────────────────────────────────────────
     @Test
-    void viewer_isForbidden() throws Exception {
+    void viewer_canReadConfig() throws Exception {
+        // Per role matrix: VIEWER has read-only access to Config
+        // (Dashboard + AI + Banks + Config).
         User sophia = tdb.createViewer("sophia");
         tdb.assignEntities(sophia, house);
 
         mockMvc.perform(get("/api/config")
                 .header("Authorization", tdb.bearerToken(sophia))
                 .param("entityId", house.getId().toString()))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true));
     }
 
     // ────────────────────────────────────────────────────────────
@@ -163,6 +167,60 @@ class ConfigSecurityTest extends BaseIntegrationTest {
     @Test
     void noToken_isForbidden() throws Exception {
         mockMvc.perform(get("/api/config")
+                .param("entityId", house.getId().toString()))
+            .andExpect(status().isForbidden());
+    }
+
+    // ═════ Phase H v2 — Cards endpoint security ═════
+
+    @Test
+    void cards_list_viewerCanRead() throws Exception {
+        User sophia = tdb.createViewer("sophia_cards_list");
+        tdb.assignEntities(sophia, house);
+
+        mockMvc.perform(get("/api/config/cards")
+                .header("Authorization", tdb.bearerToken(sophia))
+                .param("entityId", house.getId().toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
+    void cards_create_viewerForbidden() throws Exception {
+        User sophia = tdb.createViewer("sophia_cards_create");
+        tdb.assignEntities(sophia, house);
+
+        String body = "{\"configKey\":\"test_card\",\"configValue\":\"Test\",\"parentKey\":\"search:X\"}";
+
+        mockMvc.perform(post("/api/config/cards")
+                .header("Authorization", tdb.bearerToken(sophia))
+                .param("entityId", house.getId().toString())
+                .contentType("application/json")
+                .content(body))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cards_create_userCanCreateInAssignedEntity() throws Exception {
+        User sissy = tdb.createUser("sissy_cards");
+        tdb.assignEntities(sissy, house);
+
+        String body = "{\"configKey\":\"rent_card\",\"configValue\":\"Rent\",\"parentKey\":\"category:RENT\",\"sortOrder\":5}";
+
+        mockMvc.perform(post("/api/config/cards")
+                .header("Authorization", tdb.bearerToken(sissy))
+                .param("entityId", house.getId().toString())
+                .contentType("application/json")
+                .content(body))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.configKey").value("rent_card"));
+    }
+
+    @Test
+    void cards_list_noTokenForbidden() throws Exception {
+        mockMvc.perform(get("/api/config/cards")
                 .param("entityId", house.getId().toString()))
             .andExpect(status().isForbidden());
     }

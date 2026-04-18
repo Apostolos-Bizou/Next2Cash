@@ -135,6 +135,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     List<Transaction> findByEntityIdAndRecordStatusOrderByCounterpartyAscDocDateDesc(
         UUID entityId, String recordStatus);
 
+    // Phase H v2 — all active transactions for entity, ordered by date DESC (for card rule engine).
+    List<Transaction> findByEntityIdAndRecordStatusOrderByDocDateDesc(
+        UUID entityId, String recordStatus);
+
     // Phase H (Karteles) — all active transactions of a specific counterparty, for detail view
     List<Transaction> findByEntityIdAndCounterpartyAndRecordStatusOrderByDocDateDesc(
         UUID entityId, String counterparty, String recordStatus);
