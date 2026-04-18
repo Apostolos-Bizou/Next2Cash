@@ -55,7 +55,11 @@ const entities = ref([])
 async function fetchCurrentUser() {
   try {
     const res = await api.get('/api/auth/me')
-    if (res.data.success) {
+    // API returns user object directly (no success wrapper)
+    if (res.data && res.data.username && res.data.role) {
+      currentUser.value = res.data
+    } else if (res.data && res.data.success && (res.data.data || res.data.user)) {
+      // Fallback in case backend changes to wrapped format
       currentUser.value = res.data.data || res.data.user
     }
   } catch (e) {
