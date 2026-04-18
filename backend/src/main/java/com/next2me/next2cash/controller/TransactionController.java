@@ -14,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -237,5 +238,91 @@ public class TransactionController {
             entityId, q, PageRequest.of(0, 20));
 
         return ResponseEntity.ok(Map.of("success", true, "data", results));
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // PHASE H — KARTELES ENDPOINTS
+    // ─────────────────────────────────────────────────────────
+
+    // GET /api/transactions/counterparties?entityId=X
+    // Returns list of counterparties with aggregated metrics (count, total, paid, balance).
+    // Service-layer aggregation in Java — NO SQL GROUP BY (Postgres-safe).
+    @GetMapping("/counterparties")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER')")
+    public ResponseEntity<?> getCounterparties(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam UUID entityId) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(user, entityId);
+
+        List<Transaction> all = transactionRepository
+            .findByEntityIdAndRecordStatusOrderByCounterpartyAscDocDateDesc(entityId, "active");
+
+        // Group by counterparty in Java (null-safe)
+        Map<String, List<Transaction>> grouped = new java.util.LinkedHashMap<>();
+        for (Transaction t : all) {
+            String cp = (t.getCounterparty() == null || t.getCounterparty().isBlank())
+                ? "(no counterparty)"
+                : t.getCounterparty().trim();
+            grouped.computeIfAbsent(cp, k -> new java.util.ArrayList<>()).add(t);
+        }
+
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Map.Entry<String, List<Transaction>> e : grouped.entrySet()) {
+            List<Transaction> txns = e.getValue();
+            java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal paid = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal remaining = java.math.BigDecimal.ZERO;
+            int income = 0, expense = 0;
+            for (Transaction t : txns) {
+                if (t.getAmount() != null) total = total.add(t.getAmount());
+                if (t.getAmountPaid() != null) paid = paid.add(t.getAmountPaid());
+                if (t.getAmountRemaining() != null) remaining = remaining.add(t.getAmountRemaining());
+                if ("income".equals(t.getType())) income++;
+                else if ("expense".equals(t.getType())) expense++;
+            }
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("counterparty", e.getKey());
+            row.put("count", txns.size());
+            row.put("incomeCount", income);
+            row.put("expenseCount", expense);
+            row.put("total", total);
+            row.put("paid", paid);
+            row.put("remaining", remaining);
+            result.add(row);
+        }
+
+        result.sort((a, b) -> Integer.compare((Integer) b.get("count"), (Integer) a.get("count")));
+
+        return ResponseEntity.ok(Map.of("success", true, "data", result, "total", result.size()));
+    }
+
+    // GET /api/transactions/by-counterparty?entityId=X&counterparty=NAME
+    // Returns all active transactions for a specific counterparty.
+    @GetMapping("/by-counterparty")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER')")
+    public ResponseEntity<?> getByCounterparty(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam UUID entityId,
+            @RequestParam String counterparty) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(user, entityId);
+
+        List<Transaction> results;
+        if ("(no counterparty)".equals(counterparty)) {
+            results = transactionRepository
+                .findByEntityIdAndRecordStatusOrderByCounterpartyAscDocDateDesc(entityId, "active")
+                .stream()
+                .filter(t -> t.getCounterparty() == null || t.getCounterparty().isBlank())
+                .toList();
+        } else {
+            results = transactionRepository
+                .findByEntityIdAndCounterpartyAndRecordStatusOrderByDocDateDesc(
+                    entityId, counterparty, "active");
+        }
+
+        return ResponseEntity.ok(Map.of("success", true, "data", results, "total", results.size()));
     }
 }

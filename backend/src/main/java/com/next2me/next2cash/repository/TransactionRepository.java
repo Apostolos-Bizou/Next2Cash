@@ -130,4 +130,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     // Get max entity_number for a specific entity (for auto-assigning next entity_number)
     @Query("SELECT MAX(t.entityNumber) FROM Transaction t WHERE t.entityId = :entityId")
     Integer findMaxEntityNumberByEntityId(@Param("entityId") UUID entityId);
+
+    // Phase H (Karteles) — all active transactions for entity, ordered by counterparty (for grouping in service layer)
+    List<Transaction> findByEntityIdAndRecordStatusOrderByCounterpartyAscDocDateDesc(
+        UUID entityId, String recordStatus);
+
+    // Phase H (Karteles) — all active transactions of a specific counterparty, for detail view
+    List<Transaction> findByEntityIdAndCounterpartyAndRecordStatusOrderByDocDateDesc(
+        UUID entityId, String counterparty, String recordStatus);
 }
