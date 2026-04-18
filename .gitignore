@@ -173,3 +173,6 @@ target/
 
 # Logs
 *.log
+
+# Phase K schema inspection (local only)
+_phase_k_inspection/
