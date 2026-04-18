@@ -523,9 +523,14 @@ onMounted(async () => {
           <input v-model="editForm.email" type="email" class="input" />
         </div>
 
-        <div class="form-group">
+        <div v-if="!isSelf(editUser)" class="form-group">
           <label>Νέος Κωδικός <small>(κενό = χωρίς αλλαγή, min 8 χαρακτήρες)</small></label>
           <input v-model="newPasswordField" type="password" placeholder="Αφήστε κενό αν δεν αλλάζει" class="input" />
+          <small class="help-text">Admin reset - δεν απαιτείται ο τρέχων κωδικός του χρήστη</small>
+        </div>
+        <div v-else class="form-group notice-box">
+          <strong>Αλλαγή Δικού Σας Κωδικού:</strong>
+          Κλείστε αυτό το παράθυρο και χρησιμοποιήστε το κουμπί "Αλλαγή Κωδικού Μου" πάνω (απαιτεί τρέχοντα κωδικό για ασφάλεια).
         </div>
 
         <div class="form-group" v-if="!isSelf(editUser)">
@@ -637,6 +642,9 @@ onMounted(async () => {
 .notice { padding: 12px 16px; border-radius: 6px; font-size: 0.88rem; margin-bottom: 16px; }
 .notice-info { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); color: #93c5fd; }
 .notice-warning { background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); color: #fde68a; }
+.help-text { display: block; margin-top: 4px; font-size: 0.78rem; color: var(--text-muted, #9ca3af); font-style: italic; }
+.notice-box { padding: 12px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); color: #93c5fd; border-radius: 6px; font-size: 0.85rem; line-height: 1.5; }
+.notice-box strong { display: block; margin-bottom: 6px; color: #bfdbfe; }
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 20px; }
 .modal-card { background: var(--bg-card, #1f2937); border: 1px solid var(--border, #374151); border-radius: 10px; padding: 28px; max-width: 500px; width: 100%; position: relative; max-height: 90vh; overflow-y: auto; }
 .modal-close { position: absolute; top: 14px; right: 14px; background: transparent; border: none; color: var(--text-muted, #9ca3af); font-size: 1.5rem; cursor: pointer; line-height: 1; }
