@@ -136,8 +136,20 @@ const newUser = ref({
   password: '',
   role: 'user'
 })
+const newEntityIds = ref([])
 const creating = ref(false)
 const createError = ref(null)
+
+const createNeedsEntities = computed(() => RESTRICTED_ROLES.includes(newUser.value.role))
+
+function toggleNewEntity(entityId) {
+  const idx = newEntityIds.value.indexOf(entityId)
+  if (idx >= 0) {
+    newEntityIds.value.splice(idx, 1)
+  } else {
+    newEntityIds.value.push(entityId)
+  }
+}
 
 async function createUser() {
   createError.value = null
@@ -149,8 +161,13 @@ async function createUser() {
     createError.value = 'Ο κωδικός πρέπει να είναι τουλάχιστον 8 χαρακτήρες'
     return
   }
+  if (createNeedsEntities.value && newEntityIds.value.length === 0) {
+    createError.value = 'Ο ρόλος "' + ROLE_LABELS[newUser.value.role] + '" απαιτεί τουλάχιστον μία εταιρεία.'
+    return
+  }
   creating.value = true
   try {
+    // STEP 1: Create the user
     const res = await api.post('/api/admin/users', {
       username:    newUser.value.username.trim(),
       password:    newUser.value.password,
@@ -159,9 +176,24 @@ async function createUser() {
       role:        newUser.value.role
     })
     if (res.data.success) {
+      // STEP 2: If restricted role, assign entities
+      if (createNeedsEntities.value && newEntityIds.value.length > 0) {
+        const newUserId = res.data.data?.id
+        if (newUserId) {
+          try {
+            await api.put('/api/admin/users/' + newUserId + '/entities', {
+              entityIds: newEntityIds.value
+            })
+          } catch (entErr) {
+            console.error('Entity assignment failed:', entErr)
+            alert('Ο χρήστης δημιουργήθηκε αλλά η αντιστοίχιση εταιρειών απέτυχε. Κάντε Επεξεργασία για να την επαναλάβετε.')
+          }
+        }
+      }
       newUser.value = { username: '', displayName: '', email: '', password: '', role: 'user' }
+      newEntityIds.value = []
       await fetchUsers()
-      alert('Χρήστης δημιουργήθηκε επιτυχώς.\n\nΑν ο ρόλος απαιτεί αντιστοίχιση εταιρείας (Λογιστής/Θεατής), κάντε Επεξεργασία για να αντιστοιχίσετε εταιρείες.')
+      alert('Χρήστης δημιουργήθηκε επιτυχώς.')
     } else {
       createError.value = res.data.error || 'Σφάλμα δημιουργίας'
     }
@@ -423,12 +455,25 @@ onMounted(async () => {
             {{ creating ? 'Δημιουργία...' : '+ Δημιουργία' }}
           </button>
         </div>
+        <div v-if="createNeedsEntities" class="form-group" style="margin-top: 12px;">
+          <label>Εταιρείες που θα βλέπει ο χρήστης *</label>
+          <div class="entity-checkboxes">
+            <label v-for="e in entities" :key="e.id" class="checkbox-label">
+              <input
+                type="checkbox"
+                :checked="newEntityIds.includes(e.id)"
+                @change="toggleNewEntity(e.id)"
+              />
+              {{ e.name }}
+            </label>
+          </div>
+          <small v-if="newEntityIds.length === 0" class="help-text" style="color: #fbbf24;">
+            Υποχρεωτικό: επιλέξτε τουλάχιστον μία εταιρεία
+          </small>
+        </div>
         <div v-if="createError" class="error">{{ createError }}</div>
         <p v-if="newUser.role === 'user'" class="warning">
           Ο ρόλος "Χρήστης" δίνει σχεδόν πλήρη πρόσβαση στο σύστημα (εκτός από διαχείριση άλλων χρηστών).
-        </p>
-        <p v-if="RESTRICTED_ROLES.includes(newUser.role)" class="notice">
-          Μετά τη δημιουργία, κάντε κλικ στο κουμπί Επεξεργασία για να αντιστοιχίσετε εταιρεία/ες.
         </p>
       </div>
 
