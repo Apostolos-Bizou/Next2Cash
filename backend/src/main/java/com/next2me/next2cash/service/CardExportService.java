@@ -417,9 +417,9 @@ public class CardExportService {
             c3.setCellValue(safe(t.getCategory()));
             c3.setCellStyle(zebra ? bodyZebra : bodyStyle);
 
-            // Payment method (reads from transaction's paymentStatus-adjacent field if present)
+            // Payment method (bank name / cash / etc)
             Cell c4 = row.createCell(4);
-            c4.setCellValue("—");  // not currently on Transaction model, placeholder
+            c4.setCellValue(safe(t.getPaymentMethod()));
             c4.setCellStyle(zebra ? bodyZebra : bodyStyle);
 
             // Amount
@@ -443,11 +443,15 @@ public class CardExportService {
                 c7.setCellStyle(zebra ? moneyZebra : moneyStyle);
             }
 
-            // Payment date (Transaction doesn't currently expose it directly;
-            // show dash for now — will be wired after model check in later phase)
+            // Payment date — date when the transaction was paid
             Cell c8 = row.createCell(8);
-            c8.setCellValue("—");
-            c8.setCellStyle(zebra ? bodyZebra : bodyStyle);
+            if (t.getPaymentDate() != null) {
+                c8.setCellValue(java.sql.Date.valueOf(t.getPaymentDate()));
+                c8.setCellStyle(zebra ? dateZebra : dateStyle);
+            } else {
+                c8.setCellValue("");
+                c8.setCellStyle(zebra ? bodyZebra : bodyStyle);
+            }
 
             // Status (text)
             Cell c9 = row.createCell(9);
@@ -638,7 +642,7 @@ public class CardExportService {
                     Element.ALIGN_LEFT);
                 addPdfBodyCell(table, bg, bodyFont, safe(t.getDescription()), Element.ALIGN_LEFT);
                 addPdfBodyCell(table, bg, bodyFont, safe(t.getCategory()),    Element.ALIGN_LEFT);
-                addPdfBodyCell(table, bg, bodyFont, "—",                      Element.ALIGN_LEFT);
+                addPdfBodyCell(table, bg, bodyFont, nonEmpty(t.getPaymentMethod()), Element.ALIGN_LEFT);
                 addPdfBodyCell(table, bg, bodyFont, formatMoney(t.getAmount()), Element.ALIGN_RIGHT);
 
                 BigDecimal paid = t.getAmountPaid();
@@ -649,7 +653,9 @@ public class CardExportService {
                 com.lowagie.text.Font remFont = (rem != null && rem.signum() > 0) ? redBody : bodyFont;
                 addPdfBodyCell(table, bg, remFont, formatMoney(rem), Element.ALIGN_RIGHT);
 
-                addPdfBodyCell(table, bg, bodyFont, "—", Element.ALIGN_LEFT);
+                addPdfBodyCell(table, bg, bodyFont,
+                    t.getPaymentDate() != null ? t.getPaymentDate().format(DATE_DISPLAY) : "—",
+                    Element.ALIGN_LEFT);
                 addPdfBodyCell(table, bg, bodyFont, statusLabelFor(t.getPaymentStatus()), Element.ALIGN_LEFT);
             }
         }
@@ -689,6 +695,17 @@ public class CardExportService {
     private static String formatMoney(BigDecimal b) {
         if (b == null) return "0,00 €";
         return String.format(Locale.GERMANY, "%,.2f €", b.doubleValue());
+    }
+
+    /**
+     * Returns the string if non-blank, otherwise "—" (legacy display convention).
+     * Used for optional fields like paymentMethod that may legitimately be empty
+     * (e.g. unpaid transactions have no payment method yet).
+     */
+    private static String nonEmpty(String s) {
+        if (s == null) return "—";
+        String trimmed = s.trim();
+        return trimmed.isEmpty() ? "—" : trimmed;
     }
 
     private static String statusLabelFor(String status) {

@@ -153,6 +153,9 @@ public class ConfigController {
             m.put("amountPaid",      t.getAmountPaid());
             m.put("amountRemaining", t.getAmountRemaining());
             m.put("paymentStatus",   t.getPaymentStatus());
+            m.put("paymentMethod",   t.getPaymentMethod());
+            m.put("paymentDate",     t.getPaymentDate());
+            m.put("recordStatus",    t.getRecordStatus());
             txns.add(m);
         }
 
