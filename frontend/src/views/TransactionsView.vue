@@ -30,6 +30,7 @@ const pages   = ref(0)
 const loading = ref(false)
 const error   = ref(null)
 const transactions = ref([])
+const searchQuery = ref('')
 
 // ───── Toast notifications ─────
 const toast = ref({ show: false, type: 'success', message: '' })
@@ -175,6 +176,29 @@ async function confirmDelete() {
   }
 }
 
+// Client-side search filter across all visible fields
+const filteredTransactions = computed(() => {
+  if (!searchQuery.value) return transactions.value
+  const q = searchQuery.value.toLowerCase().trim()
+  return transactions.value.filter(t => {
+    const fields = [
+      String(t.id || ''),
+      t.docDate || '',
+      fmtDate(t.docDate),
+      t.description || '',
+      t.category || '',
+      t.account || '',
+      t.subcategory || '',
+      t.paymentMethod || '',
+      statusLabel(t.paymentStatus),
+      t.paymentStatus || '',
+      t.type === 'income' ? 'εισπραξη' : 'πληρωμη',
+      String(t.amount || '')
+    ]
+    return fields.some(f => String(f).toLowerCase().includes(q))
+  })
+})
+
 const kpis = computed(() => {
   const txns = transactions.value
   const income  = txns.filter(t => t.type === 'income').reduce((s,t) => s + Number(t.amount||0), 0)
@@ -248,6 +272,15 @@ onMounted(loadTransactions)
     </div>
 
     <div class="filters-bar">
+      <div class="search-wrap">
+        <i class="fas fa-search search-icon"></i>
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="search-input"
+          placeholder="Αναζήτηση: ID, περιγραφή, κατηγορία, τρόπος, status..." />
+        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''" title="Καθάρισμα">×</button>
+      </div>
       <input v-model="dateFrom" type="date" class="f-input" />
       <input v-model="dateTo"   type="date" class="f-input" />
       <select v-model="selectedType" class="f-select">
@@ -295,10 +328,12 @@ onMounted(loadTransactions)
           </tr>
         </thead>
         <tbody>
-          <tr v-if="transactions.length === 0">
-            <td colspan="10" class="empty-row">Δεν βρέθηκαν κινήσεις</td>
+          <tr v-if="filteredTransactions.length === 0">
+            <td colspan="10" class="empty-row">
+              {{ searchQuery ? 'Δεν βρέθηκαν αποτελέσματα για "' + searchQuery + '"' : 'Δεν βρέθηκαν κινήσεις' }}
+            </td>
           </tr>
-          <tr v-for="t in transactions" :key="t.id"
+          <tr v-for="t in filteredTransactions" :key="t.id"
               :class="t.paymentStatus === 'urgent' ? 'row-urgent' : ''">
             <td class="id-col">#{{ t.id }}</td>
             <td class="date-col">{{ fmtDate(t.docDate) }}</td>
@@ -483,6 +518,13 @@ onMounted(loadTransactions)
 .pag-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
 .pag-btn:disabled { opacity:.4; cursor:not-allowed; }
 .pag-info { margin-left:12px; font-size:.82rem; color:var(--text-muted); }
+
+.search-wrap { position:relative; flex:1; min-width:260px; max-width:420px; }
+.search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:.8rem; pointer-events:none; }
+.search-input { width:100%; background:var(--bg-input); border:1px solid var(--border); color:var(--text-primary); padding:7px 32px 7px 30px; border-radius:var(--radius-sm); font-size:.82rem; font-family:var(--font); box-sizing:border-box; }
+.search-input:focus { outline:none; border-color:var(--accent); }
+.search-clear { position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-muted); font-size:1.2rem; cursor:pointer; line-height:1; padding:2px 6px; border-radius:3px; }
+.search-clear:hover { color:var(--text-primary); background:var(--bg-card-hover); }
 
 /* ───── Toast ───── */
 .toast { position:fixed; bottom:24px; right:24px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px 20px; font-size:.9rem; z-index:2000; box-shadow:0 4px 20px rgba(0,0,0,.3); display:flex; align-items:center; gap:10px; min-width:240px; }
