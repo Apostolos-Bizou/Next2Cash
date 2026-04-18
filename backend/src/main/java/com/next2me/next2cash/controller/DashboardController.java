@@ -1,27 +1,46 @@
 package com.next2me.next2cash.controller;
 
+import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.TransactionRepository;
+import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
 
+/**
+ * Dashboard endpoints — KPIs, charts, and reports per entity.
+ *
+ * Security model (Phase C):
+ * - accountant role is excluded at class level (403).
+ * - admin, user, viewer must have explicit entity access
+ *   (legacy rule: user with zero assignments sees all entities).
+ * - Every endpoint validates JWT via UserAccessService.getCurrentUser()
+ *   and enforces entity-level access via assertCanAccessEntity().
+ */
 @RestController
 @RequestMapping("/api/dashboard")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
 public class DashboardController {
 
     private final TransactionRepository transactionRepository;
+    private final UserAccessService userAccessService;
 
     @GetMapping
     public ResponseEntity<?> getDashboard(
+            @RequestHeader("Authorization") String authHeader,
             @RequestParam UUID entityId,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(user, entityId);
 
         LocalDate dateFrom = from != null ? LocalDate.parse(from)
             : LocalDate.of(LocalDate.now().getYear(), 1, 1);
@@ -57,9 +76,13 @@ public class DashboardController {
     // GET /api/dashboard/balance-trend?entityId=X&from=YYYY-MM-DD&to=YYYY-MM-DD
     @GetMapping("/balance-trend")
     public ResponseEntity<?> getBalanceTrend(
+            @RequestHeader("Authorization") String authHeader,
             @RequestParam UUID entityId,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(user, entityId);
 
         LocalDate dateFrom = from != null ? LocalDate.parse(from)
             : LocalDate.of(LocalDate.now().getYear(), 1, 1);
@@ -81,7 +104,12 @@ public class DashboardController {
 
     // GET /api/dashboard/yearly?entityId=X
     @GetMapping("/yearly")
-    public ResponseEntity<?> getYearly(@RequestParam UUID entityId) {
+    public ResponseEntity<?> getYearly(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam UUID entityId) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(user, entityId);
 
         var raw = transactionRepository.getYearlyReport(entityId);
 
@@ -100,9 +128,13 @@ public class DashboardController {
     // GET /api/dashboard/category-breakdown?entityId=X&from=YYYY-MM-DD&to=YYYY-MM-DD
     @GetMapping("/category-breakdown")
     public ResponseEntity<?> getCategoryBreakdown(
+            @RequestHeader("Authorization") String authHeader,
             @RequestParam UUID entityId,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(user, entityId);
 
         LocalDate dateFrom = from != null ? LocalDate.parse(from)
             : LocalDate.of(LocalDate.now().getYear(), 1, 1);
