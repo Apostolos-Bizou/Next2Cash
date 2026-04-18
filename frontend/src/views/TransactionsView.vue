@@ -31,6 +31,7 @@ const loading = ref(false)
 const error   = ref(null)
 const transactions = ref([])
 const searchQuery = ref('')
+let searchDebounceTimer = null
 
 // ───── Toast notifications ─────
 const toast = ref({ show: false, type: 'success', message: '' })
@@ -58,10 +59,16 @@ async function loadTransactions() {
   error.value   = null
   try {
     const params = { entityId: entityId.value, page: page.value, perPage: perPage.value }
-    if (dateFrom.value)       params.from   = dateFrom.value
-    if (dateTo.value)         params.to     = dateTo.value
-    if (selectedType.value)   params.type   = selectedType.value
-    if (selectedStatus.value) params.status = selectedStatus.value
+    // Option 2 behavior: when search is active, backend ignores date/type/status filters
+    // and searches the ENTIRE history across 8 fields.
+    if (searchQuery.value && searchQuery.value.trim()) {
+      params.search = searchQuery.value.trim()
+    } else {
+      if (dateFrom.value)       params.from   = dateFrom.value
+      if (dateTo.value)         params.to     = dateTo.value
+      if (selectedType.value)   params.type   = selectedType.value
+      if (selectedStatus.value) params.status = selectedStatus.value
+    }
     const res = await api.get('/api/transactions', { params })
     if (res.data.success) {
       transactions.value = res.data.data  || []
@@ -176,28 +183,26 @@ async function confirmDelete() {
   }
 }
 
-// Client-side search filter across all visible fields
-const filteredTransactions = computed(() => {
-  if (!searchQuery.value) return transactions.value
-  const q = searchQuery.value.toLowerCase().trim()
-  return transactions.value.filter(t => {
-    const fields = [
-      String(t.id || ''),
-      t.docDate || '',
-      fmtDate(t.docDate),
-      t.description || '',
-      t.category || '',
-      t.account || '',
-      t.subcategory || '',
-      t.paymentMethod || '',
-      statusLabel(t.paymentStatus),
-      t.paymentStatus || '',
-      t.type === 'income' ? 'εισπραξη' : 'πληρωμη',
-      String(t.amount || '')
-    ]
-    return fields.some(f => String(f).toLowerCase().includes(q))
-  })
-})
+// Backend-driven search: transactions already filtered by the API response.
+// Keep filteredTransactions as a simple alias so template v-for still works.
+const filteredTransactions = computed(() => transactions.value)
+
+// Debounced search: wait 400ms after user stops typing before hitting the API.
+// Prevents hammering the backend on every keystroke.
+function onSearchInput() {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    page.value = 0   // reset to first page when search changes
+    loadTransactions()
+  }, 400)
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  page.value = 0
+  loadTransactions()
+}
 
 const kpis = computed(() => {
   const txns = transactions.value
@@ -276,10 +281,11 @@ onMounted(loadTransactions)
         <i class="fas fa-search search-icon"></i>
         <input
           v-model="searchQuery"
+          @input="onSearchInput"
           type="text"
           class="search-input"
-          placeholder="Αναζήτηση: ID, περιγραφή, κατηγορία, τρόπος, status..." />
-        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''" title="Καθάρισμα">×</button>
+          placeholder="Αναζήτηση σε όλο το ιστορικό: ID, περιγραφή, κατηγορία, τρόπος, status..." />
+        <button v-if="searchQuery" class="search-clear" @click="clearSearch" title="Καθάρισμα">×</button>
       </div>
       <input v-model="dateFrom" type="date" class="f-input" />
       <input v-model="dateTo"   type="date" class="f-input" />

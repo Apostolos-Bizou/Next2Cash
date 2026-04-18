@@ -2,13 +2,20 @@ package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.BaseIntegrationTest;
 import com.next2me.next2cash.model.CompanyEntity;
+import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.model.User;
+import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.support.TestDataBuilder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -27,6 +34,29 @@ class TransactionSecurityTest extends BaseIntegrationTest {
 
     @Autowired
     private TestDataBuilder tdb;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
+
+    /**
+     * Helper: create an active expense transaction directly via repository.
+     * Used by search tests to seed known data.
+     */
+    private Transaction seedTransaction(CompanyEntity entity, String description,
+                                        String category, BigDecimal amount) {
+        Transaction t = new Transaction();
+        t.setEntityId(entity.getId());
+        t.setType("expense");
+        t.setDocDate(LocalDate.now());
+        t.setDescription(description);
+        t.setCategory(category);
+        t.setAmount(amount);
+        t.setAmountPaid(BigDecimal.ZERO);
+        t.setAmountRemaining(amount);
+        t.setPaymentStatus("unpaid");
+        t.setRecordStatus("active");
+        return transactionRepository.save(t);
+    }
 
     @Test
     @DisplayName("admin can access transactions of ANY entity")
@@ -112,5 +142,51 @@ class TransactionSecurityTest extends BaseIntegrationTest {
                 .param("entityId", house.getId().toString())
                 .header("Authorization", tdb.bearerToken(viewer)))
             .andExpect(status().isForbidden());
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SEARCH TESTS (Phase G hotfix — backend search across fields)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Test
+    @DisplayName("search finds transactions by description across entire history")
+    void search_findsTransactionsByDescription() throws Exception {
+        User admin = tdb.createAdmin("apostolos");
+        CompanyEntity house = tdb.createEntity("HOUSE", "House");
+
+        // Seed: 3 transactions, 2 matching "ENOIKIO"
+        seedTransaction(house, "ENOIKIO 03 2026", "LEITOURGIKA", new BigDecimal("650.00"));
+        seedTransaction(house, "ENOIKIO 04 2026", "LEITOURGIKA", new BigDecimal("650.00"));
+        seedTransaction(house, "MICROSOFT AZURE", "EXOPLISMOS",  new BigDecimal("112.42"));
+
+        mockMvc.perform(get("/api/transactions")
+                .param("entityId", house.getId().toString())
+                .param("search", "ENOIKIO")
+                .header("Authorization", tdb.bearerToken(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.total", greaterThanOrEqualTo(2)));
+    }
+
+    @Test
+    @DisplayName("search overrides other filters - finds across all dates (Option 2)")
+    void search_overridesDateFilter_findsAcrossAllHistory() throws Exception {
+        User admin = tdb.createAdmin("apostolos");
+        CompanyEntity house = tdb.createEntity("HOUSE", "House");
+
+        // Seed a transaction with TODAY's date
+        seedTransaction(house, "UNIQUE_SEARCH_TOKEN_XYZ", "LEITOURGIKA", new BigDecimal("100.00"));
+
+        // Query with BOTH a date range in the past (excludes today) AND search term.
+        // Expected behavior: search wins, date range is ignored, txn is found.
+        mockMvc.perform(get("/api/transactions")
+                .param("entityId", house.getId().toString())
+                .param("from", "2020-01-01")
+                .param("to",   "2020-12-31")
+                .param("search", "UNIQUE_SEARCH_TOKEN_XYZ")
+                .header("Authorization", tdb.bearerToken(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.total").value(1));
     }
 }
