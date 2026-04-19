@@ -877,8 +877,6 @@ onMounted(async () => {
         </div>
       </div>
     </div>
-      </div>
-    </div>
 
     <!-- ═══ AUDIT LOG TAB ═══ -->
     <div v-else-if="activeTab === 'audit'" class="tab-content">
