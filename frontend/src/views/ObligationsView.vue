@@ -28,6 +28,17 @@ const dateTo = ref('')
 const selectedStatus = ref('unpaid_urgent')
 const selectedCategory = ref('all')
 const selectedMethod = ref('all')
+const attachmentsState = ref({ visible: false, transaction: null })
+
+function openAttachments(t) {
+  attachmentsState.value = { visible: true, transaction: t }
+}
+function closeAttachments() {
+  attachmentsState.value = { visible: false, transaction: null }
+}
+function hasAttachments(t) {
+  return !!t.blobFileIds && String(t.blobFileIds).trim() !== ""
+}
 const analysisYear = ref(new Date().getFullYear())
 
 const statusOptions = [
@@ -368,6 +379,13 @@ onUnmounted(() => {
                   ✓ Εξόφληση
                 </button>
                 <span v-else-if="o.status === 'paid'" class="paid-indicator">✓ Πληρώθηκε</span>
+                <button
+                  class="btn-attach-ob"
+                  @click="openAttachments(o)"
+                  :style="hasAttachments(o) ? {} : { opacity: 0.45 }"
+                  title="Αρχεία">
+                  📎
+                </button>
               </td>
             </tr>
           </tbody>
@@ -447,6 +465,13 @@ onUnmounted(() => {
     </div>
 
   </div>
+
+    <AttachmentsPopover
+      :visible="attachmentsState.visible"
+      :transaction="attachmentsState.transaction"
+      @close="closeAttachments"
+    />
+
 </template>
 
 <style scoped>
@@ -527,4 +552,17 @@ onUnmounted(() => {
 .btn-success:disabled { opacity: 0.6; cursor: not-allowed; }
 .spinner-sm { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(13,31,45,0.3); border-top-color: #0d1f2d; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.btn-attach-ob {
+  background: transparent;
+  border: 1px solid #2c3e50;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #9aa5b1;
+  transition: all 0.15s;
+  margin-left: 6px;
+}
+.btn-attach-ob:hover { border-color: #4A9EFF; color: #4A9EFF; }
 </style>

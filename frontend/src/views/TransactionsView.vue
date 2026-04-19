@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api'
+import MarkPaidModal from '@/components/MarkPaidModal.vue'
+import AttachmentsPopover from '@/components/AttachmentsPopover.vue'
 
 const ENTITIES = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
@@ -53,6 +55,24 @@ const editModal = ref({
 
 // ───── Delete confirm state ─────
 const deleteConfirm = ref({ show: false, item: null, deleting: false })
+
+// Mark paid state
+const markPaidState = ref({ visible: false, transaction: null })
+function openMarkPaid(t) {
+  const txn = { ...t, entityId: ENTITIES[selectedEntity.value] }
+  markPaidState.value = { visible: true, transaction: txn }
+}
+function closeMarkPaid() { markPaidState.value = { visible: false, transaction: null } }
+function onMarkPaidSaved() { closeMarkPaid(); loadTransactions() }
+function canMarkPaid(t) {
+  return t.recordSource !== 'PAYMENT' && (Number(t.amountRemaining) || 0) > 0.01
+}
+
+// Attachments state
+const attachmentsState = ref({ visible: false, transaction: null })
+function openAttachments(t) { attachmentsState.value = { visible: true, transaction: t } }
+function closeAttachments() { attachmentsState.value = { visible: false, transaction: null } }
+function hasAttachments(t) { return !!t.blobFileIds && String(t.blobFileIds).trim() !== "" }
 
 async function loadTransactions() {
   loading.value = true
@@ -351,14 +371,23 @@ onMounted(loadTransactions)
             <td class="ra red   mono">{{ t.type === 'expense' ? fmt(t.amount) : '—' }}</td>
             <td><span class="status-badge" :class="statusClass(t.paymentStatus)">{{ statusLabel(t.paymentStatus) }}</span></td>
             <td class="actions">
+              <button
+                v-if="canMarkPaid(t)"
+                class="btn-action btn-mark-paid-sm"
+                @click="openMarkPaid(t)">
+                ✓ Εξόφληση
+              </button>
+              <button
+                class="btn-action btn-attach-sm"
+                @click="openAttachments(t)"
+                :style="hasAttachments(t) ? {} : { opacity: 0.45 }">
+                📎
+              </button>
               <button v-if="canModify" class="icon-btn" title="Επεξεργασία" @click="openEdit(t)">
                 <i class="fas fa-edit"></i>
               </button>
               <button v-if="canModify" class="icon-btn icon-danger" title="Διαγραφή" @click="openDelete(t)">
                 <i class="fas fa-trash"></i>
-              </button>
-              <button class="icon-btn" title="Παραστατικά" v-if="t.blobFileIds">
-                <i class="fas fa-paperclip"></i>
               </button>
             </td>
           </tr>
@@ -471,6 +500,19 @@ onMounted(loadTransactions)
     </div>
 
   </div>
+
+    <MarkPaidModal
+      :visible="markPaidState.visible"
+      :transaction="markPaidState.transaction"
+      @close="closeMarkPaid"
+      @saved="onMarkPaidSaved"
+    />
+    <AttachmentsPopover
+      :visible="attachmentsState.visible"
+      :transaction="attachmentsState.transaction"
+      @close="closeAttachments"
+    />
+
 </template>
 
 <style scoped>
@@ -568,4 +610,14 @@ onMounted(loadTransactions)
 @media (max-width: 640px) {
   .form-grid { grid-template-columns: 1fr; }
 }
+
+.btn-action {
+  padding: 4px 10px; border-radius: 5px; font-size: 0.78rem;
+  font-weight: 600; cursor: pointer; border: 1px solid #2c3e50;
+  background: transparent; transition: all 0.15s; white-space: nowrap;
+}
+.btn-mark-paid-sm { color: #4FC3A1; border-color: #4FC3A1; }
+.btn-mark-paid-sm:hover { background: #4FC3A1; color: #0d1f2d; }
+.btn-attach-sm { color: #9aa5b1; font-size: 0.85rem; }
+.btn-attach-sm:hover { border-color: #4A9EFF; color: #4A9EFF; }
 </style>

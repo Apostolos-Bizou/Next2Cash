@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '@/api'
+import MarkPaidModal from '@/components/MarkPaidModal.vue'
+import AttachmentsPopover from '@/components/AttachmentsPopover.vue'
 
 const ENTITIES = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
@@ -10,6 +12,33 @@ const ENTITIES = {
 
 const entityKey = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const loading = ref(false)
+
+// User role
+const currentUser = computed(() => {
+  try { return JSON.parse(localStorage.getItem('n2c_user') || '{}') } catch { return {} }
+})
+const canModify = computed(() => {
+  const role = (currentUser.value.role || '').toLowerCase()
+  return role === 'admin' || role === 'user'
+})
+
+// Mark paid state
+const markPaidState = ref({ visible: false, transaction: null })
+function openMarkPaid(t) {
+  const txn = { ...t, entityId: ENTITIES[entityKey.value] }
+  markPaidState.value = { visible: true, transaction: txn }
+}
+function closeMarkPaid() { markPaidState.value = { visible: false, transaction: null } }
+function onMarkPaidSaved() { closeMarkPaid(); loadPayments() }
+function canMarkPaid(t) {
+  return t.recordSource !== 'PAYMENT' && (Number(t.remaining) || 0) > 0.01
+}
+
+// Attachments state
+const attachmentsState = ref({ visible: false, transaction: null })
+function openAttachments(t) { attachmentsState.value = { visible: true, transaction: t } }
+function closeAttachments() { attachmentsState.value = { visible: false, transaction: null } }
+function hasAttachments(t) { return !!t.blobFileIds && String(t.blobFileIds).trim() !== "" }
 const allPayments = ref([])
 
 const search = ref('')
@@ -193,6 +222,7 @@ onUnmounted(() => {
             <th>ΚΑΤΗΓΟΡΙΑ</th><th>ΜΕΘΟΔΟΣ</th>
             <th class="num">ΠΟΣΟ</th><th class="num">ΠΛΗΡΩΜΕΝΟ</th>
             <th class="num">ΥΠΟΛΟΙΠΟ</th><th>STATUS</th><th>ΠΡΟΟΔΟΣ</th>
+            <th>ΕΝΕΡΓΕΙΕΣ</th>
           </tr>
         </thead>
         <tbody>
@@ -212,11 +242,38 @@ onUnmounted(() => {
               </div>
               <span class="progress-text">{{ p.progress }}%</span>
             </td>
+            <td class="actions-col">
+              <button
+                v-if="canMarkPaid(p)"
+                class="btn-action btn-mark-paid-sm"
+                @click="openMarkPaid(p)">
+                ✓ Εξόφληση
+              </button>
+              <button
+                class="btn-action btn-attach-sm"
+                @click="openAttachments(p)"
+                :style="hasAttachments(p) ? {} : { opacity: 0.45 }">
+                📎
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
     </div>
   </div>
+
+    <MarkPaidModal
+      :visible="markPaidState.visible"
+      :transaction="markPaidState.transaction"
+      @close="closeMarkPaid"
+      @saved="onMarkPaidSaved"
+    />
+    <AttachmentsPopover
+      :visible="attachmentsState.visible"
+      :transaction="attachmentsState.transaction"
+      @close="closeAttachments"
+    />
+
 </template>
 
 <style scoped>
@@ -258,4 +315,15 @@ onUnmounted(() => {
 .progress-bar { background: #2a4a6a; border-radius: 4px; height: 6px; width: 80px; display: inline-block; vertical-align: middle; }
 .progress-fill { background: #4FC3A1; height: 6px; border-radius: 4px; }
 .progress-text { font-size: 0.75rem; color: #8899aa; margin-left: 6px; }
+
+.actions-col { display: flex; gap: 6px; align-items: center; }
+.btn-action {
+  padding: 4px 10px; border-radius: 5px; font-size: 0.78rem;
+  font-weight: 600; cursor: pointer; border: 1px solid #2c3e50;
+  background: transparent; transition: all 0.15s; white-space: nowrap;
+}
+.btn-mark-paid-sm { color: #4FC3A1; border-color: #4FC3A1; }
+.btn-mark-paid-sm:hover { background: #4FC3A1; color: #0d1f2d; }
+.btn-attach-sm { color: #9aa5b1; font-size: 0.85rem; }
+.btn-attach-sm:hover { border-color: #4A9EFF; color: #4A9EFF; }
 </style>
