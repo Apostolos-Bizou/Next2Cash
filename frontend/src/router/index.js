@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/payments',       component: () => import('@/views/PaymentsView.vue'),      meta: { title: 'Πληρωμές' } },
     { path: '/obligations',    component: () => import('@/views/ObligationsView.vue'),   meta: { title: 'Υποχρεώσεις' } },
     { path: '/karteles',       component: () => import('@/views/KartelesView.vue'),      meta: { title: 'Καρτέλες' } },
+    { path: '/documents',    component: () => import('@/views/DocumentsView.vue'),    meta: { title: 'Παραστατικά' } },
     { path: '/reports',        component: () => import('@/views/ReportsView.vue'),       meta: { title: 'Αναφορές' } },
     { path: '/report-builder', component: () => import('@/views/ReportBuilderView.vue'), meta: { title: 'Report Builder' } },
     { path: '/ai-analysis',    component: () => import('@/views/AiAnalysisView.vue'),    meta: { title: 'AI Ανάλυση' } },
