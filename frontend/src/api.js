@@ -35,9 +35,10 @@ api.interceptors.response.use(
 
 // --- Upload document (multipart/form-data) ---
 // DO NOT set Content-Type header — axios auto-generates boundary
-export async function uploadDocument(transactionId, file) {
+export async function uploadDocument(transactionId, file, customFileName) {
   const form = new FormData()
   form.append('file', file)
+  if (customFileName) form.append('customFileName', customFileName)
   const res = await api.post(
     '/api/documents/upload?transactionId=' + transactionId,
     form

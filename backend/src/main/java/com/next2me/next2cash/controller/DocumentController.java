@@ -143,7 +143,8 @@ public class DocumentController {
     public ResponseEntity<?> uploadDocument(
             @RequestHeader("Authorization") String authHeader,
             @RequestParam Integer transactionId,
-            @RequestParam MultipartFile file) throws IOException {
+            @RequestParam MultipartFile file,
+            @RequestParam(required = false) String customFileName) throws IOException {
 
         // 1. Resolve current user
         User user = userAccessService.getCurrentUser(authHeader);
@@ -240,6 +241,25 @@ public class DocumentController {
 
         String autoFileName = String.format("%s_%s_%d.%s",
             safeCounterparty, docDateStr, seq, fileExt);
+
+        // Phase M.2.2: custom filename override (if provided by frontend)
+        if (customFileName != null && !customFileName.isBlank()) {
+            // Sanitize custom name: remove dangerous chars, keep extension
+            String safeName = customFileName.trim()
+                .replaceAll("[\\\\/:*?\"<>|]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^_|_$", "");
+            // Ensure it has the correct extension
+            if (!safeName.toLowerCase().endsWith("." + fileExt)) {
+                safeName = safeName.replaceAll("\\.[^.]*$", "") + "." + fileExt;
+            }
+            if (safeName.length() > 100) {
+                safeName = safeName.substring(0, 96) + "." + fileExt;
+            }
+            if (!safeName.isBlank() && !safeName.equals("." + fileExt)) {
+                autoFileName = safeName;
+            }
+        }
 
         // 5. Build blob path (entityId/YYYY/MM/transactionId/filename)
         LocalDate pathDate = txn.getDocDate() != null

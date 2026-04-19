@@ -24,6 +24,7 @@ const emit = defineEmits(['close', 'uploaded'])
 
 // --- State --------------------------------------------------------
 const selectedFiles = ref([])
+const customNames = ref({})          // idx -> user-edited filename
 const docStatus     = ref('')
 const uploading     = ref(false)
 const progressByIdx = ref({})
@@ -44,6 +45,7 @@ const DOC_STATUS_META = {
 watch(() => props.visible, (v) => {
   if (v) {
     selectedFiles.value = []
+    customNames.value = {}
     docStatus.value = ''
     progressByIdx.value = {}
     errorMsg.value = ''
@@ -130,6 +132,12 @@ function autoFilename(idx) {
   return (id ? id + ' - ' : '') + (desc || 'document') + '.' + ext
 }
 
+function onFocusName(idx) {
+  if (customNames.value[idx] === undefined) {
+    customNames.value[idx] = autoFilename(idx)
+  }
+}
+
 // --- Helpers ------------------------------------------------------
 function fmtBytes(n) {
   const v = Number(n) || 0
@@ -170,6 +178,10 @@ async function startUpload() {
     try {
       const form = new FormData()
       form.append('file', f)
+      const cname = customNames.value[i]
+      if (cname && cname.trim()) {
+        form.append('customFileName', cname.trim())
+      }
       const res = await api.post(
         '/api/documents/upload?transactionId=' + props.transaction.id,
         form
@@ -276,7 +288,13 @@ const canSubmit = computed(() =>
             <div class="ud-filemeta">
               {{ fmtBytes(f.size) }}
               <span class="ud-arrow">→</span>
-              <span class="ud-autoname">{{ autoFilename(i) }}</span>
+              <input
+                class="ud-autoname-input"
+                :value="customNames[i] !== undefined ? customNames[i] : autoFilename(i)"
+                @input="customNames[i] = $event.target.value"
+                @focus="onFocusName(i)"
+                :disabled="uploading"
+                spellcheck="false" />
             </div>
             <div v-if="progressByIdx[i]" class="ud-progress" :class="progressByIdx[i].state">
               <span v-if="progressByIdx[i].state === 'pending'">Ανέβασμα...</span>
@@ -411,6 +429,20 @@ const canSubmit = computed(() =>
 }
 .ud-arrow { color: #4FC3A1; }
 .ud-autoname { color: #4FC3A1; font-weight: 500; }
+.ud-autoname-input {
+  color: #4FC3A1; font-weight: 500;
+  background: transparent; border: none;
+  border-bottom: 1px dashed #4FC3A1;
+  font-size: inherit; font-family: inherit;
+  padding: 1px 2px; margin: 0;
+  min-width: 120px; max-width: 100%;
+  outline: none;
+}
+.ud-autoname-input:focus {
+  border-bottom-color: #fff;
+  color: #fff;
+}
+.ud-autoname-input:disabled { opacity: 0.5; cursor: not-allowed; }
 .ud-progress { margin-top: 4px; font-size: 0.78rem; }
 .ud-progress.pending { color: #FFC107; }
 .ud-progress.done    { color: #4FC3A1; font-weight: 600; }
