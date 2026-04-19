@@ -617,11 +617,14 @@ const ruleLabel = computed(() => {
                 :class="{ 'payment-row': t.recordSource === 'PAYMENT' }"
               >
                 <td class="id-col">
-                  <span v-if="t.recordSource === 'PAYMENT'" class="payment-icon" :title="'Πληρωμή #' + (t.parentTransactionId || t.id)">💳</span>
+                  <span v-if="t.recordSource === 'PAYMENT'" class="payment-id" :title="'Πληρωμή #' + (t.parentTransactionId || t.id)">-{{ t.id }}</span>
                   <span v-else>{{ t.entityNumber || t.id }}</span>
                 </td>
                 <td>{{ fmtDate(t.docDate) }}</td>
-                <td class="desc-col" :title="t.description">{{ t.description || '—' }}</td>
+                <td class="desc-col" :title="t.description">
+                  <span v-if="t.recordSource === 'PAYMENT'" class="payment-icon-inline">💳</span>
+                  {{ t.description || '—' }}
+                </td>
                 <td><span class="cat-badge">{{ t.category || '—' }}</span></td>
                 <td>{{ t.paymentMethod || '—' }}</td>
                 <td class="num">{{ fmtMoney(t.amount) }}</td>
@@ -960,9 +963,16 @@ const ruleLabel = computed(() => {
 .data-table tr.payment-row:hover {
   background: rgba(46, 117, 182, 0.15);
 }
-.payment-icon {
+.payment-icon-inline {
   color: #2E75B6;
-  font-size: 1.1rem;
+  font-size: 1rem;
+  margin-right: 6px;
+  cursor: help;
+}
+.payment-id {
+  color: #e24b4a;
+  font-family: monospace;
+  font-weight: 600;
   cursor: help;
 }
 
