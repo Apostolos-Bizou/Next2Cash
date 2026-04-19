@@ -132,24 +132,100 @@ public class DocumentController {
             .body(zipBytes);
     }
 
-    // ── UPLOAD DOCUMENT ───────────────────────────────────────────────────────
-    // POST /api/documents/upload
-    @PostMapping("/upload")
+    // -- POST /api/documents/upload --------------------------------------
+    // Phase M.1: upload with auth + validation + auto-naming
+    // - PDF only, max 10MB
+    // - auto filename: [counterparty]_[docDate]_[seq].pdf
+    // - appends blob path to transaction.blobFileIds under @Transactional
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> uploadDocument(
-            @RequestParam UUID entityId,
+            @RequestHeader("Authorization") String authHeader,
             @RequestParam Integer transactionId,
-            @RequestParam String fileName,
-            @RequestParam(defaultValue = "receipt") String docType,
             @RequestParam MultipartFile file) throws IOException {
 
-        // Blob path: entity_id/year/month/txn_id/filename
-        LocalDate now = LocalDate.now();
-        String blobPath = String.format("%s/%d/%02d/%d/%s",
-            entityId, now.getYear(), now.getMonthValue(),
-            transactionId, fileName);
+        // 1. Resolve current user
+        User user = userAccessService.getCurrentUser(authHeader);
 
-        // Upload to Azure Blob
+        // 2. Load transaction + entity-access check
+        var txnOpt = transactionRepository.findById(transactionId);
+        if (txnOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of(
+                "success", false,
+                "error",   "transaction_not_found"
+            ));
+        }
+        var txn = txnOpt.get();
+        userAccessService.assertCanAccessEntity(user, txn.getEntityId());
+
+        // 3. Validate file
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error",   "file_missing"
+            ));
+        }
+
+        final long MAX_BYTES = 10L * 1024L * 1024L; // 10 MB
+        if (file.getSize() > MAX_BYTES) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error",   "file_too_large",
+                "maxBytes", MAX_BYTES
+            ));
+        }
+
+        String contentType = file.getContentType();
+        boolean pdfByType = contentType != null
+            && contentType.equalsIgnoreCase("application/pdf");
+        String origName = file.getOriginalFilename() != null
+            ? file.getOriginalFilename() : "";
+        boolean pdfByExt = origName.toLowerCase().endsWith(".pdf");
+        if (!pdfByType && !pdfByExt) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error",   "only_pdf_allowed",
+                "received", contentType == null ? "" : contentType
+            ));
+        }
+
+        // 4. Auto-generate filename: [counterparty]_[docDate]_[seq].pdf
+        String counterparty = txn.getCounterparty() != null
+            ? txn.getCounterparty() : "doc";
+        // Sanitize: remove whitespace, slashes, quotes, non-ASCII-friendly chars
+        String safeCounterparty = counterparty
+            .replaceAll("[\\s/\\\\:\"\'<>|?*,]+", "_")
+            .replaceAll("_+", "_")
+            .replaceAll("^_|_$", "");
+        if (safeCounterparty.isEmpty()) safeCounterparty = "doc";
+        if (safeCounterparty.length() > 40) {
+            safeCounterparty = safeCounterparty.substring(0, 40);
+        }
+
+        String docDateStr = txn.getDocDate() != null
+            ? txn.getDocDate().format(DateTimeFormatter.ofPattern("yyyyMMdd"))
+            : LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+        // Compute next seq = count of existing blobs for this txn + 1
+        int seq = 1;
+        String existingIds = txn.getBlobFileIds();
+        if (existingIds != null && !existingIds.isBlank()) {
+            seq = (int) Arrays.stream(existingIds.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).count() + 1;
+        }
+
+        String autoFileName = String.format("%s_%s_%d.pdf",
+            safeCounterparty, docDateStr, seq);
+
+        // 5. Build blob path (entityId/YYYY/MM/transactionId/filename)
+        LocalDate pathDate = txn.getDocDate() != null
+            ? txn.getDocDate() : LocalDate.now();
+        String blobPath = String.format("%s/%d/%02d/%d/%s",
+            txn.getEntityId(), pathDate.getYear(), pathDate.getMonthValue(),
+            txn.getId(), autoFileName);
+
+        // 6. Upload to Azure Blob
         BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
             .connectionString(blobConnectionString)
             .buildClient();
@@ -160,20 +236,20 @@ public class DocumentController {
 
         blobClient.upload(file.getInputStream(), file.getSize(), true);
 
-        // Update transaction blob_file_ids (append)
-        transactionRepository.findById(transactionId).ifPresent(txn -> {
-            String existing = txn.getBlobFileIds();
-            String updated  = (existing == null || existing.isBlank())
-                ? blobPath
-                : existing + "," + blobPath;
-            txn.setBlobFileIds(updated);
-            transactionRepository.save(txn);
-        });
+        // 7. Append blob path to transaction.blobFileIds (under @Transactional)
+        String updated = (existingIds == null || existingIds.isBlank())
+            ? blobPath
+            : existingIds + "," + blobPath;
+        txn.setBlobFileIds(updated);
+        txn.setUpdatedBy(user.getId());
+        transactionRepository.save(txn);
 
         return ResponseEntity.ok(Map.of(
-            "success",  true,
-            "blobPath", blobPath,
-            "fileName", fileName
+            "success",      true,
+            "blobPath",     blobPath,
+            "fileName",     autoFileName,
+            "sizeBytes",    file.getSize(),
+            "blobFileIds",  updated
         ));
     }
 
