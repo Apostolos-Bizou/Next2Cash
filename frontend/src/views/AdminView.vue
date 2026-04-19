@@ -923,13 +923,13 @@ onMounted(async () => {
         <div v-if="banksLoading" class="loading">Φόρτωση...</div>
         <div v-else-if="adminBanks.length === 0" class="empty">Δεν βρέθηκαν λογαριασμοί</div>
         <div v-else class="config-list">
-          <div v-for="b in adminBanks" :key="b.id" class="bank-item" :class="{ inactive: !b.active }">
+          <div v-for="b in adminBanks" :key="b.id" class="bank-item" :class="{ inactive: b.active === false }">
             <div class="bank-icon-wrap">
               <i class="fas" :class="b.accountType === 'cash' ? 'fa-wallet' : 'fa-university'" style="color:var(--accent);font-size:1.1rem"></i>
             </div>
             <div class="bank-info">
               <div class="bank-label">
-                <span class="active-dot" :class="{ on: b.active, off: !b.active }"></span>
+                <span class="active-dot" :class="{ on: b.active !== false, off: b.active === false }"></span>
                 {{ b.accountLabel }}
               </div>
               <div class="bank-meta">{{ b.bankName }} · {{ b.accountType }} · {{ b.currency }} · Ενημ: {{ formatBankDate(b.balanceDate) }}</div>
