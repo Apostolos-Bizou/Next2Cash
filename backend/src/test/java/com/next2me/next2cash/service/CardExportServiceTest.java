@@ -4,7 +4,9 @@ import com.next2me.next2cash.BaseIntegrationTest;
 import com.next2me.next2cash.model.CompanyEntity;
 import com.next2me.next2cash.model.Config;
 import com.next2me.next2cash.model.Transaction;
+import com.next2me.next2cash.model.Payment;
 import com.next2me.next2cash.repository.ConfigRepository;
+import com.next2me.next2cash.repository.PaymentRepository;
 import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.support.TestDataBuilder;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,11 +46,14 @@ class CardExportServiceTest extends BaseIntegrationTest {
     @Autowired private TestDataBuilder tdb;
     @Autowired private ConfigRepository configRepository;
     @Autowired private TransactionRepository transactionRepository;
+    @Autowired private PaymentRepository paymentRepository;
     @Autowired private CardExportService cardExportService;
 
     private CompanyEntity entity;
     private UUID cardWithTxnsId;
     private UUID emptyCardId;
+    private UUID cardWithPaymentsId;
+    private Integer linkedTxnId;
 
     @BeforeEach
     void setup() {
@@ -68,6 +73,17 @@ class CardExportServiceTest extends BaseIntegrationTest {
         // Card 2 — rule that matches nothing (for empty-card test)
         Config emptyCard = saveCard("kartela_empty", "ΚΕΝΗ ΚΑΡΤΕΛΑ", "search:NONEXISTENT_9X");
         emptyCardId = emptyCard.getId();
+
+        // Card 3 (Phase K.3) - 1 txn + 1 linked payment. ASCII-only fixtures.
+        Config cardWithPayments = saveCard("kartela_k3", "K3_PAYTEST", "search:K3PAYTEST");
+        cardWithPaymentsId = cardWithPayments.getId();
+
+        Transaction linkedTxn = saveTxn(2001, "K3PAYTEST invoice #1", "EXPENSES", "expense",
+            "1000.00", "600.00", "400.00", "partial", LocalDate.of(2026, 3, 10));
+        linkedTxnId = linkedTxn.getId();
+
+        savePayment(linkedTxnId, "K3PAYTEST settlement", "outgoing", "600.00",
+            "BANK_X", LocalDate.of(2026, 3, 12));
     }
 
     // ───── Fixture helpers (adapted from CardServiceTest) ──────────
@@ -101,6 +117,21 @@ class CardExportServiceTest extends BaseIntegrationTest {
         setField(t, "paymentStatus",   paymentStatus);
         setField(t, "recordStatus",    "active");
         return transactionRepository.save(t);
+    }
+
+    private Payment savePayment(Integer transactionId, String description, String paymentType,
+                                  String amount, String paymentMethod, LocalDate paymentDate) {
+        Payment p = new Payment();
+        setField(p, "id",            new Random().nextInt(Integer.MAX_VALUE));
+        setField(p, "entityId",      entity.getId());
+        setField(p, "transactionId", transactionId);
+        setField(p, "paymentDate",   paymentDate);
+        setField(p, "paymentType",   paymentType);
+        setField(p, "amount",        new BigDecimal(amount));
+        setField(p, "paymentMethod", paymentMethod);
+        setField(p, "description",   description);
+        setField(p, "status",        "completed");
+        return paymentRepository.save(p);
     }
 
     private void setField(Object target, String name, Object value) {
@@ -193,5 +224,46 @@ class CardExportServiceTest extends BaseIntegrationTest {
 
         // Only underscores → EXPORT (collapse + trim leaves empty)
         assertThat(cardExportService.sanitizeForFilename("___")).isEqualTo("EXPORT");
+    }
+
+    // ----- Phase K.3: Payment integration tests -----
+
+    @Test
+    @DisplayName("Excel export K.3: card with txn + payment -> bigger than empty-card xlsx")
+    void excelExportWithPayments() {
+        byte[] withPayments = cardExportService.generateExcel(cardWithPaymentsId, entity.getId());
+
+        assertThat(withPayments).isNotNull();
+        assertThat(withPayments.length)
+            .as("XLSX with 1 txn + 1 payment should be > 1KB")
+            .isGreaterThan(1000);
+        assertThat(withPayments[0]).isEqualTo(XLSX_MAGIC[0]);
+        assertThat(withPayments[1]).isEqualTo(XLSX_MAGIC[1]);
+
+        byte[] emptyXlsx = cardExportService.generateExcel(emptyCardId, entity.getId());
+        assertThat(withPayments.length)
+            .as("card with 2 rows (txn + payment) should be larger than empty card")
+            .isGreaterThan(emptyXlsx.length);
+    }
+
+    @Test
+    @DisplayName("PDF export K.3: card with txn + payment -> both rows rendered")
+    void pdfExportWithPayments() {
+        byte[] withPayments = cardExportService.generatePdf(cardWithPaymentsId, entity.getId());
+
+        assertThat(withPayments).isNotNull();
+        assertThat(withPayments.length)
+            .as("PDF with 1 txn + 1 payment should be substantial (embedded font)")
+            .isGreaterThan(1000);
+        for (int i = 0; i < PDF_MAGIC.length; i++) {
+            assertThat(withPayments[i])
+                .as("PDF magic byte at index " + i)
+                .isEqualTo(PDF_MAGIC[i]);
+        }
+
+        byte[] emptyPdf = cardExportService.generatePdf(emptyCardId, entity.getId());
+        assertThat(withPayments.length)
+            .as("card with 2 rendered rows should exceed empty-state PDF")
+            .isGreaterThan(emptyPdf.length);
     }
 }
