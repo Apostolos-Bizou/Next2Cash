@@ -206,6 +206,36 @@ public class TransactionController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    // PATCH /api/transactions/{id}/blob-file-ids
+    // Admin utility: directly set blob_file_ids on a transaction.
+    // Used for test setups + future blob management. ADMIN only.
+    // Body: { "blobFileIds": "path/to/blob1,path/to/blob2" }
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/blob-file-ids")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateBlobFileIds(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Integer id,
+            @RequestBody Map<String, String> body) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+
+        return transactionRepository.findById(id).map(t -> {
+            userAccessService.assertCanAccessEntity(user, t.getEntityId());
+
+            String newValue = body.get("blobFileIds");
+            t.setBlobFileIds(newValue);
+            t.setUpdatedBy(user.getId());
+            Transaction saved = transactionRepository.save(t);
+
+            return ResponseEntity.ok(Map.<String, Object>of(
+                "success",      true,
+                "id",           saved.getId(),
+                "entityNumber", saved.getEntityNumber() != null ? saved.getEntityNumber() : 0,
+                "blobFileIds",  saved.getBlobFileIds() != null ? saved.getBlobFileIds() : ""
+            ));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
     // GET /api/transactions/next-number?entityId=X
     @GetMapping("/next-number")
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
