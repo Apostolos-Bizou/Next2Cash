@@ -764,17 +764,24 @@ onMounted(async () => {
           </div>
 
           <div v-if="filteredSubcats.length === 0" class="empty">Δεν βρέθηκαν υποκατηγορίες</div>
-          <div v-else class="config-list">
-            <div v-for="sub in filteredSubcats" :key="sub.id" class="config-item" :class="{ inactive: !sub.isActive }">
-              <div class="config-info">
-                <span class="parent-badge">{{ sub.parentKey }}</span>
-                <span class="config-key">{{ sub.configKey }}</span>
-                <span v-if="sub.configValue && sub.configValue !== sub.configKey" class="config-val">→ {{ sub.configValue }}</span>
+          <div v-else>
+            <div v-for="group in groupedSubcats" :key="group.category" class="subcat-group">
+              <div class="subcat-group-header">
+                <span class="subcat-group-title">{{ group.category }}</span>
+                <span class="config-count">{{ group.items.length }} υποκατ.</span>
               </div>
-              <div class="config-actions">
-                <span v-if="!sub.isActive" class="inactive-badge">Ανενεργή</span>
-                <button v-if="sub.isActive" class="btn-icon danger" title="Απενεργοποίηση" @click="deactivateConfig(sub)">🗑️</button>
-                <button v-else class="btn-icon" title="Επανενεργοποίηση" @click="reactivateConfig(sub)">♻️</button>
+              <div class="config-list">
+                <div v-for="sub in group.items" :key="sub.id" class="config-item" :class="{ inactive: !sub.isActive }">
+                  <div class="config-info">
+                    <span class="config-key">{{ sub.configKey }}</span>
+                    <span v-if="sub.configValue && sub.configValue !== sub.configKey" class="config-val">→ {{ sub.configValue }}</span>
+                  </div>
+                  <div class="config-actions">
+                    <span v-if="!sub.isActive" class="inactive-badge">Ανενεργή</span>
+                    <button v-if="sub.isActive" class="btn-icon danger" title="Απενεργοποίηση" @click="deactivateConfig(sub)">🗑️</button>
+                    <button v-else class="btn-icon" title="Επανενεργοποίηση" @click="reactivateConfig(sub)">♻️</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -784,34 +791,92 @@ onMounted(async () => {
 
     <!-- ═══ BANKS TAB ═══ -->
     <div v-else-if="activeTab === 'banks'" class="tab-content">
+      <!-- Create new bank account -->
+      <div class="card">
+        <h2>➕ Νέος Τραπεζικός Λογαριασμός</h2>
+        <div class="bank-form">
+          <div class="form-group">
+            <label>Ετικέτα <span class="req">*</span></label>
+            <input v-model="newBank.accountLabel" placeholder="π.χ. Eurobank Τρεχούμενος" class="input" />
+          </div>
+          <div class="form-group">
+            <label>Τράπεζα</label>
+            <input v-model="newBank.bankName" placeholder="π.χ. Eurobank" class="input" />
+          </div>
+          <div class="form-group">
+            <label>Τύπος</label>
+            <select v-model="newBank.accountType" class="input">
+              <option value="checking">Τρεχούμενος</option>
+              <option value="savings">Ταμιευτήριο</option>
+              <option value="cash">Μετρητά</option>
+              <option value="credit">Πιστωτική</option>
+              <option value="revolut">Revolut</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Αρχικό Υπόλοιπο (€)</label>
+            <input v-model.number="newBank.currentBalance" type="number" step="0.01" placeholder="0" class="input" />
+          </div>
+          <div class="form-group">
+            <label>Νόμισμα</label>
+            <select v-model="newBank.currency" class="input">
+              <option value="EUR">EUR</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+            </select>
+          </div>
+          <div class="form-group" style="align-self:end">
+            <button class="btn btn-primary" @click="createBankAccount" :disabled="!newBank.accountLabel.trim() || bankCreating">
+              {{ bankCreating ? '...' : '+ Δημιουργία' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bank accounts list -->
       <div class="card">
         <div class="card-header">
-          <h2>Τράπεζες / Μέθοδοι Πληρωμής — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
-          <button class="btn btn-secondary btn-sm" @click="loadBankAccounts" :disabled="banksLoading">
-            {{ banksLoading ? '...' : 'Ανανέωση' }}
-          </button>
+          <h2>🏦 Τραπεζικοί Λογαριασμοί</h2>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="help-text">Ενημερώστε υπόλοιπα χειροκίνητα</span>
+            <button class="btn btn-secondary btn-sm" @click="loadBankAccounts" :disabled="banksLoading">
+              {{ banksLoading ? '...' : 'Ανανέωση' }}
+            </button>
+          </div>
         </div>
 
         <div v-if="banksLoading" class="loading">Φόρτωση...</div>
-        <div v-else>
-          <div v-if="adminBanks.length === 0" class="empty">Δεν βρέθηκαν τραπεζικοί λογαριασμοί</div>
-          <div v-else class="config-list">
-            <div v-for="b in adminBanks" :key="b.id" class="config-item" :class="{ inactive: !b.active }">
-              <div class="config-info">
-                <span class="config-key">{{ b.bankName }}</span>
-                <span class="config-val">→ {{ b.accountLabel }}</span>
-                <span v-if="b.iban" class="config-val" style="font-size:.75rem;opacity:.6">{{ b.iban }}</span>
-                <span class="parent-badge">{{ b.currency }} · {{ b.accountType }}</span>
+        <div v-else-if="adminBanks.length === 0" class="empty">Δεν βρέθηκαν λογαριασμοί</div>
+        <div v-else class="config-list">
+          <div v-for="b in adminBanks" :key="b.id" class="bank-item" :class="{ inactive: !b.active }">
+            <div class="bank-icon-wrap">
+              <i class="fas" :class="b.accountType === 'cash' ? 'fa-wallet' : 'fa-university'" style="color:var(--accent);font-size:1.1rem"></i>
+            </div>
+            <div class="bank-info">
+              <div class="bank-label">
+                <span class="active-dot" :class="{ on: b.active, off: !b.active }"></span>
+                {{ b.accountLabel }}
               </div>
-              <div class="config-actions">
-                <span class="balance-badge" :class="{ negative: b.currentBalance < 0 }">
-                  {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2}) }} {{ b.currency }}
-                </span>
-                <span v-if="!b.active" class="inactive-badge">Ανενεργός</span>
-              </div>
+              <div class="bank-meta">{{ b.bankName }} · {{ b.accountType }} · {{ b.currency }} · Ενημ: {{ formatBankDate(b.balanceDate) }}</div>
+            </div>
+            <div class="bank-balance-area">
+              <span class="balance-badge" :class="{ negative: b.currentBalance < 0 }">
+                {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2}) }} €
+              </span>
+              <input
+                v-model.number="b._editBalance"
+                type="number" step="0.01"
+                class="balance-input"
+                @focus="b._editBalance = b._editBalance ?? b.currentBalance"
+              />
+              <button class="btn-balance-save" title="Αποθήκευση υπολοίπου" @click="updateBankBalance(b)">
+                <i class="fas fa-check"></i>
+              </button>
             </div>
           </div>
         </div>
+      </div>
+    </div>
       </div>
     </div>
 
@@ -1001,4 +1066,21 @@ onMounted(async () => {
 .inactive-badge { font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: rgba(239,68,68,.15); color: #f87171; }
 .balance-badge { font-size: .85rem; font-weight: 600; color: #10b981; font-family: monospace; }
 .balance-badge.negative { color: #f87171; }
+
+/* M.7.2 — Bank form + grouped subcategories */
+.bank-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; align-items: end; }
+.bank-item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--bg-input, #111827); border: 1px solid var(--border, #374151); border-radius: 6px; transition: opacity .2s; }
+.bank-item.inactive { opacity: .45; }
+.bank-icon-wrap { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: rgba(59,130,246,.1); border-radius: 8px; flex-shrink: 0; }
+.bank-info { flex: 1; min-width: 0; }
+.bank-label { font-weight: 600; color: var(--text-primary, #e5e7eb); display: flex; align-items: center; gap: 8px; }
+.bank-meta { font-size: .78rem; color: var(--text-muted, #9ca3af); margin-top: 2px; }
+.bank-balance-area { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.balance-input { width: 100px; padding: 6px 10px; background: var(--bg-input, #111827); border: 1px solid var(--border, #374151); border-radius: 4px; color: var(--text-primary); font-size: .88rem; font-family: monospace; text-align: right; }
+.balance-input:focus { border-color: var(--accent); outline: none; }
+.btn-balance-save { width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--accent, #3b82f6); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: .85rem; transition: opacity .15s; }
+.btn-balance-save:hover { opacity: .85; }
+.subcat-group { margin-bottom: 20px; }
+.subcat-group-header { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: rgba(59,130,246,.08); border-left: 3px solid var(--accent, #3b82f6); border-radius: 4px; margin-bottom: 6px; }
+.subcat-group-title { font-weight: 700; font-size: .92rem; color: var(--accent, #3b82f6); }
 </style>
