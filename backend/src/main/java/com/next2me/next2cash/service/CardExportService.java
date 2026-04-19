@@ -84,14 +84,14 @@ public class CardExportService {
      */
     public byte[] generateExcel(UUID cardId, UUID entityId) {
         CardService.CardSummary summary = cardService.getCardSummary(cardId, entityId);
-        CardService.CardTransactions txns =
-            cardService.getTransactionsForCard(cardId, entityId, 10000, 0);
+        CardService.CardRows rowsResult =
+            cardService.getRowsForCard(cardId, entityId, 10000, 0);
 
         try (XSSFWorkbook wb = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
             buildSummarySheet(wb, summary);
-            buildTransactionsSheet(wb, summary, txns.transactions());
+            buildTransactionsSheet(wb, summary, rowsResult.rows());
 
             wb.write(out);
             return out.toByteArray();
@@ -113,8 +113,8 @@ public class CardExportService {
      */
     public byte[] generatePdf(UUID cardId, UUID entityId) {
         CardService.CardSummary summary = cardService.getCardSummary(cardId, entityId);
-        CardService.CardTransactions txns =
-            cardService.getTransactionsForCard(cardId, entityId, 10000, 0);
+        CardService.CardRows rowsResult =
+            cardService.getRowsForCard(cardId, entityId, 10000, 0);
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
@@ -127,7 +127,7 @@ public class CardExportService {
             addPdfHeader(doc, baseFont);
             addPdfSupplierBlock(doc, baseFont, summary.card());
             addPdfKpiRow(doc, baseFont, summary);
-            addPdfTransactionsTable(doc, baseFont, txns.transactions());
+            addPdfTransactionsTable(doc, baseFont, rowsResult.rows());
 
             doc.close();
             return out.toByteArray();
@@ -297,7 +297,7 @@ public class CardExportService {
     }
 
     private void buildTransactionsSheet(XSSFWorkbook wb, CardService.CardSummary summary,
-                                         List<Transaction> txns) {
+                                         List<CardService.CardRow> rows) {
         Sheet sheet = wb.createSheet("Κινήσεις");
 
         CreationHelper ch = wb.getCreationHelper();
@@ -386,55 +386,61 @@ public class CardExportService {
         hdr.setHeightInPoints(22f);
 
         // Body rows
-        for (int i = 0; i < txns.size(); i++) {
-            Transaction t = txns.get(i);
+        for (int i = 0; i < rows.size(); i++) {
+            CardService.CardRow r = rows.get(i);
             boolean zebra = (i % 2 == 1);
+            boolean isPayment = "PAYMENT".equals(r.recordSource());
             Row row = sheet.createRow(i + 1);
 
-            // ID
+            // ID — negative for payments (-31, -30, ...)
             Cell c0 = row.createCell(0);
-            Integer entNum = t.getEntityNumber();
-            c0.setCellValue(entNum != null ? entNum : 0);
+            if (isPayment) {
+                c0.setCellValue(r.id() != null ? -r.id() : 0);
+            } else {
+                Integer entNum = r.entityNumber();
+                c0.setCellValue(entNum != null ? entNum : 0);
+            }
             c0.setCellStyle(zebra ? bodyZebra : bodyStyle);
 
             // Date
             Cell c1 = row.createCell(1);
-            if (t.getDocDate() != null) {
-                c1.setCellValue(java.sql.Date.valueOf(t.getDocDate()));
+            if (r.docDate() != null) {
+                c1.setCellValue(java.sql.Date.valueOf(r.docDate()));
                 c1.setCellStyle(zebra ? dateZebra : dateStyle);
             } else {
                 c1.setCellValue("");
                 c1.setCellStyle(zebra ? bodyZebra : bodyStyle);
             }
 
-            // Description
+            // Description — prepend 💳 for payment rows (matches UI)
             Cell c2 = row.createCell(2);
-            c2.setCellValue(safe(t.getDescription()));
+            String desc = safe(r.description());
+            c2.setCellValue(isPayment ? "💳 " + desc : desc);
             c2.setCellStyle(zebra ? bodyZebra : bodyStyle);
 
             // Category
             Cell c3 = row.createCell(3);
-            c3.setCellValue(safe(t.getCategory()));
+            c3.setCellValue(safe(r.category()));
             c3.setCellStyle(zebra ? bodyZebra : bodyStyle);
 
             // Payment method (bank name / cash / etc)
             Cell c4 = row.createCell(4);
-            c4.setCellValue(safe(t.getPaymentMethod()));
+            c4.setCellValue(safe(r.paymentMethod()));
             c4.setCellStyle(zebra ? bodyZebra : bodyStyle);
 
             // Amount
             Cell c5 = row.createCell(5);
-            c5.setCellValue(doubleValue(t.getAmount()));
+            c5.setCellValue(doubleValue(r.amount()));
             c5.setCellStyle(zebra ? moneyZebra : moneyStyle);
 
             // Amount paid (green)
             Cell c6 = row.createCell(6);
-            c6.setCellValue(doubleValue(t.getAmountPaid()));
+            c6.setCellValue(doubleValue(r.amountPaid()));
             c6.setCellStyle(zebra ? moneyGreenZebra : moneyGreen);
 
             // Amount remaining (red if > 0)
             Cell c7 = row.createCell(7);
-            BigDecimal rem = t.getAmountRemaining();
+            BigDecimal rem = r.amountRemaining();
             c7.setCellValue(doubleValue(rem));
             boolean hasRem = rem != null && rem.signum() > 0;
             if (hasRem) {
@@ -445,8 +451,8 @@ public class CardExportService {
 
             // Payment date — date when the transaction was paid
             Cell c8 = row.createCell(8);
-            if (t.getPaymentDate() != null) {
-                c8.setCellValue(java.sql.Date.valueOf(t.getPaymentDate()));
+            if (r.paymentDate() != null) {
+                c8.setCellValue(java.sql.Date.valueOf(r.paymentDate()));
                 c8.setCellStyle(zebra ? dateZebra : dateStyle);
             } else {
                 c8.setCellValue("");
@@ -455,7 +461,7 @@ public class CardExportService {
 
             // Status (text)
             Cell c9 = row.createCell(9);
-            c9.setCellValue(statusLabelFor(t.getPaymentStatus()));
+            c9.setCellValue(statusLabelFor(r.paymentStatus()));
             c9.setCellStyle(zebra ? bodyZebra : bodyStyle);
         }
 
@@ -598,7 +604,7 @@ public class CardExportService {
     }
 
     private void addPdfTransactionsTable(Document doc, BaseFont bf,
-                                          List<Transaction> txns) throws DocumentException {
+                                          List<CardService.CardRow> rows) throws DocumentException {
         com.lowagie.text.Font headerFont = new com.lowagie.text.Font(bf, 9,  com.lowagie.text.Font.BOLD, Color.WHITE);
         com.lowagie.text.Font bodyFont   = new com.lowagie.text.Font(bf, 9,  com.lowagie.text.Font.NORMAL, new Color(0x1A, 0x1A, 0x2E));
         com.lowagie.text.Font greenBody  = new com.lowagie.text.Font(bf, 9,  com.lowagie.text.Font.NORMAL, new Color(0x27, 0xAE, 0x60));
@@ -622,7 +628,7 @@ public class CardExportService {
             table.addCell(c);
         }
 
-        if (txns.isEmpty()) {
+        if (rows.isEmpty()) {
             PdfPCell empty = new PdfPCell(new Phrase("Δεν υπάρχουν κινήσεις για αυτή την καρτέλα.", bodyFont));
             empty.setColspan(10);
             empty.setPadding(14f);
@@ -630,33 +636,46 @@ public class CardExportService {
             empty.setBackgroundColor(new Color(0xFA, 0xFB, 0xFC));
             table.addCell(empty);
         } else {
-            for (int i = 0; i < txns.size(); i++) {
-                Transaction t = txns.get(i);
+            for (int i = 0; i < rows.size(); i++) {
+                CardService.CardRow r = rows.get(i);
+                boolean isPayment = "PAYMENT".equals(r.recordSource());
                 Color bg = (i % 2 == 1) ? new Color(0xFA, 0xFB, 0xFC) : Color.WHITE;
 
-                addPdfBodyCell(table, bg, bodyFont,
-                    t.getEntityNumber() != null ? String.valueOf(t.getEntityNumber()) : "—",
-                    Element.ALIGN_LEFT);
-                addPdfBodyCell(table, bg, bodyFont,
-                    t.getDocDate() != null ? t.getDocDate().format(DATE_DISPLAY) : "—",
-                    Element.ALIGN_LEFT);
-                addPdfBodyCell(table, bg, bodyFont, safe(t.getDescription()), Element.ALIGN_LEFT);
-                addPdfBodyCell(table, bg, bodyFont, safe(t.getCategory()),    Element.ALIGN_LEFT);
-                addPdfBodyCell(table, bg, bodyFont, nonEmpty(t.getPaymentMethod()), Element.ALIGN_LEFT);
-                addPdfBodyCell(table, bg, bodyFont, formatMoney(t.getAmount()), Element.ALIGN_RIGHT);
+                // ID — negative display for payment rows
+                String idStr;
+                if (isPayment) {
+                    idStr = r.id() != null ? "-" + r.id() : "—";
+                } else {
+                    idStr = r.entityNumber() != null ? String.valueOf(r.entityNumber()) : "—";
+                }
+                addPdfBodyCell(table, bg, bodyFont, idStr, Element.ALIGN_LEFT);
 
-                BigDecimal paid = t.getAmountPaid();
+                addPdfBodyCell(table, bg, bodyFont,
+                    r.docDate() != null ? r.docDate().format(DATE_DISPLAY) : "—",
+                    Element.ALIGN_LEFT);
+
+                // Description — prepend 💳 for payments
+                String desc = safe(r.description());
+                addPdfBodyCell(table, bg, bodyFont,
+                    isPayment ? "💳 " + desc : desc,
+                    Element.ALIGN_LEFT);
+
+                addPdfBodyCell(table, bg, bodyFont, safe(r.category()),    Element.ALIGN_LEFT);
+                addPdfBodyCell(table, bg, bodyFont, nonEmpty(r.paymentMethod()), Element.ALIGN_LEFT);
+                addPdfBodyCell(table, bg, bodyFont, formatMoney(r.amount()), Element.ALIGN_RIGHT);
+
+                BigDecimal paid = r.amountPaid();
                 com.lowagie.text.Font paidFont = (paid != null && paid.signum() > 0) ? greenBody : bodyFont;
                 addPdfBodyCell(table, bg, paidFont, formatMoney(paid), Element.ALIGN_RIGHT);
 
-                BigDecimal rem = t.getAmountRemaining();
+                BigDecimal rem = r.amountRemaining();
                 com.lowagie.text.Font remFont = (rem != null && rem.signum() > 0) ? redBody : bodyFont;
                 addPdfBodyCell(table, bg, remFont, formatMoney(rem), Element.ALIGN_RIGHT);
 
                 addPdfBodyCell(table, bg, bodyFont,
-                    t.getPaymentDate() != null ? t.getPaymentDate().format(DATE_DISPLAY) : "—",
+                    r.paymentDate() != null ? r.paymentDate().format(DATE_DISPLAY) : "—",
                     Element.ALIGN_LEFT);
-                addPdfBodyCell(table, bg, bodyFont, statusLabelFor(t.getPaymentStatus()), Element.ALIGN_LEFT);
+                addPdfBodyCell(table, bg, bodyFont, statusLabelFor(r.paymentStatus()), Element.ALIGN_LEFT);
             }
         }
 
