@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import api from '@/api'
 
 // ── Filters ────────────────────────────────────────────────────────
-const selectedYear   = ref('2026')
+const selectedYear   = ref(new Date().getFullYear().toString())
 const selectedReport = ref('subcategory')
 const selectedType   = ref('all')
 
@@ -20,90 +21,198 @@ const types = [
   { value: 'income',   label: 'Εισπράξεις' },
 ]
 
-// ── Mock Data ──────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────
+const allTransactions = ref([])
+const loading = ref(false)
 
-// Subcategory report data
-const subcategoryData = ref([
-  { name: 'Dn2Me-UK',          income: 0,        payments: 3297.50, moves: 2  },
-  { name: 'Ενοίκιο',           income: 0,        payments: 2680.00, moves: 4  },
-  { name: 'ΚΑΓΚΕΛΑΡΗΣ',        income: 2464.20,  payments: 0,       moves: 18 },
-  { name: 'Λογισμικά / ERP',   income: 0,        payments: 1544.78, moves: 21 },
-  { name: 'Finance',            income: 0,        payments: 1488.00, moves: 8  },
-  { name: 'ΒΑΡΙΑΣ',            income: 1116.00,  payments: 0,       moves: 1  },
-  { name: 'Άδειες Χρήσης',     income: 0,        payments: 878.14,  moves: 9  },
-  { name: 'Έξοδα Κίνησης',     income: 0,        payments: 551.28,  moves: 13 },
-  { name: 'Τηλέφωνα',          income: 0,        payments: 419.68,  moves: 7  },
-  { name: 'Έξοδα Διαχείρισης', income: 0,        payments: 181.94,  moves: 5  },
-  { name: 'Γεύματα Εργασίας',  income: 0,        payments: 6.48,    moves: 1  },
-])
+const ENTITY_MAP = {
+  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
+  house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
+  polaris: '50317f44-9961-4fb4-add0-7a118e32dc14',
+}
 
-// Category report data
-const categoryData = ref([
-  { name: 'Λειτουργικά',  amount: 3679.22, pct: 33.8, moves: 30, avg: 122.64 },
-  { name: 'Λοιπά',        amount: 3297.50, pct: 30.3, moves: 2,  avg: 1648.75 },
-  { name: 'Εξοπλισμός',   amount: 2422.92, pct: 22.3, moves: 30, avg: 80.76 },
-  { name: 'Απασχόληση',   amount: 1488.00, pct: 13.7, moves: 8,  avg: 186.00 },
-  { name: 'Έσοδα Β',      amount: 0,       pct: 0.0,  moves: 18, avg: 0 },
-  { name: 'Έσοδα Β',      amount: 0,       pct: 0.0,  moves: 1,  avg: 0 },
-])
+const MONTH_NAMES = [
+  'Ιανουάριος',
+  'Φεβρουάριος',
+  'Μάρτιος',
+  'Απρίλιος',
+  'Μάιος',
+  'Ιούνιος',
+  'Ιούλιος',
+  'Αύγουστος',
+  'Σεπτέμβριος',
+  'Οκτώβριος',
+  'Νοέμβριος',
+  'Δεκέμβριος',
+]
 
-// Yearly comparison data
-const yearlyCategoryData = ref([
-  { name: 'Ανάπτυξη Λογισμικού', years: { '2017':17157.07,'2018':282988.00,'2019':78998.00,'2020':42500.00,'2021':31500.00,'2022':0,'2023':0,'2024':0,'2025':0,'2026':0 }, total: 373863.07 },
-  { name: 'Απασχόληση',          years: { '2017':21074.37,'2018':59775.22,'2019':58012.56,'2020':59787.45,'2021':25036.45,'2022':15858.00,'2023':11018.89,'2024':11548.82,'2025':9151.83,'2026':1488.00 }, total: 271871.59 },
-  { name: 'Λειτουργικά',         years: { '2017':19236.82,'2018':32186.64,'2019':30119.25,'2020':27052.58,'2021':21985.79,'2022':19192.68,'2023':20086.46,'2024':24792.77,'2025':12687.35,'2026':3679.22 }, total: 210698.76 },
-  { name: 'Λοιπά',               years: { '2017':6788.00,'2018':21567.91,'2019':50833.55,'2020':45672.56,'2021':23424.18,'2022':5995.68,'2023':10228.25,'2024':3250.00,'2025':10603.53,'2026':3297.50 }, total: 180853.08 },
-  { name: 'Προσωπικό',           years: { '2017':2267.71,'2018':40538.79,'2019':50514.83,'2020':29871.24,'2021':12009.54,'2022':1277.64,'2023':934.40,'2024':682.29,'2025':522.50,'2026':0 }, total: 137810.94 },
-  { name: 'Εξοπλισμός',          years: { '2017':4621.00,'2018':8468.75,'2019':1715.25,'2020':8323.53,'2021':2586.74,'2022':2415.75,'2023':2152.00,'2024':2609.84,'2025':1979.78,'2026':2422.92 }, total: 37215.56 },
-  { name: 'Προβολή & Προώθηση',  years: { '2017':0,'2018':21580.00,'2019':1341.40,'2020':1465.47,'2021':530.58,'2022':2230.00,'2023':488.28,'2024':1189.00,'2025':0,'2026':0 }, total: 28824.65 },
-])
+const BUDGET_COLORS = ['#29b6f6','#ab47bc','#4FC3A1','#ff9800','#ef5350','#ff5252','#e91e63','#8bc34a','#ff9800']
+
+// ── Fetch transactions ──────────────────────────────────────────
+async function loadTransactions() {
+  const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
+  const entityId = ENTITY_MAP[entityKey]
+  if (!entityId) return
+
+  loading.value = true
+  try {
+    const res = await api.get('/api/transactions', {
+      params: { entityId, page: 0, perPage: 9999 }
+    })
+    const data = res.data?.data || res.data || []
+    // Only active transactions
+    allTransactions.value = (Array.isArray(data) ? data : []).filter(
+      t => (t.recordStatus || 'active') === 'active'
+    )
+  } catch (err) {
+    console.error('Reports: failed to load transactions', err)
+    allTransactions.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+// ── Active transactions for selected year ─────────────────────────
+const yearTransactions = computed(() => {
+  return allTransactions.value.filter(t => {
+    if (!t.docDate) return false
+    return t.docDate.substring(0, 4) === selectedYear.value
+  })
+})
+
+// ── REPORT 1: Subcategory Data ────────────────────────────────
+const subcategoryData = computed(() => {
+  const map = {}
+  yearTransactions.value.forEach(t => {
+    const sub = t.subcategory || t.category || 'N/A'
+    if (!map[sub]) map[sub] = { name: sub, income: 0, payments: 0, moves: 0 }
+    map[sub].moves++
+    if (t.type === 'income') {
+      map[sub].income += Number(t.amount) || 0
+    } else {
+      map[sub].payments += Number(t.amount) || 0
+    }
+  })
+  return Object.values(map).sort((a, b) => (b.income + b.payments) - (a.income + a.payments))
+})
+
+// ── REPORT 2: Category Data ───────────────────────────────────
+const categoryData = computed(() => {
+  const map = {}
+  yearTransactions.value.forEach(t => {
+    const cat = t.category || 'N/A'
+    if (!map[cat]) map[cat] = { name: cat, amount: 0, moves: 0, incomeAmount: 0 }
+    map[cat].moves++
+    const amt = Number(t.amount) || 0
+    if (t.type === 'expense') {
+      map[cat].amount += amt
+    } else {
+      map[cat].incomeAmount += amt
+    }
+  })
+  const rows = Object.values(map)
+  const totalExpense = rows.reduce((s, r) => s + r.amount, 0)
+  return rows.map(r => ({
+    name: r.name,
+    amount: r.amount,
+    pct: totalExpense > 0 ? (r.amount / totalExpense) * 100 : 0,
+    moves: r.moves,
+    avg: r.moves > 0 ? r.amount / r.moves : 0,
+  })).sort((a, b) => b.amount - a.amount)
+})
+
+// ── REPORT 3: Yearly Category Data (all years) ─────────────────
+const yearlyCategoryData = computed(() => {
+  const map = {}
+  allTransactions.value.forEach(t => {
+    if (!t.docDate || t.type !== 'expense') return
+    const cat = t.category || 'N/A'
+    const yr = t.docDate.substring(0, 4)
+    if (!map[cat]) {
+      map[cat] = { name: cat, years: {}, total: 0 }
+      years.forEach(y => { map[cat].years[y] = 0 })
+    }
+    const amt = Number(t.amount) || 0
+    if (map[cat].years[yr] !== undefined) {
+      map[cat].years[yr] += amt
+    }
+    map[cat].total += amt
+  })
+  return Object.values(map).sort((a, b) => b.total - a.total)
+})
+
 const yearlyTotals = computed(() => {
   const t = {}
-  years.forEach(y => { t[y] = yearlyCategoryData.value.reduce((s,r) => s + (r.years[y]||0), 0) })
+  years.forEach(y => { t[y] = yearlyCategoryData.value.reduce((s, r) => s + (r.years[y] || 0), 0) })
   return t
 })
-const yearlyGrandTotal = computed(() => yearlyCategoryData.value.reduce((s,r) => s+r.total, 0))
+const yearlyGrandTotal = computed(() => yearlyCategoryData.value.reduce((s, r) => s + r.total, 0))
 
-// Monthly data
-const monthlyData = ref([
-  { month: 'Ιανουάριος', income: 0,       payments: 3204.78, net: -3204.78, moves: 12 },
-  { month: 'Φεβρουάριος',income: 0,       payments: 2981.22, net: -2981.22, moves: 10 },
-  { month: 'Μάρτιος',    income: 1116.00, payments: 4236.44, net: -3120.44, moves: 18 },
-  { month: 'Απρίλιος',   income: 2464.20, payments: 465.20,  net: 1999.00,  moves: 14 },
-  { month: 'Μάιος',      income: 0,       payments: 0,        net: 0,        moves: 0  },
-  { month: 'Ιούνιος',    income: 0,       payments: 0,        net: 0,        moves: 0  },
-  { month: 'Ιούλιος',    income: 0,       payments: 0,        net: 0,        moves: 0  },
-  { month: 'Αύγουστος',  income: 0,       payments: 0,        net: 0,        moves: 0  },
-  { month: 'Σεπτέμβριος',income: 0,       payments: 0,        net: 0,        moves: 0  },
-  { month: 'Οκτώβριος',  income: 0,       payments: 0,        net: 0,        moves: 0  },
-  { month: 'Νοέμβριος',  income: 0,       payments: 0,        net: 0,        moves: 0  },
-  { month: 'Δεκέμβριος', income: 0,       payments: 0,        net: 0,        moves: 0  },
-])
-
-// Budget analysis data
-const budgetCategories = ref([
-  { name: 'Λειτουργικά',         color:'#29b6f6', years: { '2017':19236.02,'2018':32186.64,'2019':30119.25,'2020':27052.58,'2021':21985.79,'2022':19192.68,'2023':20086.46,'2024':24792.77,'2025':12687.35,'2026':3679.22 }, total: 210698.76 },
-  { name: 'Προβολή & Προώθηση',  color:'#ab47bc', years: { '2017':0,'2018':21580.00,'2019':1341.40,'2020':1465.47,'2021':530.58,'2022':2230.00,'2023':488.28,'2024':1189.00,'2025':0,'2026':0 }, total: 28824.65 },
-  { name: 'Ανάπτυξη Λογισμικού', color:'#4FC3A1', years: { '2017':17157.07,'2018':282988.00,'2019':78998.00,'2020':42500.00,'2021':31500.00,'2022':0,'2023':0,'2024':0,'2025':0,'2026':0 }, total: 373863.07 },
-  { name: 'Εξοπλισμός',          color:'#ff9800', years: { '2017':4621.00,'2018':8468.75,'2019':1715.25,'2020':8323.53,'2021':2586.74,'2022':2415.75,'2023':2152.00,'2024':2609.84,'2025':1979.78,'2026':2422.92 }, total: 37215.56 },
-  { name: 'Απασχόληση',          color:'#ef5350', years: { '2017':21074.37,'2018':59775.22,'2019':58012.56,'2020':59787.45,'2021':25036.45,'2022':15858.00,'2023':11018.89,'2024':11548.82,'2025':9151.83,'2026':1488.00 }, total: 271871.59 },
-  { name: 'Λοιπά',               color:'#ff5252', years: { '2017':6788.00,'2018':21567.91,'2019':50833.55,'2020':45672.56,'2021':23424.18,'2022':5995.68,'2023':10228.25,'2024':3250.00,'2025':10603.53,'2026':3297.50 }, total: 180853.08 },
-  { name: 'ΠΡΟΣΩΠΙΚΟ',           color:'#e91e63', years: { '2017':2267.71,'2018':40538.79,'2019':50514.83,'2020':29871.24,'2021':12009.54,'2022':1277.64,'2023':934.40,'2024':682.29,'2025':522.50,'2026':0 }, total: 137810.94 },
-  { name: 'ΠΡΟΒΟΛΗ ΚΑΙ ΠΡΟΩΘΗΣΗ',color:'#8bc34a', years: { '2017':0,'2018':21580.00,'2019':1341.40,'2020':1465.47,'2021':530.58,'2022':2230.00,'2023':488.28,'2024':1189.00,'2025':0,'2026':0 }, total: 28824.65 },
-  { name: 'Άλλο',                 color:'#ff9800', years: {}, total: 0 },
-])
-const budgetIncome = ref({
-  years: { '2017':123332.24,'2018':483189.85,'2019':228751.69,'2020':158768.72,'2021':50373.48,'2022':18226.47,'2023':34660.51,'2024':28533.24,'2025':28417.73,'2026':3580.20 },
-  total: 1045754.13
+// ── REPORT 4: Monthly Data (for selected year) ─────────────────
+const monthlyData = computed(() => {
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    month: MONTH_NAMES[i], income: 0, payments: 0, net: 0, moves: 0
+  }))
+  yearTransactions.value.forEach(t => {
+    if (!t.docDate) return
+    const m = parseInt(t.docDate.substring(5, 7), 10) - 1
+    if (m < 0 || m > 11) return
+    const amt = Number(t.amount) || 0
+    months[m].moves++
+    if (t.type === 'income') {
+      months[m].income += amt
+    } else {
+      months[m].payments += amt
+    }
+  })
+  months.forEach(m => { m.net = m.income - m.payments })
+  return months
 })
+
+// ── REPORT 5: Budget Analysis (all years, expenses by category) ──
+const budgetCategories = computed(() => {
+  const map = {}
+  let colorIdx = 0
+  allTransactions.value.forEach(t => {
+    if (!t.docDate || t.type !== 'expense') return
+    const cat = t.category || 'N/A'
+    const yr = t.docDate.substring(0, 4)
+    if (!map[cat]) {
+      map[cat] = { name: cat, color: BUDGET_COLORS[colorIdx++ % BUDGET_COLORS.length], years: {}, total: 0 }
+      years.forEach(y => { map[cat].years[y] = 0 })
+    }
+    const amt = Number(t.amount) || 0
+    if (map[cat].years[yr] !== undefined) {
+      map[cat].years[yr] += amt
+    }
+    map[cat].total += amt
+  })
+  return Object.values(map).sort((a, b) => b.total - a.total)
+})
+
+const budgetIncome = computed(() => {
+  const result = { years: {}, total: 0 }
+  years.forEach(y => { result.years[y] = 0 })
+  allTransactions.value.forEach(t => {
+    if (!t.docDate || t.type !== 'income') return
+    const yr = t.docDate.substring(0, 4)
+    const amt = Number(t.amount) || 0
+    if (result.years[yr] !== undefined) {
+      result.years[yr] += amt
+    }
+    result.total += amt
+  })
+  return result
+})
+
 const budgetTotalExpenses = computed(() => {
   const t = {}
-  years.forEach(y => { t[y] = budgetCategories.value.reduce((s,c) => s+(c.years[y]||0), 0) })
+  years.forEach(y => { t[y] = budgetCategories.value.reduce((s, c) => s + (c.years[y] || 0), 0) })
   return t
 })
 const budgetNet = computed(() => {
   const t = {}
-  years.forEach(y => { t[y] = (budgetIncome.value.years[y]||0) - (budgetTotalExpenses.value[y]||0) })
+  years.forEach(y => { t[y] = (budgetIncome.value.years[y] || 0) - (budgetTotalExpenses.value[y] || 0) })
   return t
 })
 
@@ -111,61 +220,61 @@ const budgetNet = computed(() => {
 const kpis = computed(() => {
   if (selectedReport.value === 'subcategory') {
     const filtered = filteredSubcategory.value
-    const inc  = filtered.reduce((s,r) => s+r.income, 0)
-    const pay  = filtered.reduce((s,r) => s+r.payments, 0)
+    const inc  = filtered.reduce((s, r) => s + r.income, 0)
+    const pay  = filtered.reduce((s, r) => s + r.payments, 0)
     const subs = filtered.length
     return [
-      { label:'Εισπράξεις',    value: fmt(inc),      color:'green' },
-      { label:'Πληρωμές',      value: fmt(pay),       color:'red' },
-      { label:'Υποκατηγορίες', value: subs.toString(),color:'neutral' },
-      { label:'Καθαρό',        value: fmt(inc - pay), color: inc-pay >= 0 ? 'green':'red' },
+      { label: 'Εισπράξεις',    value: fmt(inc),      color: 'green' },
+      { label: 'Πληρωμές',      value: fmt(pay),      color: 'red' },
+      { label: 'Υποκατηγορίες', value: subs.toString(), color: 'neutral' },
+      { label: 'Καθαρό',        value: fmt(inc - pay), color: inc - pay >= 0 ? 'green' : 'red' },
     ]
   }
   if (selectedReport.value === 'category') {
     const filtered = filteredCategory.value
-    const total = filtered.reduce((s,r) => s+r.amount, 0)
-    const moves = filtered.reduce((s,r) => s+r.moves, 0)
-    const avg   = filtered.length ? total/filtered.length : 0
+    const total = filtered.reduce((s, r) => s + r.amount, 0)
+    const moves = filtered.reduce((s, r) => s + r.moves, 0)
+    const avg   = filtered.length ? total / filtered.length : 0
     return [
-      { label:'Σύνολο',      value: fmt(total),          color:'red' },
-      { label:'Κατηγορίες',  value: filtered.length.toString(), color:'neutral' },
-      { label:'Κινήσεις',    value: moves.toString(),    color:'neutral' },
-      { label:'Μ.Ο./Κατηγορία', value: fmt(avg),         color:'neutral' },
+      { label: 'Σύνολο',      value: fmt(total),                color: 'red' },
+      { label: 'Κατηγορίες',  value: filtered.length.toString(), color: 'neutral' },
+      { label: 'Κινήσεις',    value: moves.toString(),          color: 'neutral' },
+      { label: 'Μ.Ο./Κατηγορία', value: fmt(avg),       color: 'neutral' },
     ]
   }
   if (selectedReport.value === 'yearly') {
     const total  = yearlyGrandTotal.value
     const yCount = years.length
     const cats   = yearlyCategoryData.value.length
-    const avg    = yCount ? total/yCount : 0
+    const avg    = yCount ? total / yCount : 0
     return [
-      { label:'Γενικό Σύνολο', value: fmt(total),        color:'neutral' },
-      { label:'Έτη',           value: yCount.toString(),  color:'neutral' },
-      { label:'Κατηγορίες',    value: cats.toString(),    color:'neutral' },
-      { label:'Μ.Ο./Έτος',     value: fmt(avg),           color:'neutral' },
+      { label: 'Γενικό Σύνολο', value: fmt(total),       color: 'neutral' },
+      { label: 'Έτη',           value: yCount.toString(), color: 'neutral' },
+      { label: 'Κατηγορίες',    value: cats.toString(),   color: 'neutral' },
+      { label: 'Μ.Ο./Έτος',     value: fmt(avg),          color: 'neutral' },
     ]
   }
   if (selectedReport.value === 'budget') {
-    const totalExp = Object.values(budgetTotalExpenses.value).reduce((s,v)=>s+v,0)
-    const totalInc = Object.values(budgetIncome.value.years).reduce((s,v)=>s+v,0)
+    const totalExp = Object.values(budgetTotalExpenses.value).reduce((s, v) => s + v, 0)
+    const totalInc = Object.values(budgetIncome.value.years).reduce((s, v) => s + v, 0)
     const cats     = budgetCategories.value.length
     return [
-      { label:'Σύν. Εξόδων',  value: fmt(totalExp), color:'red' },
-      { label:'Σύν. Εσόδων',  value: fmt(totalInc), color:'green' },
-      { label:'Κατηγορίες',   value: cats.toString(),color:'neutral' },
-      { label:'Έτη (2017–2026)',value: '10',          color:'neutral' },
+      { label: 'Σύν. Εξόδων',  value: fmt(totalExp), color: 'red' },
+      { label: 'Σύν. Εσόδων',  value: fmt(totalInc), color: 'green' },
+      { label: 'Κατηγορίες',   value: cats.toString(), color: 'neutral' },
+      { label: 'Έτη (2017–2026)', value: '10',          color: 'neutral' },
     ]
   }
   if (selectedReport.value === 'monthly') {
     const active = monthlyData.value.filter(m => m.moves > 0)
-    const inc    = monthlyData.value.reduce((s,m) => s+m.income, 0)
-    const pay    = monthlyData.value.reduce((s,m) => s+m.payments, 0)
-    const moves  = monthlyData.value.reduce((s,m) => s+m.moves, 0)
+    const inc    = monthlyData.value.reduce((s, m) => s + m.income, 0)
+    const pay    = monthlyData.value.reduce((s, m) => s + m.payments, 0)
+    const moves  = monthlyData.value.reduce((s, m) => s + m.moves, 0)
     return [
-      { label:'Εισπράξεις', value: fmt(inc),           color:'green' },
-      { label:'Πληρωμές',   value: fmt(pay),            color:'red' },
-      { label:'Καθαρό',     value: fmt(inc-pay),        color: inc-pay>=0?'green':'red' },
-      { label:'Ενεργοί Μήνες', value: active.length.toString(), color:'neutral' },
+      { label: 'Εισπράξεις', value: fmt(inc),              color: 'green' },
+      { label: 'Πληρωμές',   value: fmt(pay),              color: 'red' },
+      { label: 'Καθαρό',     value: fmt(inc - pay),        color: inc - pay >= 0 ? 'green' : 'red' },
+      { label: 'Ενεργοί Μήνες', value: active.length.toString(), color: 'neutral' },
     ]
   }
   return []
@@ -192,7 +301,7 @@ const fmt = (n) => {
 
 const fmtShort = (n) => {
   if (!n) return '—'
-  if (n >= 1000) return (n/1000).toFixed(0) + 'K'
+  if (n >= 1000) return (n / 1000).toFixed(0) + 'K'
   return n.toFixed(0)
 }
 
@@ -207,7 +316,7 @@ const chartBars = computed(() => {
       isIncome: r.income > r.payments,
     }))
   } else if (selectedReport.value === 'category') {
-    data = filteredCategory.value.map((r,i) => ({
+    data = filteredCategory.value.map((r, i) => ({
       label: r.name,
       value: r.amount,
       raw: r.amount,
@@ -215,7 +324,7 @@ const chartBars = computed(() => {
     }))
   } else if (selectedReport.value === 'monthly') {
     data = monthlyData.value.map(m => ({
-      label: m.month.substring(0,3),
+      label: m.month.substring(0, 3),
       value: Math.abs(m.net),
       raw: m.net,
       isIncome: m.net >= 0,
@@ -223,7 +332,7 @@ const chartBars = computed(() => {
   }
   const max = Math.max(...data.map(d => d.value), 1)
   const colors = ['#29b6f6','#4FC3A1','#ef5350','#ab47bc','#ff9800','#e91e63','#8bc34a','#ff5252','#26c6da','#ffd54f','#78909c']
-  return data.map((d,i) => ({
+  return data.map((d, i) => ({
     ...d,
     height: Math.max((d.value / max) * 220, d.value > 0 ? 4 : 0),
     color: d.isIncome ? '#4FC3A1' : colors[i % colors.length],
@@ -235,24 +344,24 @@ const chartBars = computed(() => {
 const yearlyChartBars = computed(() => {
   const max = Math.max(...years.map(y => yearlyTotals.value[y] || 0), 1)
   const colors = ['#29b6f6','#4FC3A1','#ef5350','#ab47bc','#ff9800','#e91e63','#8bc34a','#ff5252','#26c6da','#ffd54f']
-  return years.map((y,i) => ({
+  return years.map((y, i) => ({
     label: y,
     value: yearlyTotals.value[y] || 0,
-    height: Math.max(((yearlyTotals.value[y]||0) / max) * 220, (yearlyTotals.value[y]||0) > 0 ? 4 : 0),
+    height: Math.max(((yearlyTotals.value[y] || 0) / max) * 220, (yearlyTotals.value[y] || 0) > 0 ? 4 : 0),
     color: colors[i % colors.length],
-    displayValue: fmtShort(yearlyTotals.value[y]||0),
+    displayValue: fmtShort(yearlyTotals.value[y] || 0),
   }))
 })
 
-// Budget chart (stacked per year — simplified as grouped)
+// Budget chart (paired bars per year)
 const budgetChartBars = computed(() => {
-  const max = Math.max(...years.map(y => Math.max(budgetTotalExpenses.value[y]||0, budgetIncome.value.years[y]||0)), 1)
-  return years.map((y,i) => ({
+  const max = Math.max(...years.map(y => Math.max(budgetTotalExpenses.value[y] || 0, budgetIncome.value.years[y] || 0)), 1)
+  return years.map((y, i) => ({
     label: y,
-    expHeight: Math.max(((budgetTotalExpenses.value[y]||0)/max)*220, (budgetTotalExpenses.value[y]||0)>0?4:0),
-    incHeight: Math.max(((budgetIncome.value.years[y]||0)/max)*220, (budgetIncome.value.years[y]||0)>0?4:0),
-    expVal: fmtShort(budgetTotalExpenses.value[y]||0),
-    incVal: fmtShort(budgetIncome.value.years[y]||0),
+    expHeight: Math.max(((budgetTotalExpenses.value[y] || 0) / max) * 220, (budgetTotalExpenses.value[y] || 0) > 0 ? 4 : 0),
+    incHeight: Math.max(((budgetIncome.value.years[y] || 0) / max) * 220, (budgetIncome.value.years[y] || 0) > 0 ? 4 : 0),
+    expVal: fmtShort(budgetTotalExpenses.value[y] || 0),
+    incVal: fmtShort(budgetIncome.value.years[y] || 0),
   }))
 })
 
@@ -263,6 +372,19 @@ const exportExcel = () => {
 
 // ── Current date label ─────────────────────────────────────────────
 const currentMonthLabel = new Intl.DateTimeFormat('el-GR', { month: 'long', year: 'numeric' }).format(new Date())
+
+// ── Lifecycle ─────────────────────────────────────────────────────
+onMounted(() => {
+  loadTransactions()
+  // Listen for entity changes (same pattern as AdminView)
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'n2c_entity') loadTransactions()
+  })
+})
+
+// Also reload when year changes (not strictly needed since yearTransactions is computed, but good UX)
+// Entity switch within same tab uses custom event
+window.addEventListener('entity-changed', () => { loadTransactions() })
 </script>
 
 <template>
