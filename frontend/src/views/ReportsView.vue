@@ -3,11 +3,12 @@ import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
 
 // ── Filters ────────────────────────────────────────────────────────
-const selectedYear   = ref(new Date().getFullYear().toString())
+const selectedYear   = ref('all')
 const selectedReport = ref('subcategory')
 const selectedType   = ref('all')
 
-const years   = ['2017','2018','2019','2020','2021','2022','2023','2024','2025','2026']
+const allYears = ['2017','2018','2019','2020','2021','2022','2023','2024','2025','2026']
+const years = allYears  // used in yearly/budget tables
 const reports = [
   { value: 'monthly',    label: 'Μηνιαία Ανάλυση' },
   { value: 'yearly',     label: 'Ετήσια Σύγκριση' },
@@ -74,6 +75,7 @@ async function loadTransactions() {
 
 // ── Active transactions for selected year ─────────────────────────
 const yearTransactions = computed(() => {
+  if (selectedYear.value === 'all') return allTransactions.value.filter(t => !!t.docDate)
   return allTransactions.value.filter(t => {
     if (!t.docDate) return false
     return t.docDate.substring(0, 4) === selectedYear.value
@@ -398,7 +400,8 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
         <!-- Year -->
         <div class="select-wrap">
           <select v-model="selectedYear" class="filter-select">
-            <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+            <option value="all">Όλα τα έτη</option>
+            <option v-for="y in allYears" :key="y" :value="y">{{ y }}</option>
           </select>
           <span class="select-arrow">▾</span>
         </div>
