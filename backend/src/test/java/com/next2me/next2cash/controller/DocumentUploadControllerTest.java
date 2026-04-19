@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Phase M.1 — integration tests for POST /api/documents/upload
+ * Phase M.1 έΑΦ integration tests for POST /api/documents/upload
  *
  * Coverage strategy:
  * - These tests cover the authorization + validation paths that do NOT
@@ -70,6 +70,66 @@ class DocumentUploadControllerTest extends BaseIntegrationTest {
     // TEST 1: USER assigned to entity A cannot upload to a txn of entity B
     //         -> 403 Forbidden via assertCanAccessEntity()
     // -------------------------------------------------------------------
+    @Test
+    @DisplayName("USER assigned to A is BLOCKED from uploading to txn of B (403)")
+    void upload_crossEntity_returns403() throws Exception {
+        CompanyEntity entityA = tdb.createEntity("AAA", "EntityA");
+        CompanyEntity entityB = tdb.createEntity("BBB", "EntityB");
+
+        // user belongs to entity A only (explicit assignment)
+        User userA = tdb.createUser("userA");
+        tdb.assignEntities(userA, entityA);
+        String tokenA = tdb.bearerToken(userA);
+
+        // transaction lives in entity B
+        Transaction txnB = createTxn(entityB, userA);
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/documents/upload")
+                .file(pdfFile())
+                .param("transactionId", String.valueOf(txnB.getId()))
+                .header("Authorization", tokenA)
+                .contentType(MediaType.MULTIPART_FORM_DATA))
+            .andExpect(status().isForbidden());
+    }
+
+    // -------------------------------------------------------------------
+    // TEST 2: ADMIN uploading to non-existent transaction returns 404
+    // -------------------------------------------------------------------
+    @Test
+    @DisplayName("ADMIN uploading to non-existent transaction returns 404")
+    void upload_missingTransaction_returns404() throws Exception {
+        User admin = tdb.createAdmin("admin");
+        String token = tdb.bearerToken(admin);
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/documents/upload")
+                .file(pdfFile())
+                .param("transactionId", "99999999")
+                .header("Authorization", token)
+                .contentType(MediaType.MULTIPART_FORM_DATA))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value("transaction_not_found"));
+    }
+
+    // -------------------------------------------------------------------
+    // TEST 3: ADMIN uploading a non-PDF file returns 400 only_pdf_allowed
+    // -------------------------------------------------------------------
+    @Test
+    @DisplayName("ADMIN uploading non-PDF returns 400 only_pdf_allowed")
+    void upload_nonPdf_returns400() throws Exception {
+        CompanyEntity entity = tdb.createEntity("MAIN", "Main");
+        User admin = tdb.createAdmin("admin");
+        String token = tdb.bearerToken(admin);
+
+        Transaction txn = createTxn(entity, admin);
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/documents/upload")
+                .file(jpgFile())
+                .param("transactionId", String.valueOf(txn.getId()))
+                .header("Authorization", token)
+                .contentType(MediaType.MULTIPART_FORM_DATA))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("only_pdf_allowed"));
+    }
 
     // -------------------------------------------------------------------
     // TEST 4: VIEWER role cannot upload -> 403 via @PreAuthorize
