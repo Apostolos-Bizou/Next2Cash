@@ -4,6 +4,10 @@ import com.next2me.next2cash.repository.TransactionRepository;
 import com.azure.storage.blob.BlobServiceClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
 import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.sas.BlobSasPermission;
+import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
+import com.next2me.next2cash.model.User;
+import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
@@ -30,6 +35,7 @@ import java.util.zip.ZipOutputStream;
 public class DocumentController {
 
     private final TransactionRepository transactionRepository;
+    private final UserAccessService userAccessService;
 
     @Value("${next2cash.azure.blob.connection-string}")
     private String blobConnectionString;
@@ -168,6 +174,88 @@ public class DocumentController {
             "success",  true,
             "blobPath", blobPath,
             "fileName", fileName
+        ));
+    }
+
+    // -- GET /api/documents/by-transaction/{id} ----------------------------
+    // Returns attachments metadata + short-lived SAS download URLs (15 min).
+    // Visible to all authenticated roles so viewers/accountants can inspect.
+    @GetMapping("/by-transaction/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER', 'ACCOUNTANT')")
+    public ResponseEntity<?> getDocumentsByTransaction(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Integer id) {
+
+        // SECURITY: resolve user and verify entity access
+        User user = userAccessService.getCurrentUser(authHeader);
+
+        var txnOpt = transactionRepository.findById(id);
+        if (txnOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        var txn = txnOpt.get();
+        userAccessService.assertCanAccessEntity(user, txn.getEntityId());
+
+        String blobIds = txn.getBlobFileIds();
+        if (blobIds == null || blobIds.isBlank()) {
+            return ResponseEntity.ok(java.util.Map.of(
+                "success", true,
+                "data",    java.util.List.of(),
+                "total",   0
+            ));
+        }
+
+        BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+            .connectionString(blobConnectionString)
+            .buildClient();
+
+        var containerClient = blobServiceClient.getBlobContainerClient(containerName);
+
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+
+        for (String blobPath : blobIds.split(",")) {
+            String trimmed = blobPath.trim();
+            if (trimmed.isEmpty()) continue;
+
+            try {
+                BlobClient blobClient = containerClient.getBlobClient(trimmed);
+                if (!blobClient.exists()) continue;
+
+                // Short-lived SAS: read-only, 15 minutes
+                BlobSasPermission permission = new BlobSasPermission().setReadPermission(true);
+                OffsetDateTime expiry = OffsetDateTime.now().plusMinutes(15);
+
+                BlobServiceSasSignatureValues sasValues =
+                    new BlobServiceSasSignatureValues(expiry, permission);
+
+                String sasToken = blobClient.generateSas(sasValues);
+                String downloadUrl = blobClient.getBlobUrl() + "?" + sasToken;
+
+                String fileName = trimmed.contains("/")
+                    ? trimmed.substring(trimmed.lastIndexOf('/') + 1)
+                    : trimmed;
+
+                long sizeBytes = 0L;
+                try {
+                    sizeBytes = blobClient.getProperties().getBlobSize();
+                } catch (Exception ignored) { /* size optional */ }
+
+                java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
+                entry.put("fileName",    fileName);
+                entry.put("blobPath",    trimmed);
+                entry.put("sizeBytes",   sizeBytes);
+                entry.put("downloadUrl", downloadUrl);
+                result.add(entry);
+
+            } catch (Exception e) {
+                // Skip individual broken blobs but keep the rest
+            }
+        }
+
+        return ResponseEntity.ok(java.util.Map.of(
+            "success", true,
+            "data",    result,
+            "total",   result.size()
         ));
     }
 }
