@@ -537,6 +537,81 @@ async function loadBankAccounts() {
   }
 }
 
+const newBank = ref({
+  accountLabel: '',
+  bankName: '',
+  accountType: 'checking',
+  currentBalance: 0,
+  currency: 'EUR'
+})
+const bankCreating = ref(false)
+
+async function createBankAccount() {
+  if (!newBank.value.accountLabel.trim()) return
+  bankCreating.value = true
+  try {
+    const res = await api.post('/api/bank-accounts', {
+      ...newBank.value,
+      entityId: adminEntityId.value,
+      bankName: newBank.value.bankName || newBank.value.accountLabel
+    })
+    if (res.data.success) {
+      newBank.value = { accountLabel: '', bankName: '', accountType: 'checking', currentBalance: 0, currency: 'EUR' }
+      await loadBankAccounts()
+    } else {
+      alert('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1: ' + (res.data.error || ''))
+    }
+  } catch (e) {
+    alert('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1: ' + (e.response?.data?.error || e.message))
+  } finally {
+    bankCreating.value = false
+  }
+}
+
+async function updateBankBalance(bank) {
+  const newBal = bank._editBalance
+  if (newBal === undefined || newBal === null) return
+  try {
+    const res = await api.put('/api/bank-accounts/' + bank.id, {
+      currentBalance: newBal,
+      entityId: adminEntityId.value
+    })
+    if (res.data.success) {
+      bank.currentBalance = newBal
+      bank._editBalance = newBal
+    }
+  } catch (e) {
+    alert('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+function formatBankDate(d) {
+  if (!d) return '\u2014'
+  try {
+    const dt = new Date(d)
+    if (isNaN(dt.getTime())) return '\u2014'
+    return dt.toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  } catch { return '\u2014' }
+}
+
+const groupedSubcats = computed(() => {
+  const subs = filteredSubcats.value
+  const groups = {}
+  for (const s of subs) {
+    const key = s.parentKey || '\u03A7\u03C9\u03C1\u03AF\u03C2 \u03BA\u03B1\u03C4\u03B7\u03B3\u03BF\u03C1\u03AF\u03B1'
+    if (!groups[key]) groups[key] = []
+    groups[key].push(s)
+  }
+  const catOrder = activeCategories.value.map(c => c.configKey)
+  return Object.keys(groups)
+    .sort((a, b) => {
+      const ia = catOrder.indexOf(a)
+      const ib = catOrder.indexOf(b)
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    })
+    .map(cat => ({ category: cat, items: groups[cat] }))
+})
+
 // Listen for entity changes
 function onEntityChanged() {
   selectedEntity.value = localStorage.getItem('n2c_entity') || 'next2me'
