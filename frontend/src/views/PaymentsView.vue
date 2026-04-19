@@ -105,13 +105,62 @@ async function loadPayments() {
   }
 }
 
+
+// ── Universal Search helpers (legacy parity) ──────────────────────
+function dateSearchFormats(dateStr) {
+  if (!dateStr) return ''
+  let dd = '', mm = '', yyyy = ''
+  if (String(dateStr).includes('-')) {
+    const p = String(dateStr).split('-'); yyyy = p[0]; mm = p[1]; dd = p[2]
+  } else if (String(dateStr).includes('/')) {
+    const p = String(dateStr).split('/'); dd = p[0]; mm = p[1]; yyyy = p[2]
+  }
+  if (!dd) return String(dateStr)
+  const yy = yyyy.substring(2)
+  return [
+    dd+'/'+mm+'/'+yyyy, dd+'/'+mm+'/'+yy, dd+'-'+mm+'-'+yyyy, dd+'-'+mm+'-'+yy,
+    dd+'/'+mm, mm+'/'+yyyy, mm+'/'+yy, yyyy+'-'+mm+'-'+dd, dd+'.'+mm+'.'+yyyy, dd+'.'+mm+'.'+yy
+  ].join(' ')
+}
+
+function parseSearchAmount(q) {
+  let s = q.replace(/\s/g, '').replace('€', '')
+  if (/^\d{1,3}(\.\d{3})*(,\d{1,2})?$/.test(s)) { s = s.replace(/\./g, '').replace(',', '.'); const n = parseFloat(s); return isNaN(n) ? null : n }
+  if (/^\d{1,3}(,\d{3})*(\.\d{1,2})?$/.test(s)) { s = s.replace(/,/g, ''); const n = parseFloat(s); return isNaN(n) ? null : n }
+  s = s.replace(',', '.'); const n = parseFloat(s); return isNaN(n) ? null : n
+}
+
+function universalMatch(t, searchRaw) {
+  if (!searchRaw) return true
+  const words = searchRaw.trim().toLowerCase().split(/\s+/)
+  return words.every(word => {
+    const text = [
+      String(t.entityNumber ?? t.id ?? ''),
+      t.description ?? '', t.category ?? '', t.subcategory ?? t.account ?? '',
+      t.counterparty ?? '', t.paymentMethod ?? '', t.status ?? t.paymentStatus ?? '',
+      dateSearchFormats(t.docDate), dateSearchFormats(t.paymentDate),
+      t.type === 'income' ? 'είσπραξη εισόδημα' : 'πληρωμή έξοδο',
+      t.recordStatus ?? ''
+    ].filter(Boolean).join(' ').toLowerCase()
+    if (text.includes(word)) return true
+    const searchAmt = parseSearchAmount(word)
+    if (searchAmt !== null) {
+      const fields = [t.amount, t.amountPaid, t.amountRemaining, t.remaining]
+      for (const f of fields) {
+        const v = parseFloat(f || 0)
+        if (v > 0 && Math.abs(v - searchAmt) < 0.005) return true
+      }
+    }
+    return false
+  })
+}
+
 const filteredPayments = computed(() => {
   return allPayments.value.filter(p => {
     if (selectedStatus.value !== 'all' && p.status !== selectedStatus.value) return false
     if (selectedCategory.value !== 'all' && p.category !== selectedCategory.value) return false
     if (search.value) {
-      const q = search.value.toLowerCase()
-      if (!String(p.entityNumber).includes(q) && !p.description.toLowerCase().includes(q)) return false
+      if (!universalMatch(p, search.value)) return false
     }
     if (dateFrom.value && p.docDate < dateFrom.value) return false
     if (dateTo.value && p.docDate > dateTo.value) return false
@@ -196,7 +245,11 @@ onUnmounted(() => {
     </div>
 
     <div class="filters-bar">
-      <input v-model="search" class="filter-input" placeholder="Αναζήτηση ID, περιγραφή..." />
+      <div class="search-wrap">
+            <i class="fas fa-search search-icon"></i>
+            <input v-model="search" class="search-input" placeholder="Αναζήτηση: ID, περιγραφή, ποσό, κατηγορία, ημ/νία..." />
+            <button v-if="search" class="search-clear" @click="search = ''" title="Καθάρισμα">×</button>
+          </div>
       <input v-model="dateFrom" type="date" class="filter-input" />
       <input v-model="dateTo" type="date" class="filter-input" />
       <select v-model="selectedStatus" class="filter-select">
@@ -292,6 +345,13 @@ onUnmounted(() => {
 .sum-amount.green { color: #4FC3A1; }
 .sum-amount.teal { color: #29b6f6; }
 .filters-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.search-wrap { position: relative; flex: 1; min-width: 220px; max-width: 420px; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: .85rem; pointer-events: none; }
+.search-input { width: 100%; background: var(--bg-input, #1e3448); border: 1px solid var(--border, #2a4a6a); color: var(--text-primary, #e0e6ed); padding: 8px 32px 8px 32px; border-radius: 8px; font-size: .85rem; }
+.search-input:focus { outline: none; border-color: var(--accent, #4A9EFF); }
+.search-input::placeholder { color: var(--text-muted, #6c7a8a); }
+.search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted, #6c7a8a); font-size: 1.2rem; cursor: pointer; padding: 2px 6px; border-radius: 4px; line-height: 1; }
+.search-clear:hover { color: var(--text-primary, #e0e6ed); background: rgba(255,255,255,0.08); }
 .filter-input, .filter-select { background: #1e3448; border: 1px solid #2a4a6a; color: #e0e6ed; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; }
 .btn-refresh { background: #1e3448; border: 1px solid #2a4a6a; color: #e0e6ed; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
 .btn-refresh:disabled { opacity: 0.5; cursor: wait; }

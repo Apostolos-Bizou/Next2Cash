@@ -68,6 +68,27 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
                                           @Param("query") String query,
                                           Pageable pageable);
 
+    // Universal search across ALL text fields + amount + entityNumber
+    @Query("SELECT t FROM Transaction t " +
+           "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND (" +
+           "  LOWER(COALESCE(t.description, '')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "  OR LOWER(COALESCE(t.category, '')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "  OR LOWER(COALESCE(t.subcategory, '')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "  OR LOWER(COALESCE(t.counterparty, '')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "  OR LOWER(COALESCE(t.paymentMethod, '')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "  OR LOWER(COALESCE(t.paymentStatus, '')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "  OR LOWER(COALESCE(t.account, '')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "  OR LOWER(COALESCE(t.type, '')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "  OR CAST(t.entityNumber AS string) LIKE CONCAT('%', :q, '%') " +
+           "  OR CAST(t.id AS string) LIKE CONCAT('%', :q, '%') " +
+           "  OR CAST(t.amount AS string) LIKE CONCAT(:q, '%') " +
+           "  OR CAST(t.docDate AS string) LIKE CONCAT('%', :q, '%') " +
+           ")")
+    Page<Transaction> universalSearch(@Param("entityId") UUID entityId,
+                                      @Param("q") String q,
+                                      Pageable pageable);
+
     @Query("SELECT t FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.blobFileIds IS NOT NULL AND t.blobFileIds != '' " +
@@ -131,15 +152,15 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     @Query("SELECT MAX(t.entityNumber) FROM Transaction t WHERE t.entityId = :entityId")
     Integer findMaxEntityNumberByEntityId(@Param("entityId") UUID entityId);
 
-    // Phase H (Karteles) — all active transactions for entity, ordered by counterparty (for grouping in service layer)
+    // Phase H (Karteles) β€” all active transactions for entity, ordered by counterparty (for grouping in service layer)
     List<Transaction> findByEntityIdAndRecordStatusOrderByCounterpartyAscDocDateDesc(
         UUID entityId, String recordStatus);
 
-    // Phase H v2 — all active transactions for entity, ordered by date DESC (for card rule engine).
+    // Phase H v2 β€” all active transactions for entity, ordered by date DESC (for card rule engine).
     List<Transaction> findByEntityIdAndRecordStatusOrderByDocDateDesc(
         UUID entityId, String recordStatus);
 
-    // Phase H (Karteles) — all active transactions of a specific counterparty, for detail view
+    // Phase H (Karteles) β€” all active transactions of a specific counterparty, for detail view
     List<Transaction> findByEntityIdAndCounterpartyAndRecordStatusOrderByDocDateDesc(
         UUID entityId, String counterparty, String recordStatus);
 }

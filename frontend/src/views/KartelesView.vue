@@ -422,9 +422,60 @@ onUnmounted(() => {
   window.removeEventListener('entity-changed', onEntityChanged)
 })
 
+
+// ── Universal Search helpers (legacy parity) ──────────────────────
+function dateSearchFormats(dateStr) {
+  if (!dateStr) return ''
+  let dd = '', mm = '', yyyy = ''
+  if (String(dateStr).includes('-')) {
+    const p = String(dateStr).split('-'); yyyy = p[0]; mm = p[1]; dd = p[2]
+  } else if (String(dateStr).includes('/')) {
+    const p = String(dateStr).split('/'); dd = p[0]; mm = p[1]; yyyy = p[2]
+  }
+  if (!dd) return String(dateStr)
+  const yy = yyyy.substring(2)
+  return [
+    dd+'/'+mm+'/'+yyyy, dd+'/'+mm+'/'+yy, dd+'-'+mm+'-'+yyyy, dd+'-'+mm+'-'+yy,
+    dd+'/'+mm, mm+'/'+yyyy, mm+'/'+yy, yyyy+'-'+mm+'-'+dd, dd+'.'+mm+'.'+yyyy, dd+'.'+mm+'.'+yy
+  ].join(' ')
+}
+
+function parseSearchAmount(q) {
+  let s = q.replace(/\s/g, '').replace('€', '')
+  if (/^\d{1,3}(\.\d{3})*(,\d{1,2})?$/.test(s)) { s = s.replace(/\./g, '').replace(',', '.'); const n = parseFloat(s); return isNaN(n) ? null : n }
+  if (/^\d{1,3}(,\d{3})*(\.\d{1,2})?$/.test(s)) { s = s.replace(/,/g, ''); const n = parseFloat(s); return isNaN(n) ? null : n }
+  s = s.replace(',', '.'); const n = parseFloat(s); return isNaN(n) ? null : n
+}
+
+function universalMatch(t, searchRaw) {
+  if (!searchRaw) return true
+  const words = searchRaw.trim().toLowerCase().split(/\s+/)
+  return words.every(word => {
+    const text = [
+      String(t.entityNumber ?? t.id ?? ''),
+      t.description ?? '', t.category ?? '', t.subcategory ?? '',
+      t.counterparty ?? '', t.paymentMethod ?? '', t.paymentStatus ?? '',
+      t.account ?? '', t.recordSource ?? '',
+      dateSearchFormats(t.docDate), dateSearchFormats(t.paymentDate),
+      t.type === 'income' ? 'είσπραξη εισόδημα' : 'πληρωμή έξοδο',
+      t.recordStatus ?? ''
+    ].filter(Boolean).join(' ').toLowerCase()
+    if (text.includes(word)) return true
+    const searchAmt = parseSearchAmount(word)
+    if (searchAmt !== null) {
+      const fields = [t.amount, t.amountPaid, t.amountRemaining]
+      for (const f of fields) {
+        const v = parseFloat(f || 0)
+        if (v > 0 && Math.abs(v - searchAmt) < 0.005) return true
+      }
+    }
+    return false
+  })
+}
+
 // ─── Derived / filtered data ──────────────────────────────────
 const filteredTransactions = computed(() => {
-  const q = (search.value || '').trim().toLowerCase()
+  // universalMatch handles search internally
   return transactions.value.filter(t => {
     // Phase K: view filter (transactions vs payments vs all)
     if (viewFilter.value === 'transactions' && t.recordSource === 'PAYMENT') return false
@@ -433,16 +484,8 @@ const filteredTransactions = computed(() => {
     if (statusFilter.value !== 'all' && t.paymentStatus !== statusFilter.value) return false
     if (dateFrom.value && t.docDate < dateFrom.value) return false
     if (dateTo.value   && t.docDate > dateTo.value)   return false
-    if (q) {
-      const hay = [
-        String(t.entityNumber ?? t.id ?? ''),
-        t.description   ?? '',
-        t.category      ?? '',
-        t.subcategory   ?? '',
-        t.paymentMethod ?? '',
-        t.counterparty  ?? ''
-      ].join(' ').toLowerCase()
-      if (!hay.includes(q)) return false
+    if (search.value && search.value.trim()) {
+      if (!universalMatch(t, search.value)) return false
     }
     return true
   })
@@ -580,8 +623,12 @@ const ruleLabel = computed(() => {
 
         <!-- Filters -->
         <div class="filters-bar" v-if="selectedCard">
-          <input v-model="search" class="filter-input flex-1"
-                 placeholder="Αναζήτηση περιγραφής, κατηγορίας, αντισυμβαλλόμενου..." />
+          <div class="search-wrap" style="flex:1">
+            <i class="fas fa-search search-icon"></i>
+            <input v-model="search" class="search-input"
+              placeholder="Αναζήτηση: ID, περιγραφή, ποσό, κατηγορία, ημ/νία..." />
+            <button v-if="search" class="search-clear" @click="search = ''" title="Καθάρισμα">×</button>
+          </div>
           <input v-model="dateFrom" type="date" class="filter-input" title="Από" />
           <input v-model="dateTo"   type="date" class="filter-input" title="Έως" />
           <select v-model="typeFilter" class="filter-select">
@@ -927,6 +974,13 @@ const ruleLabel = computed(() => {
 .btn-icon.btn-danger:hover { background: #e24b4a; color: #fff; border-color: #e24b4a; }
 
 /* ═══════════════════════ Filters ═══════════════════════ */
+.search-wrap { position: relative; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted, #6c7a8a); font-size: .85rem; pointer-events: none; }
+.search-input { width: 100%; background: #1e3448; border: 1px solid #2a4a6a; color: #e0e6ed; padding: 8px 32px 8px 32px; border-radius: 8px; font-size: .85rem; }
+.search-input:focus { outline: none; border-color: #4A9EFF; }
+.search-input::placeholder { color: #6c7a8a; }
+.search-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #6c7a8a; font-size: 1.2rem; cursor: pointer; padding: 2px 6px; border-radius: 4px; line-height: 1; }
+.search-clear:hover { color: #e0e6ed; background: rgba(255,255,255,0.08); }
 .filters-bar {
   display: flex;
   gap: 10px;

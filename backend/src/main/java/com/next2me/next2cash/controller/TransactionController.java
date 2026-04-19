@@ -43,7 +43,8 @@ public class TransactionController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String search) {
 
         // SECURITY GUARD: verify the user has access to this entity
         User user = userAccessService.getCurrentUser(authHeader);
@@ -54,7 +55,10 @@ public class TransactionController {
 
         Page<Transaction> result;
 
-        if (from != null && to != null) {
+        // UNIVERSAL SEARCH: when search param is present, search ALL fields
+        if (search != null && !search.isBlank()) {
+            result = transactionRepository.universalSearch(entityId, search.trim(), pageable);
+        } else if (from != null && to != null) {
             result = transactionRepository
                 .findByEntityIdAndRecordStatusAndDocDateBetweenOrderByDocDateDesc(
                     entityId, "active",
@@ -270,13 +274,13 @@ public class TransactionController {
         return ResponseEntity.ok(Map.of("success", true, "data", results));
     }
 
-    // ─────────────────────────────────────────────────────────
-    // PHASE H — KARTELES ENDPOINTS
-    // ─────────────────────────────────────────────────────────
+    // β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+    // PHASE H β€” KARTELES ENDPOINTS
+    // β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
 
     // GET /api/transactions/counterparties?entityId=X
     // Returns list of counterparties with aggregated metrics (count, total, paid, balance).
-    // Service-layer aggregation in Java — NO SQL GROUP BY (Postgres-safe).
+    // Service-layer aggregation in Java β€” NO SQL GROUP BY (Postgres-safe).
     @GetMapping("/counterparties")
     @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER')")
     public ResponseEntity<?> getCounterparties(
