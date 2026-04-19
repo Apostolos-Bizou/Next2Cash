@@ -287,6 +287,8 @@ const canSubmit = computed(() =>
             <div class="ud-filename">{{ f.name }}</div>
             <div class="ud-filemeta">
               {{ fmtBytes(f.size) }}
+            </div>
+            <div class="ud-filemeta-row">
               <span class="ud-arrow">→</span>
               <input
                 class="ud-autoname-input"
@@ -429,13 +431,18 @@ const canSubmit = computed(() =>
 }
 .ud-arrow { color: #4FC3A1; }
 .ud-autoname { color: #4FC3A1; font-weight: 500; }
+.ud-filemeta-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 3px;
+  width: 100%;
+}
 .ud-autoname-input {
   color: #4FC3A1; font-weight: 500;
   background: transparent; border: none;
   border-bottom: 1px dashed #4FC3A1;
-  font-size: inherit; font-family: inherit;
+  font-size: 0.78rem; font-family: inherit;
   padding: 1px 2px; margin: 0;
-  min-width: 120px; max-width: 100%;
+  flex: 1; min-width: 0;
   outline: none;
 }
 .ud-autoname-input:focus {
