@@ -176,19 +176,37 @@ public class DocumentController {
             ));
         }
 
+        // Phase M.2.0: allow PDF + JPG + JPEG + PNG (parity with legacy system)
         String contentType = file.getContentType();
-        boolean pdfByType = contentType != null
-            && contentType.equalsIgnoreCase("application/pdf");
         String origName = file.getOriginalFilename() != null
             ? file.getOriginalFilename() : "";
-        boolean pdfByExt = origName.toLowerCase().endsWith(".pdf");
-        if (!pdfByType && !pdfByExt) {
+        String lowerName = origName.toLowerCase();
+
+        boolean allowedByType = contentType != null && (
+               contentType.equalsIgnoreCase("application/pdf")
+            || contentType.equalsIgnoreCase("image/jpeg")
+            || contentType.equalsIgnoreCase("image/jpg")
+            || contentType.equalsIgnoreCase("image/png")
+        );
+        boolean allowedByExt = lowerName.endsWith(".pdf")
+            || lowerName.endsWith(".jpg")
+            || lowerName.endsWith(".jpeg")
+            || lowerName.endsWith(".png");
+
+        if (!allowedByType && !allowedByExt) {
             return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "error",   "only_pdf_allowed",
+                "success",  false,
+                "error",    "unsupported_file_type",
+                "allowed",  "pdf,jpg,jpeg,png",
                 "received", contentType == null ? "" : contentType
             ));
         }
+
+        // Determine extension for auto-filename (PDF as safe default)
+        String fileExt = "pdf";
+        if (lowerName.endsWith(".jpeg"))       fileExt = "jpeg";
+        else if (lowerName.endsWith(".jpg"))   fileExt = "jpg";
+        else if (lowerName.endsWith(".png"))   fileExt = "png";
 
         // 4. Auto-generate filename: [counterparty]_[docDate]_[seq].pdf
         // Phase M.1.1: fallback chain counterparty -> account -> doc
@@ -220,8 +238,8 @@ public class DocumentController {
                 .map(String::trim).filter(s -> !s.isEmpty()).count() + 1;
         }
 
-        String autoFileName = String.format("%s_%s_%d.pdf",
-            safeCounterparty, docDateStr, seq);
+        String autoFileName = String.format("%s_%s_%d.%s",
+            safeCounterparty, docDateStr, seq, fileExt);
 
         // 5. Build blob path (entityId/YYYY/MM/transactionId/filename)
         LocalDate pathDate = txn.getDocDate() != null

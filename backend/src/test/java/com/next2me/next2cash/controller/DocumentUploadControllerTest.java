@@ -59,10 +59,10 @@ class DocumentUploadControllerTest extends BaseIntegrationTest {
         );
     }
 
-    private MockMultipartFile jpgFile() {
+    private MockMultipartFile txtFile() {
         return new MockMultipartFile(
-            "file", "photo.jpg", "image/jpeg",
-            "fake image bytes".getBytes()
+            "file", "notes.txt", "text/plain",
+            "just some text content".getBytes()
         );
     }
 
@@ -111,11 +111,12 @@ class DocumentUploadControllerTest extends BaseIntegrationTest {
     }
 
     // -------------------------------------------------------------------
-    // TEST 3: ADMIN uploading a non-PDF file returns 400 only_pdf_allowed
+    // TEST 3: ADMIN uploading unsupported type (.txt) returns 400
+    //         Phase M.2.0: PDF + JPG + JPEG + PNG allowed; .txt rejected
     // -------------------------------------------------------------------
     @Test
-    @DisplayName("ADMIN uploading non-PDF returns 400 only_pdf_allowed")
-    void upload_nonPdf_returns400() throws Exception {
+    @DisplayName("ADMIN uploading .txt returns 400 unsupported_file_type")
+    void upload_unsupportedType_returns400() throws Exception {
         CompanyEntity entity = tdb.createEntity("MAIN", "Main");
         User admin = tdb.createAdmin("admin");
         String token = tdb.bearerToken(admin);
@@ -123,12 +124,13 @@ class DocumentUploadControllerTest extends BaseIntegrationTest {
         Transaction txn = createTxn(entity, admin);
 
         mockMvc.perform(MockMvcRequestBuilders.multipart("/api/documents/upload")
-                .file(jpgFile())
+                .file(txtFile())
                 .param("transactionId", String.valueOf(txn.getId()))
                 .header("Authorization", token)
                 .contentType(MediaType.MULTIPART_FORM_DATA))
             .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error").value("only_pdf_allowed"));
+            .andExpect(jsonPath("$.error").value("unsupported_file_type"))
+            .andExpect(jsonPath("$.allowed").value("pdf,jpg,jpeg,png"));
     }
 
     // -------------------------------------------------------------------
