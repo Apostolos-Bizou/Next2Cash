@@ -386,7 +386,9 @@ public class CardService {
         String paymentMethod,
         java.time.LocalDate paymentDate,
         String recordStatus,
-        Integer parentTransactionId  // only set for PAYMENT rows
+        Integer parentTransactionId,  // only set for PAYMENT rows
+        String blobFileIds,          // comma-separated Azure blob paths
+        java.util.UUID entityId      // needed by frontend for downstream calls
     ) {
         public static CardRow ofTransaction(Transaction t) {
             return new CardRow(
@@ -406,7 +408,9 @@ public class CardService {
                 t.getPaymentMethod(),
                 t.getPaymentDate(),
                 t.getRecordStatus(),
-                null
+                null,
+                t.getBlobFileIds(),
+                t.getEntityId()
             );
         }
 
@@ -430,7 +434,9 @@ public class CardService {
                 p.getPaymentMethod(),
                 p.getPaymentDate(),         // paymentDate = docDate for payment rows
                 "active",
-                p.getTransactionId()
+                p.getTransactionId(),
+                null,                       // blobFileIds — N/A for payment rows
+                p.getEntityId()
             );
         }
     }
