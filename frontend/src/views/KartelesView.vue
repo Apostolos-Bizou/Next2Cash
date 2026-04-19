@@ -694,10 +694,10 @@ const ruleLabel = computed(() => {
                     ✓ Εξόφληση
                   </button>
                   <button
-                    v-if="hasAttachments(t)"
                     class="btn-action btn-attach-sm"
                     :title="'Δεις συνημμένα αρχεία'"
-                    @click="openAttachments(t)">
+                    @click="openAttachments(t)"
+                    :style="hasAttachments(t) ? {} : { opacity: 0.45 }">
                     📎
                   </button>
                 </td>

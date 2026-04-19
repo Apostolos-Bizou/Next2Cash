@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import api from '@/api'
+import UploadDocumentModal from '@/components/UploadDocumentModal.vue'
 
 // -----------------------------------------------------------------
 // AttachmentsPopover — list attachments for a transaction with
@@ -24,7 +25,13 @@ const emit = defineEmits(['close'])
 const loading     = ref(false)
 const errorMsg    = ref('')
 const attachments = ref([])          // [{ fileName, blobPath, sizeBytes, downloadUrl }]
-const downloadingIdx = ref(-1)       // index of the file currently being downloaded
+const downloadingIdx = ref(-1)
+const showUpload = ref(false)
+
+function onUploadComplete() {
+  showUpload.value = false
+  loadAttachments()
+}       // index of the file currently being downloaded
 
 // --- Load attachments when popover opens --------------------------
 watch(() => [props.visible, props.transaction?.id], async () => {
@@ -135,6 +142,7 @@ function iconColor(fileName) {
           <span class="ap-paperclip">📎</span>
           <h3>Αρχεία #{{ transaction.entityNumber || transaction.id }}</h3>
         </div>
+        <button class="ap-upload-btn" @click="showUpload = true">📎+ Νέο</button>
         <button class="ap-close" @click="onClose">×</button>
       </div>
 
@@ -210,6 +218,15 @@ function iconColor(fileName) {
       </div>
 
     </div>
+  
+
+    <!-- Upload Modal -->
+    <UploadDocumentModal
+      :visible="showUpload"
+      :transaction="transaction"
+      @close="showUpload = false"
+      @uploaded="onUploadComplete" />
+
   </div>
 </template>
 
@@ -386,5 +403,20 @@ function iconColor(fileName) {
 .ap-btn-label {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+.ap-upload-btn {
+  background: transparent;
+  border: 1px solid #4FC3A1;
+  color: #4FC3A1;
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.ap-upload-btn:hover {
+  background: #4FC3A1;
+  color: #0d1f2d;
 }
 </style>
