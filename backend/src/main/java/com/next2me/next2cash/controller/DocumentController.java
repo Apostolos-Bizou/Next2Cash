@@ -191,8 +191,13 @@ public class DocumentController {
         }
 
         // 4. Auto-generate filename: [counterparty]_[docDate]_[seq].pdf
-        String counterparty = txn.getCounterparty() != null
-            ? txn.getCounterparty() : "doc";
+        // Phase M.1.1: fallback chain counterparty -> account -> doc
+        // (legacy data populates account, not counterparty)
+        String rawName = (txn.getCounterparty() != null && !txn.getCounterparty().isBlank())
+            ? txn.getCounterparty()
+            : ((txn.getAccount() != null && !txn.getAccount().isBlank())
+                ? txn.getAccount() : "doc");
+        String counterparty = rawName;
         // Sanitize: remove whitespace, slashes, quotes, non-ASCII-friendly chars
         String safeCounterparty = counterparty
             .replaceAll("[\\s/\\\\:\"\'<>|?*,]+", "_")

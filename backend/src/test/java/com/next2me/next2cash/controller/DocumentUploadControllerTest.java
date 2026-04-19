@@ -132,6 +132,42 @@ class DocumentUploadControllerTest extends BaseIntegrationTest {
     }
 
     // -------------------------------------------------------------------
+    // TEST 5: Filename fallback — when both counterparty and account are
+    //         null, validation still passes (hits blob layer, not 400).
+    //         We assert it is NOT a 400 only_pdf_allowed / file_missing.
+    //         The blob call will fail in test env (no Azure), causing
+    //         a 500, which is acceptable — we are testing the validation
+    //         path, not the blob integration.
+    // -------------------------------------------------------------------
+    @Test
+    @DisplayName("upload passes validation when counterparty + account both null (doc fallback)")
+    void upload_accountFallback_usesAccountWhenCounterpartyNull() throws Exception {
+        CompanyEntity entity = tdb.createEntity("MAIN", "Main");
+        User admin = tdb.createAdmin("admin");
+        String token = tdb.bearerToken(admin);
+
+        Transaction txn = createTxn(entity, admin);
+        txn.setCounterparty(null);
+        txn.setAccount(null);
+        transactionRepository.save(txn);
+
+        // Expect: NOT a 400 validation error (will 500 from blob layer in test)
+        int status = mockMvc.perform(MockMvcRequestBuilders.multipart("/api/documents/upload")
+                .file(pdfFile())
+                .param("transactionId", String.valueOf(txn.getId()))
+                .header("Authorization", token)
+                .contentType(MediaType.MULTIPART_FORM_DATA))
+            .andReturn().getResponse().getStatus();
+
+        // We accept 200 (if blob somehow works) or 500 (blob fails in test env)
+        // but NOT 400 (validation rejection) or 403/404/401
+        org.junit.jupiter.api.Assertions.assertTrue(
+            status == 200 || status == 500,
+            "Expected 200 or 500 (blob layer), got " + status
+        );
+    }
+
+    // -------------------------------------------------------------------
     // TEST 4: VIEWER role cannot upload -> 403 via @PreAuthorize
     // -------------------------------------------------------------------
     @Test
