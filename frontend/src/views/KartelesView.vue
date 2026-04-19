@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import api from '@/api'
 import CardFormModal from '@/components/CardFormModal.vue'
 import ExportFilenameModal from '@/components/ExportFilenameModal.vue'
+import MarkPaidModal from '@/components/MarkPaidModal.vue'
+import AttachmentsPopover from '@/components/AttachmentsPopover.vue'
 
 // ──────────────────────────────────────────────────────────────
 // Phase H v2 — Karteles (user-defined cards with rule engine)
@@ -131,6 +133,51 @@ async function selectCard(cardId) {
   viewFilter.value = 'all'
   // Fire in parallel
   await Promise.all([loadSummary(cardId), loadTransactions(cardId)])
+}
+
+// ─── Phase L: Mark Paid + Attachments state ─────────────────────────
+const markPaidState = ref({ visible: false, transaction: null })
+const attachmentsState = ref({ visible: false, transaction: null })
+
+function openMarkPaid(t) {
+  // Ensure entityId is present — the backend requires it.
+  // CardRow DTO may not include it, so fallback to currentEntityId.
+  const txWithEntity = {
+    ...t,
+    entityId: t.entityId || currentEntityId.value
+  }
+  markPaidState.value = { visible: true, transaction: txWithEntity }
+}
+function closeMarkPaid() {
+  markPaidState.value = { visible: false, transaction: null }
+}
+async function onPaymentSaved() {
+  closeMarkPaid()
+  // Refresh both summary (KPI tiles) and transactions list (new payment row appears)
+  if (selectedCardId.value) {
+    await Promise.all([
+      loadSummary(selectedCardId.value),
+      loadTransactions(selectedCardId.value)
+    ])
+  }
+}
+
+function openAttachments(t) {
+  attachmentsState.value = { visible: true, transaction: t }
+}
+function closeAttachments() {
+  attachmentsState.value = { visible: false, transaction: null }
+}
+
+function hasAttachments(t) {
+  return !!(t && t.blobFileIds && String(t.blobFileIds).trim() !== '')
+}
+
+function canMarkPaid(t) {
+  // Only non-payment rows, with something still to pay
+  if (!t || t.recordSource === 'PAYMENT') return false
+  const remaining = Number(t.amountRemaining)
+  return Number.isFinite(remaining) && remaining > 0.01
 }
 
 // ─── Modal state ──────────────────────────────────────────────
@@ -608,6 +655,7 @@ const ruleLabel = computed(() => {
                 <th class="num">ΠΛΗΡΩΜΕΝΟ</th>
                 <th class="num">ΥΠΟΛΟΙΠΟ</th>
                 <th>STATUS</th>
+                <th>ΕΝΕΡΓΕΙΕΣ</th>
               </tr>
             </thead>
             <tbody>
@@ -637,6 +685,22 @@ const ruleLabel = computed(() => {
                     {{ statusLabel(t.paymentStatus) }}
                   </span>
                 </td>
+                <td class="actions-col">
+                  <button
+                    v-if="canMarkPaid(t)"
+                    class="btn-action btn-mark-paid-sm"
+                    :title="'Σημείωσε ως εξοφλημένη'"
+                    @click="openMarkPaid(t)">
+                    ✓ Εξόφληση
+                  </button>
+                  <button
+                    v-if="hasAttachments(t)"
+                    class="btn-action btn-attach-sm"
+                    :title="'Δεις συνημμένα αρχεία'"
+                    @click="openAttachments(t)">
+                    📎
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -657,6 +721,19 @@ const ruleLabel = computed(() => {
     </div>
 
     <!-- Create/Edit modal -->
+    <!-- Phase L modals -->
+    <MarkPaidModal
+      :visible="markPaidState.visible"
+      :transaction="markPaidState.transaction"
+      @close="closeMarkPaid"
+      @saved="onPaymentSaved"
+    />
+    <AttachmentsPopover
+      :visible="attachmentsState.visible"
+      :transaction="attachmentsState.transaction"
+      @close="closeAttachments"
+    />
+
     <CardFormModal
       :visible="modalVisible"
       :mode="modalMode"
@@ -1171,4 +1248,42 @@ const ruleLabel = computed(() => {
 }
 .btn-danger-solid:hover:not(:disabled) { background: #c93d3c; }
 .btn-danger-solid:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ══════ Phase L: Actions column ══════ */
+.actions-col {
+  white-space: nowrap;
+  text-align: right;
+  padding: 4px 6px !important;
+}
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  margin: 0 2px;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, transform 0.05s;
+}
+.btn-action:active { transform: translateY(1px); }
+.btn-mark-paid-sm {
+  background: #4FC3A1;
+  color: #0d1f2d;
+}
+.btn-mark-paid-sm:hover { background: #5fd4b3; }
+.btn-attach-sm {
+  background: transparent;
+  color: #4A9EFF;
+  border: 1px solid #2c3e50;
+  padding: 5px 8px;
+  font-size: 0.95rem;
+}
+.btn-attach-sm:hover {
+  background: rgba(74, 158, 255, 0.12);
+  border-color: #4A9EFF;
+}
 </style>
