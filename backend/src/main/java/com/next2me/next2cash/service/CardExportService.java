@@ -267,8 +267,9 @@ public class CardExportService {
         // Row 5: Labels row
         Row r5 = sheet.createRow(5);
         String[] labels = {"ΣΥΝΟΛΟ ΚΙΝΗΣΕΩΝ", "ΕΞΟΦΛΗΜΕΝΕΣ", "ΑΠΛΗΡΩΤΕΣ",
-                           "ΕΙΣΠΡΑΞΕΙΣ", "ΕΚΚΡΕΜΕΙΣ"};
-        for (int i = 0; i < 5; i++) {
+                           "ΕΙΣΠΡΑΞΕΙΣ", "ΕΚΚΡΕΜΕΙΣ",
+                           "ΠΛΗΡΩΜΕΣ"};
+        for (int i = 0; i < 6; i++) {
             Cell cell = r5.createCell(i);
             cell.setCellValue(labels[i]);
             cell.setCellStyle(labelStyle);
@@ -282,6 +283,7 @@ public class CardExportService {
         setMoney(r6, 2, s.unpaid(), moneyRed);
         setMoney(r6, 3, s.income(), moneyStyle);
         setMoney(r6, 4, s.urgent(), moneyRed);
+        setMoney(r6, 5, s.paymentsTotal(), moneyStyle);
 
         // Row 7: Counts row
         Row r7 = sheet.createRow(7);
@@ -290,8 +292,9 @@ public class CardExportService {
         r7.createCell(2).setCellValue(s.countUnpaid() + " κινήσεις");
         r7.createCell(3).setCellValue(s.countIncome() + " κινήσεις");
         r7.createCell(4).setCellValue(s.countUrgent() + " κινήσεις");
+        r7.createCell(5).setCellValue(s.countPayments() + " πληρωμές");
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             sheet.setColumnWidth(i, 18 * 256);
         }
     }
@@ -566,15 +569,16 @@ public class CardExportService {
         Color red     = new Color(0xE7, 0x4C, 0x3C);
         Color orange  = new Color(0xFF, 0x64, 0x00);
 
-        PdfPTable kpis = new PdfPTable(5);
+        PdfPTable kpis = new PdfPTable(6);
         kpis.setWidthPercentage(100);
-        kpis.setWidths(new float[]{1f, 1f, 1f, 1f, 1f});
+        kpis.setWidths(new float[]{1f, 1f, 1f, 1f, 1f, 1f});
 
         kpis.addCell(kpiCell(bf, labelFont, countFont, navy,   "ΣΥΝΟΛΟ ΚΙΝΗΣΕΩΝ", s.total(),  s.countTotal()));
         kpis.addCell(kpiCell(bf, labelFont, countFont, green,  "ΕΞΟΦΛΗΜΕΝΕΣ",      s.paid(),   s.countPaid()));
         kpis.addCell(kpiCell(bf, labelFont, countFont, red,    "ΑΠΛΗΡΩΤΕΣ",        s.unpaid(), s.countUnpaid()));
         kpis.addCell(kpiCell(bf, labelFont, countFont, navy,   "ΕΙΣΠΡΑΞΕΙΣ",       s.income(), s.countIncome()));
         kpis.addCell(kpiCell(bf, labelFont, countFont, orange, "⚡ ΕΚΚΡΕΜΕΙΣ",     s.urgent(), s.countUrgent()));
+        kpis.addCell(kpiCell(bf, labelFont, countFont, navy,   "ΠΛΗΡΩΜΕΣ",       s.paymentsTotal(), s.countPayments()));
 
         doc.add(kpis);
         doc.add(new Paragraph(" "));
