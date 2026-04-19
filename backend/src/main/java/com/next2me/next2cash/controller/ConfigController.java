@@ -135,6 +135,8 @@ public class ConfigController {
             m.put("paymentMethod",   r.paymentMethod());
             m.put("paymentDate",     r.paymentDate());
             m.put("recordStatus",    r.recordStatus());
+            m.put("blobFileIds",     r.blobFileIds());
+            m.put("entityId",        r.entityId());
             if (r.parentTransactionId() != null) {
                 m.put("parentTransactionId", r.parentTransactionId());
             }
