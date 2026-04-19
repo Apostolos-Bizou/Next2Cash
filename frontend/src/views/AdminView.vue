@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
 
 // ═══════════════════════════════════════════════════════════════════
@@ -406,12 +406,163 @@ const visibleUsers = computed(() => {
 // ═══════════════════════════════════════════════════════════════════
 //  MOUNT
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//  M.7 — Config Management State (Categories, Subcategories, Banks)
+// ═══════════════════════════════════════════════════════════════════
+const ENTITIES_MAP = {
+  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
+  house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
+  polaris: '50317f44-9961-4fb4-add0-7a118e32dc14',
+}
+const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
+const adminEntityId = computed(() => ENTITIES_MAP[selectedEntity.value])
+
+// Config items state
+const configLoading = ref(false)
+const allConfigItems = ref([])
+
+const adminCategories = computed(() =>
+  allConfigItems.value.filter(c => c.configType === 'category').sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+)
+const activeCategories = computed(() => adminCategories.value.filter(c => c.isActive))
+const adminSubcategories = computed(() =>
+  allConfigItems.value.filter(c => c.configType === 'subcategory').sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+)
+
+// Subcategory filter
+const subcatFilter = ref('')
+const filteredSubcats = computed(() => {
+  if (!subcatFilter.value) return adminSubcategories.value
+  return adminSubcategories.value.filter(s => s.parentKey === subcatFilter.value)
+})
+
+function countSubcats(categoryKey) {
+  return adminSubcategories.value.filter(s => s.parentKey === categoryKey && s.isActive).length
+}
+
+// New category form
+const newCatKey = ref('')
+const newCatValue = ref('')
+
+// New subcategory form
+const newSubcatParent = ref('')
+const newSubcatKey = ref('')
+const newSubcatValue = ref('')
+
+// Banks state
+const banksLoading = ref(false)
+const adminBanks = ref([])
+
+async function loadAdminConfig() {
+  configLoading.value = true
+  try {
+    const res = await api.get('/api/config/items', { params: { entityId: adminEntityId.value } })
+    if (res.data.success) {
+      allConfigItems.value = res.data.data || []
+    }
+  } catch (e) {
+    console.error('loadAdminConfig error:', e)
+  } finally {
+    configLoading.value = false
+  }
+}
+
+async function addCategory() {
+  if (!newCatKey.value.trim()) return
+  try {
+    const res = await api.post('/api/config/items', {
+      configType: 'category',
+      configKey: newCatKey.value.trim(),
+      configValue: newCatValue.value.trim() || newCatKey.value.trim()
+    }, { params: { entityId: adminEntityId.value } })
+    if (res.data.success) {
+      newCatKey.value = ''
+      newCatValue.value = ''
+      await loadAdminConfig()
+    }
+  } catch (e) {
+    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+async function addSubcategory() {
+  if (!newSubcatKey.value.trim() || !newSubcatParent.value) return
+  try {
+    const res = await api.post('/api/config/items', {
+      configType: 'subcategory',
+      configKey: newSubcatKey.value.trim(),
+      configValue: newSubcatValue.value.trim() || newSubcatKey.value.trim(),
+      parentKey: newSubcatParent.value
+    }, { params: { entityId: adminEntityId.value } })
+    if (res.data.success) {
+      newSubcatKey.value = ''
+      newSubcatValue.value = ''
+      await loadAdminConfig()
+    }
+  } catch (e) {
+    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+async function deactivateConfig(item) {
+  if (!confirm('Απενεργοποίηση "' + item.configKey + '";\n\nΔεν θα εμφανίζεται πλέον στις νέες καταχωρήσεις.')) return
+  try {
+    await api.delete('/api/config/items/' + item.id, { params: { entityId: adminEntityId.value } })
+    await loadAdminConfig()
+  } catch (e) {
+    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+async function reactivateConfig(item) {
+  try {
+    await api.put('/api/config/items/' + item.id, { isActive: true }, { params: { entityId: adminEntityId.value } })
+    await loadAdminConfig()
+  } catch (e) {
+    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+async function loadBankAccounts() {
+  banksLoading.value = true
+  try {
+    const res = await api.get('/api/bank-accounts', { params: { entityId: adminEntityId.value } })
+    if (res.data.success) {
+      adminBanks.value = res.data.accounts || res.data.data || []
+    }
+  } catch (e) {
+    console.error('loadBankAccounts error:', e)
+  } finally {
+    banksLoading.value = false
+  }
+}
+
+// Listen for entity changes
+function onEntityChanged() {
+  selectedEntity.value = localStorage.getItem('n2c_entity') || 'next2me'
+  if (activeTab.value === 'categories' || activeTab.value === 'accounts') {
+    loadAdminConfig()
+  } else if (activeTab.value === 'banks') {
+    loadBankAccounts()
+  }
+}
+
+// Watch tab changes to auto-load data
+watch(activeTab, (tab) => {
+  if (tab === 'categories' || tab === 'accounts') {
+    if (allConfigItems.value.length === 0) loadAdminConfig()
+  } else if (tab === 'banks') {
+    if (adminBanks.value.length === 0) loadBankAccounts()
+  }
+})
+
 onMounted(async () => {
   await fetchCurrentUser()
   await Promise.all([
     fetchUsers(),
     fetchEntities()
   ])
+  window.addEventListener('entity-changed', onEntityChanged)
 })
 </script>
 
@@ -542,9 +693,144 @@ onMounted(async () => {
       </div>
     </div>
 
+    <!-- ═══ CATEGORIES TAB ═══ -->
+    <div v-else-if="activeTab === 'categories'" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>Κατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
+          <button class="btn btn-secondary btn-sm" @click="loadAdminConfig" :disabled="configLoading">
+            {{ configLoading ? '...' : 'Ανανέωση' }}
+          </button>
+        </div>
+
+        <div v-if="configLoading" class="loading">Φόρτωση...</div>
+        <div v-else>
+          <!-- Add new category -->
+          <div class="inline-form">
+            <input v-model="newCatKey" placeholder="Όνομα κατηγορίας (π.χ. ΜΕΤΑΦΟΡΕΣ)" class="input" />
+            <input v-model="newCatValue" placeholder="Εμφανιζόμενο (προαιρετικό)" class="input" />
+            <button class="btn btn-primary btn-sm" @click="addCategory" :disabled="!newCatKey.trim()">+ Προσθήκη</button>
+          </div>
+
+          <div v-if="adminCategories.length === 0" class="empty">Δεν βρέθηκαν κατηγορίες</div>
+          <div v-else class="config-list">
+            <div v-for="cat in adminCategories" :key="cat.id" class="config-item" :class="{ inactive: !cat.isActive }">
+              <div class="config-info">
+                <span class="config-key">{{ cat.configKey }}</span>
+                <span v-if="cat.configValue && cat.configValue !== cat.configKey" class="config-val">→ {{ cat.configValue }}</span>
+                <span class="config-count">{{ countSubcats(cat.configKey) }} υποκατ.</span>
+              </div>
+              <div class="config-actions">
+                <span v-if="!cat.isActive" class="inactive-badge">Ανενεργή</span>
+                <button v-if="cat.isActive" class="btn-icon danger" title="Απενεργοποίηση" @click="deactivateConfig(cat)">🗑️</button>
+                <button v-else class="btn-icon" title="Επανενεργοποίηση" @click="reactivateConfig(cat)">♻️</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SUBCATEGORIES (ACCOUNTS) TAB ═══ -->
+    <div v-else-if="activeTab === 'accounts'" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>Υποκατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
+          <button class="btn btn-secondary btn-sm" @click="loadAdminConfig" :disabled="configLoading">
+            {{ configLoading ? '...' : 'Ανανέωση' }}
+          </button>
+        </div>
+
+        <div v-if="configLoading" class="loading">Φόρτωση...</div>
+        <div v-else>
+          <!-- Filter by parent category -->
+          <div class="filter-row">
+            <label>Φίλτρο κατηγορίας:</label>
+            <select v-model="subcatFilter" class="input" style="max-width:300px">
+              <option value="">— Όλες —</option>
+              <option v-for="cat in activeCategories" :key="cat.configKey" :value="cat.configKey">{{ cat.configKey }}</option>
+            </select>
+          </div>
+
+          <!-- Add new subcategory -->
+          <div class="inline-form">
+            <select v-model="newSubcatParent" class="input" style="max-width:220px">
+              <option value="">— Κατηγορία —</option>
+              <option v-for="cat in activeCategories" :key="cat.configKey" :value="cat.configKey">{{ cat.configKey }}</option>
+            </select>
+            <input v-model="newSubcatKey" placeholder="Όνομα υποκατηγορίας" class="input" />
+            <input v-model="newSubcatValue" placeholder="Εμφανιζόμενο (προαιρ.)" class="input" />
+            <button class="btn btn-primary btn-sm" @click="addSubcategory" :disabled="!newSubcatKey.trim() || !newSubcatParent">+ Προσθήκη</button>
+          </div>
+
+          <div v-if="filteredSubcats.length === 0" class="empty">Δεν βρέθηκαν υποκατηγορίες</div>
+          <div v-else class="config-list">
+            <div v-for="sub in filteredSubcats" :key="sub.id" class="config-item" :class="{ inactive: !sub.isActive }">
+              <div class="config-info">
+                <span class="parent-badge">{{ sub.parentKey }}</span>
+                <span class="config-key">{{ sub.configKey }}</span>
+                <span v-if="sub.configValue && sub.configValue !== sub.configKey" class="config-val">→ {{ sub.configValue }}</span>
+              </div>
+              <div class="config-actions">
+                <span v-if="!sub.isActive" class="inactive-badge">Ανενεργή</span>
+                <button v-if="sub.isActive" class="btn-icon danger" title="Απενεργοποίηση" @click="deactivateConfig(sub)">🗑️</button>
+                <button v-else class="btn-icon" title="Επανενεργοποίηση" @click="reactivateConfig(sub)">♻️</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ BANKS TAB ═══ -->
+    <div v-else-if="activeTab === 'banks'" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>Τράπεζες / Μέθοδοι Πληρωμής — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
+          <button class="btn btn-secondary btn-sm" @click="loadBankAccounts" :disabled="banksLoading">
+            {{ banksLoading ? '...' : 'Ανανέωση' }}
+          </button>
+        </div>
+
+        <div v-if="banksLoading" class="loading">Φόρτωση...</div>
+        <div v-else>
+          <div v-if="adminBanks.length === 0" class="empty">Δεν βρέθηκαν τραπεζικοί λογαριασμοί</div>
+          <div v-else class="config-list">
+            <div v-for="b in adminBanks" :key="b.id" class="config-item" :class="{ inactive: !b.active }">
+              <div class="config-info">
+                <span class="config-key">{{ b.bankName }}</span>
+                <span class="config-val">→ {{ b.accountLabel }}</span>
+                <span v-if="b.iban" class="config-val" style="font-size:.75rem;opacity:.6">{{ b.iban }}</span>
+                <span class="parent-badge">{{ b.currency }} · {{ b.accountType }}</span>
+              </div>
+              <div class="config-actions">
+                <span class="balance-badge" :class="{ negative: b.currentBalance < 0 }">
+                  {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2}) }} {{ b.currency }}
+                </span>
+                <span v-if="!b.active" class="inactive-badge">Ανενεργός</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ AUDIT LOG TAB ═══ -->
+    <div v-else-if="activeTab === 'audit'" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <h2>Audit Log</h2>
+        </div>
+        <div class="notice notice-info">
+          Το Audit Log θα ενεργοποιηθεί σε επόμενη φάση (M.6 — Security & Polish).
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ FALLBACK ═══ -->
     <div v-else class="tab-content">
       <div class="notice notice-info">
-        Η σελίδα <strong>{{ tabs.find(t => t.id === activeTab)?.label }}</strong> θα ενεργοποιηθεί σε επόμενο deploy (Session #3).
+        Η σελίδα <strong>{{ tabs.find(t => t.id === activeTab)?.label }}</strong> δεν είναι ακόμα διαθέσιμη.
       </div>
     </div>
 
@@ -697,4 +983,22 @@ onMounted(async () => {
 .entity-checkboxes { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--bg-input, #111827); border-radius: 6px; border: 1px solid var(--border, #374151); }
 .checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.9rem; color: var(--text-primary, #e5e7eb); }
 .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+
+/* M.7 — Config management styles */
+.inline-form { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.inline-form .input { flex: 1; min-width: 160px; }
+.filter-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.filter-row label { font-size: .85rem; color: var(--text-muted, #9ca3af); white-space: nowrap; }
+.config-list { display: flex; flex-direction: column; gap: 6px; }
+.config-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-input, #111827); border: 1px solid var(--border, #374151); border-radius: 6px; transition: opacity .2s; }
+.config-item.inactive { opacity: .45; }
+.config-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.config-key { font-weight: 600; color: var(--text-primary, #e5e7eb); font-size: .92rem; }
+.config-val { font-size: .82rem; color: var(--text-muted, #9ca3af); }
+.config-count { font-size: .75rem; color: var(--accent, #3b82f6); background: rgba(59,130,246,.1); padding: 2px 8px; border-radius: 999px; }
+.config-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.parent-badge { font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: rgba(251,146,60,.15); color: #fb923c; font-weight: 600; }
+.inactive-badge { font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: rgba(239,68,68,.15); color: #f87171; }
+.balance-badge { font-size: .85rem; font-weight: 600; color: #10b981; font-family: monospace; }
+.balance-badge.negative { color: #f87171; }
 </style>

@@ -310,6 +310,171 @@ public class ConfigController {
         return defaultPrefix + "_" + sanitizedCardName + "_" + today + ext;
     }
 
+    // ===================================================================
+    //  M.7 — CRUD for Config items (categories, subcategories, etc.)
+    // ===================================================================
+
+    /**
+     * GET /api/config/items?entityId=X[&configType=category]
+     * Returns ALL config items (including inactive) for admin management.
+     */
+    @GetMapping("/items")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> listAllConfigItems(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId,
+            @RequestParam(required = false) String configType) {
+
+        User currentUser = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(currentUser, entityId);
+
+        List<Config> items;
+        if (configType != null && !configType.isBlank()) {
+            items = configRepository.findByEntityIdAndConfigTypeOrderBySortOrderAsc(entityId, configType);
+        } else {
+            items = configRepository.findByEntityIdOrderBySortOrderAsc(entityId);
+        }
+
+        List<Map<String, Object>> data = new ArrayList<>();
+        for (Config c : items) {
+            data.add(toConfigItemDto(c));
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "data",    data,
+            "total",   data.size()
+        ));
+    }
+
+    /**
+     * POST /api/config/items?entityId=X
+     * Create a new config item (category, subcategory, payment_method, account).
+     */
+    @PostMapping("/items")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> createConfigItem(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId,
+            @RequestBody Map<String, Object> payload) {
+
+        User currentUser = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(currentUser, entityId);
+
+        String type = (String) payload.get("configType");
+        String key  = (String) payload.get("configKey");
+        if (type == null || type.isBlank() || key == null || key.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error",   "configType and configKey are required"
+            ));
+        }
+
+        Config c = new Config();
+        c.setEntityId(entityId);
+        c.setConfigType(type);
+        c.setConfigKey(key);
+        c.setConfigValue((String) payload.getOrDefault("configValue", key));
+        c.setParentKey((String) payload.get("parentKey"));
+        c.setIcon((String) payload.get("icon"));
+        c.setIsActive(true);
+
+        // Auto sort_order: max + 1
+        Integer maxSort = configRepository.findMaxSortOrder(entityId, type);
+        c.setSortOrder(maxSort != null ? maxSort + 1 : 1);
+
+        Config saved = configRepository.save(c);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "success", true,
+            "data",    toConfigItemDto(saved)
+        ));
+    }
+
+    /**
+     * PUT /api/config/items/{id}?entityId=X
+     * Update an existing config item.
+     */
+    @PutMapping("/items/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateConfigItem(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId,
+            @RequestBody Map<String, Object> payload) {
+
+        User currentUser = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(currentUser, entityId);
+
+        Config c = configRepository.findByIdAndEntityId(id, entityId)
+            .orElse(null);
+        if (c == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "success", false,
+                "error",   "Config item not found"
+            ));
+        }
+
+        if (payload.containsKey("configKey"))   c.setConfigKey((String) payload.get("configKey"));
+        if (payload.containsKey("configValue")) c.setConfigValue((String) payload.get("configValue"));
+        if (payload.containsKey("parentKey"))   c.setParentKey((String) payload.get("parentKey"));
+        if (payload.containsKey("icon"))        c.setIcon((String) payload.get("icon"));
+        if (payload.containsKey("sortOrder"))   c.setSortOrder(((Number) payload.get("sortOrder")).intValue());
+        if (payload.containsKey("isActive"))    c.setIsActive((Boolean) payload.get("isActive"));
+
+        Config saved = configRepository.save(c);
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "data",    toConfigItemDto(saved)
+        ));
+    }
+
+    /**
+     * DELETE /api/config/items/{id}?entityId=X
+     * Soft-delete (set isActive=false).
+     */
+    @DeleteMapping("/items/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> deleteConfigItem(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId) {
+
+        User currentUser = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(currentUser, entityId);
+
+        Config c = configRepository.findByIdAndEntityId(id, entityId)
+            .orElse(null);
+        if (c == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "success", false,
+                "error",   "Config item not found"
+            ));
+        }
+
+        c.setIsActive(false);
+        configRepository.save(c);
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "message", "Config item deactivated"
+        ));
+    }
+
+    private static Map<String, Object> toConfigItemDto(Config c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id",          c.getId());
+        m.put("configType",  c.getConfigType());
+        m.put("configKey",   c.getConfigKey());
+        m.put("configValue", c.getConfigValue());
+        m.put("parentKey",   c.getParentKey());
+        m.put("icon",        c.getIcon());
+        m.put("sortOrder",   c.getSortOrder());
+        m.put("isActive",    c.getIsActive());
+        return m;
+    }
+
     // ─── helper ───
 
     private static Map<String, Object> toCardDto(Config c) {
