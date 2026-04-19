@@ -38,6 +38,12 @@ const navSections = [
     ]
   },
   {
+    label: 'ΛΟΓΙΣΤΗΡΙΟ',
+    items: [
+      { to: '/documents',   label: 'Παραστατικά',     icon: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' },
+    ]
+  },
+  {
     label: 'ΑΝΑΦΟΡΕΣ',
     items: [
       { to: '/reports',        label: 'Αναφορές',        icon: 'M3 3v18h18M8 17V9M13 17V5M18 17v-7' },
