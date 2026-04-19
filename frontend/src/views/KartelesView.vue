@@ -44,6 +44,7 @@ const dateFrom     = ref('')
 const dateTo       = ref('')
 const statusFilter = ref('all') // all | paid | unpaid | urgent | partial | received
 const typeFilter   = ref('all') // all | income | expense
+const viewFilter   = ref('all') // all | transactions | payments  (Phase K)
 
 // ─── API ──────────────────────────────────────────────────────
 async function loadCards() {
@@ -127,6 +128,7 @@ async function selectCard(cardId) {
   dateTo.value = ''
   statusFilter.value = 'all'
   typeFilter.value = 'all'
+  viewFilter.value = 'all'
   // Fire in parallel
   await Promise.all([loadSummary(cardId), loadTransactions(cardId)])
 }
@@ -377,6 +379,9 @@ onUnmounted(() => {
 const filteredTransactions = computed(() => {
   const q = (search.value || '').trim().toLowerCase()
   return transactions.value.filter(t => {
+    // Phase K: view filter (transactions vs payments vs all)
+    if (viewFilter.value === 'transactions' && t.recordSource === 'PAYMENT') return false
+    if (viewFilter.value === 'payments'     && t.recordSource !== 'PAYMENT') return false
     if (typeFilter.value !== 'all' && t.type !== typeFilter.value) return false
     if (statusFilter.value !== 'all' && t.paymentStatus !== statusFilter.value) return false
     if (dateFrom.value && t.docDate < dateFrom.value) return false
@@ -504,6 +509,28 @@ const ruleLabel = computed(() => {
           </div>
         </div>
 
+        <!-- Phase K: View filter chips -->
+        <div class="view-chips" v-if="selectedCard">
+          <button
+            class="view-chip"
+            :class="{ active: viewFilter === 'all' }"
+            @click="viewFilter = 'all'">
+            Όλα ({{ transactions.length }})
+          </button>
+          <button
+            class="view-chip"
+            :class="{ active: viewFilter === 'transactions' }"
+            @click="viewFilter = 'transactions'">
+            Κινήσεις ({{ transactions.filter(t => t.recordSource !== 'PAYMENT').length }})
+          </button>
+          <button
+            class="view-chip view-chip-payments"
+            :class="{ active: viewFilter === 'payments' }"
+            @click="viewFilter = 'payments'">
+            💳 Πληρωμές ({{ transactions.filter(t => t.recordSource === 'PAYMENT').length }})
+          </button>
+        </div>
+
         <!-- Filters -->
         <div class="filters-bar" v-if="selectedCard">
           <input v-model="search" class="filter-input flex-1"
@@ -549,6 +576,11 @@ const ruleLabel = computed(() => {
               <div class="kpi-amount">{{ fmtMoney(summary.income) }}</div>
               <div class="kpi-count">{{ summary.countIncome }} κινήσεις</div>
             </div>
+            <div class="kpi-card kpi-payments">
+              <div class="kpi-label">💳 Πληρωμές</div>
+              <div class="kpi-amount">{{ fmtMoney(summary.paymentsTotal) }}</div>
+              <div class="kpi-count">{{ summary.countPayments }} πληρωμές</div>
+            </div>
             <div class="kpi-card kpi-orange">
               <div class="kpi-label">⚡ Εκκρεμείς</div>
               <div class="kpi-amount">{{ fmtMoney(summary.urgent) }}</div>
@@ -579,8 +611,15 @@ const ruleLabel = computed(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in filteredTransactions" :key="t.id">
-                <td class="id-col">{{ t.entityNumber || t.id }}</td>
+              <tr
+                v-for="t in filteredTransactions"
+                :key="(t.recordSource || 'TXN') + '-' + t.id"
+                :class="{ 'payment-row': t.recordSource === 'PAYMENT' }"
+              >
+                <td class="id-col">
+                  <span v-if="t.recordSource === 'PAYMENT'" class="payment-icon" :title="'Πληρωμή #' + (t.parentTransactionId || t.id)">💳</span>
+                  <span v-else>{{ t.entityNumber || t.id }}</span>
+                </td>
                 <td>{{ fmtDate(t.docDate) }}</td>
                 <td class="desc-col" :title="t.description">{{ t.description || '—' }}</td>
                 <td><span class="cat-badge">{{ t.category || '—' }}</span></td>
@@ -828,9 +867,12 @@ const ruleLabel = computed(() => {
 /* ═══════════════════════ KPI cards ═══════════════════════ */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 10px;
   margin-bottom: 16px;
+}
+@media (max-width: 1200px) {
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
 }
 .kpi-loading {
   grid-column: 1 / -1;
@@ -873,6 +915,55 @@ const ruleLabel = computed(() => {
   font-size: 0.7rem;
   color: #8899aa;
   margin-top: 2px;
+}
+
+/* ══════ Phase K: KPI payments tile ══════ */
+.kpi-card.kpi-payments { border-top-color: #4FC3A1; }
+.kpi-card.kpi-payments .kpi-amount { color: #4FC3A1; }
+
+/* ══════ Phase K: View filter chips ══════ */
+.view-chips {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.view-chip {
+  background: #1e3448;
+  border: 1px solid #2a4a6a;
+  color: #8899aa;
+  padding: 6px 14px;
+  border-radius: 18px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.view-chip:hover {
+  background: #2a4a6a;
+  color: #e0e6ed;
+}
+.view-chip.active {
+  background: #2E75B6;
+  border-color: #2E75B6;
+  color: #fff;
+  font-weight: 600;
+}
+.view-chip.view-chip-payments.active {
+  background: #4FC3A1;
+  border-color: #4FC3A1;
+  color: #0f1e2e;
+}
+
+/* ══════ Phase K: Payment row styling ══════ */
+.data-table tr.payment-row {
+  background: rgba(46, 117, 182, 0.08);
+}
+.data-table tr.payment-row:hover {
+  background: rgba(46, 117, 182, 0.15);
+}
+.payment-icon {
+  color: #2E75B6;
+  font-size: 1.1rem;
+  cursor: help;
 }
 
 /* ═══════════════════════ Table ═══════════════════════ */
