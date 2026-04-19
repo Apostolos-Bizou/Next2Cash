@@ -81,8 +81,12 @@ async function loadTransactions() {
     const params = { entityId: entityId.value, page: page.value, perPage: perPage.value }
     // Option 2 behavior: when search is active, backend ignores date/type/status filters
     // and searches the ENTIRE history across 8 fields.
-    if (searchQuery.value && searchQuery.value.trim()) {
-      params.search = searchQuery.value.trim()
+    // Multi-word search: send first word to backend for pre-filtering,
+    // then universalMatch filters client-side with ALL words
+    const searchWords = (searchQuery.value || '').trim().split(/\s+/).filter(Boolean)
+    if (searchWords.length > 0) {
+      params.search = searchWords[0]
+      params.perPage = 200  // fetch more results for client-side filtering
     } else {
       if (dateFrom.value)       params.from   = dateFrom.value
       if (dateTo.value)         params.to     = dateTo.value
@@ -203,9 +207,81 @@ async function confirmDelete() {
   }
 }
 
-// Backend-driven search: transactions already filtered by the API response.
-// Keep filteredTransactions as a simple alias so template v-for still works.
-const filteredTransactions = computed(() => transactions.value)
+
+// ─── Universal Search helpers (legacy parity) ─────────────────────
+function dateSearchFormats(dateStr) {
+  if (!dateStr) return ''
+  let dd = '', mm = '', yyyy = ''
+  if (String(dateStr).includes('-')) {
+    const p = String(dateStr).split('-'); yyyy = p[0]; mm = p[1]; dd = p[2]
+  } else if (String(dateStr).includes('/')) {
+    const p = String(dateStr).split('/'); dd = p[0]; mm = p[1]; yyyy = p[2]
+  }
+  if (!dd) return String(dateStr)
+  const yy = yyyy.substring(2)
+  return [
+    dd+'/'+mm+'/'+yyyy, dd+'/'+mm+'/'+yy, dd+'-'+mm+'-'+yyyy, dd+'-'+mm+'-'+yy,
+    dd+'/'+mm, mm+'/'+yyyy, mm+'/'+yy, yyyy+'-'+mm+'-'+dd, dd+'.'+mm+'.'+yyyy, dd+'.'+mm+'.'+yy
+  ].join(' ')
+}
+
+function parseSearchAmount(q) {
+  let s = q.replace(/\s/g, '').replace('€', '')
+  if (/^\d{1,3}(\.\d{3})*(,\d{1,2})?$/.test(s)) { s = s.replace(/\./g, '').replace(',', '.'); const n = parseFloat(s); return isNaN(n) ? null : n }
+  if (/^\d{1,3}(,\d{3})*(\.\d{1,2})?$/.test(s)) { s = s.replace(/,/g, ''); const n = parseFloat(s); return isNaN(n) ? null : n }
+  s = s.replace(',', '.'); const n = parseFloat(s); return isNaN(n) ? null : n
+}
+
+function universalMatch(t, searchRaw) {
+  if (!searchRaw) return true
+  const words = searchRaw.trim().toLowerCase().split(/\s+/)
+  return words.every(word => {
+    // Status label mapping for Greek search terms
+    const statusMap = {
+      'εξοφλημένη': 'paid',
+      'εξοφλημενη': 'paid',
+      'απλήρωτη': 'unpaid',
+      'εκκρεμής': 'urgent',
+      'εκκρεμεις': 'urgent',
+      'εισπράχθηκε': 'received',
+      'πληρωμένη': 'paid',
+      'πληρωμενη': 'paid'
+    }
+    // Check if the search word is a Greek status term
+    const mappedStatus = statusMap[word]
+
+    const text = [
+      String(t.entityNumber ?? t.id ?? ''),
+      t.description ?? '', t.category ?? '', t.subcategory ?? '',
+      t.counterparty ?? '', t.paymentMethod ?? '', t.paymentStatus ?? '',
+      t.account ?? '', t.type ?? '',
+      dateSearchFormats(t.docDate), dateSearchFormats(t.paymentDate),
+      t.type === 'income' ? 'είσπραξη εισόδημα' : 'πληρωμή έξοδο',
+      t.recordStatus ?? ''
+    ].filter(Boolean).join(' ').toLowerCase()
+    if (text.includes(word)) return true
+    // Check mapped Greek status
+    if (mappedStatus && (t.paymentStatus || '').toLowerCase() === mappedStatus) return true
+    // Amount search
+    const searchAmt = parseSearchAmount(word)
+    if (searchAmt !== null) {
+      const fields = [t.amount, t.amountPaid, t.amountRemaining]
+      for (const f of fields) {
+        const v = parseFloat(f || 0)
+        if (v > 0 && Math.abs(v - searchAmt) < 0.005) return true
+      }
+    }
+    return false
+  })
+}
+
+// Client-side universal search: backend pre-filters by first word,
+// then universalMatch applies ALL words across ALL fields + amount + date.
+const filteredTransactions = computed(() => {
+  const q = (searchQuery.value || '').trim()
+  if (!q) return transactions.value
+  return transactions.value.filter(t => universalMatch(t, q))
+})
 
 // Debounced search: wait 400ms after user stops typing before hitting the API.
 // Prevents hammering the backend on every keystroke.
@@ -304,7 +380,7 @@ onMounted(loadTransactions)
           @input="onSearchInput"
           type="text"
           class="search-input"
-          placeholder="Αναζήτηση σε όλο το ιστορικό: ID, περιγραφή, κατηγορία, τρόπος, status..." />
+          placeholder="Αναζήτηση: ID, περιγραφή, ποσό, κατηγορία, ημ/νία, status..." />
         <button v-if="searchQuery" class="search-clear" @click="clearSearch" title="Καθάρισμα">×</button>
       </div>
       <input v-model="dateFrom" type="date" class="f-input" />
