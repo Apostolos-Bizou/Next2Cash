@@ -86,7 +86,7 @@ async function loadConfig() {
 
   try {
     const res = await api.get('/api/config/items', { params: { entityId } })
-    const items = res.data || []
+    const items = res.data?.data || res.data || []
     categoriesList.value = items.filter(i => i.configType === 'category' && i.isActive !== false)
     subcategoriesList.value = items.filter(i => i.configType === 'subcategory' && i.isActive !== false)
   } catch (err) {
@@ -116,6 +116,7 @@ const panelItems = computed(() => {
     amountPaid: Number(t.amountPaid) || 0,
     amountRemaining: Number(t.amountRemaining) || 0,
     paymentDate: t.paymentDate || '',
+    blobFileIds: t.blobFileIds || '',
   }))
 
   // Apply sidebar filters
@@ -369,6 +370,51 @@ const exportPDF = () => {
 
 const exportExcel = () => alert('Export Excel — θα συνδεθεί στη φάση 2')
 
+/* ── Download section files ── */
+const downloadSectionFiles = async (section) => {
+  const txnIds = section.items.map(i => i.id).filter(id => id > 0)
+  if (txnIds.length === 0) { alert('No files to download'); return }
+
+  const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
+  const entityId = ENTITY_MAP[entityKey]
+
+  // Collect all blob file IDs from transactions
+  const blobIds = []
+  for (const item of section.items) {
+    if (item.blobFileIds) {
+      item.blobFileIds.split(',').forEach(id => { if (id.trim()) blobIds.push(id.trim()) })
+    }
+  }
+
+  if (blobIds.length === 0) {
+    // Try fetching documents for each transaction
+    let found = 0
+    for (const id of txnIds) {
+      try {
+        const res = await api.get('/api/documents/by-transaction/' + id, { params: { entityId } })
+        const docs = res.data?.data || res.data || []
+        if (Array.isArray(docs)) {
+          for (const doc of docs) {
+            if (doc.blobPath || doc.id) {
+              found++
+              // Download each document
+              const downloadUrl = '/api/documents/' + doc.id + '/download?entityId=' + entityId
+              const link = document.createElement('a')
+              link.href = api.defaults.baseURL + downloadUrl
+              link.setAttribute('download', doc.fileName || 'document')
+              link.setAttribute('target', '_blank')
+              document.body.appendChild(link)
+              link.click()
+              document.body.removeChild(link)
+            }
+          }
+        }
+      } catch (err) { console.warn('Download failed for txn', id, err) }
+    }
+    if (found === 0) alert('No attached files found')
+  }
+}
+
 const fmt = (n) => {
   const abs = Math.abs(n)
   const str = new Intl.NumberFormat('el-GR', { minimumFractionDigits: 2 }).format(abs) + ' €'
@@ -495,7 +541,7 @@ onMounted(async () => {
               </div>
               <div class="section-header-right">
                 <button class="btn-add-item">+ Προσθήκη</button>
-                <span class="section-badge">
+                <span class="section-badge clickable" @click="downloadSectionFiles(section)" title="Download files">
                   📥 {{ section.items.length }} αρχεία
                 </span>
                 <span class="section-total" :class="section.type === 'income' ? 'income-col' : 'expense-col'">
@@ -697,6 +743,8 @@ onMounted(async () => {
 .section-arrow { font-size: 0.8rem; }
 .income .section-arrow { color: #4FC3A1; }
 .expense .section-arrow { color: #ef5350; }
+.section-badge.clickable { cursor: pointer; }
+.section-badge.clickable:hover { background: #2a4a6a; }
 .section-badge { background: #1a2f45; padding: 3px 10px; border-radius: 10px; font-size: 0.72rem; color: #8899aa; }
 .section-total { font-family: monospace; font-weight: 700; font-size: 0.9rem; }
 .section-arrow-btn { color: #8899aa; cursor: pointer; font-size: 0.85rem; }
