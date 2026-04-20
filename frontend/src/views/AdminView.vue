@@ -2,19 +2,19 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
 
-// ═══════════════════════════════════════════════════════════════════
-//  SESSION #2 — Full Admin Panel (Users tab)
-//  18 Apr 2026 — Edit/Create/Delete/Reset Password + Entity Assignment
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
+//  SESSION #2 β€” Full Admin Panel (Users tab)
+//  18 Apr 2026 β€” Edit/Create/Delete/Reset Password + Entity Assignment
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 
 const activeTab = ref('users')
 
 const tabs = [
-  { id: 'users',      label: 'Χρήστες',    icon: '👥' },
-  { id: 'categories', label: 'Κατηγορίες', icon: '📁' },
-  { id: 'accounts',   label: 'Λογαριασμοί', icon: '📋' },
-  { id: 'banks',      label: 'Τράπεζες',   icon: '🏦' },
-  { id: 'audit',      label: 'Audit Log',  icon: '📜' },
+  { id: 'users',      label: 'Ξ§ΟΞ®ΟƒΟ„ΞµΟ‚',    icon: 'π‘¥' },
+  { id: 'categories', label: 'ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―ΞµΟ‚', icon: 'π“' },
+  { id: 'accounts',   label: 'Ξ›ΞΏΞ³Ξ±ΟΞΉΞ±ΟƒΞΌΞΏΞ―', icon: 'π“‹' },
+  { id: 'banks',      label: 'Ξ¤ΟΞ¬Ο€ΞµΞ¶ΞµΟ‚',   icon: 'π¦' },
+  { id: 'audit',      label: 'Audit Log',  icon: 'π“' },
 ]
 
 // Current user (for self-detection)
@@ -22,18 +22,18 @@ const currentUser = ref(null)
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 const currentUsername = computed(() => currentUser.value?.username)
 
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 //  USERS STATE
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 const users = ref([])
 const usersLoading = ref(false)
 const usersError = ref(null)
 
 const ROLE_LABELS = {
-  admin:      'Διαχειριστής',
-  user:       'Χρήστης',
-  accountant: 'Λογιστής',
-  viewer:     'Θεατής'
+  admin:      'Ξ”ΞΉΞ±Ο‡ΞµΞΉΟΞΉΟƒΟ„Ξ®Ο‚',
+  user:       'Ξ§ΟΞ®ΟƒΟ„Ξ·Ο‚',
+  accountant: 'Ξ›ΞΏΞ³ΞΉΟƒΟ„Ξ®Ο‚',
+  viewer:     'ΞΞµΞ±Ο„Ξ®Ο‚'
 }
 
 const ROLE_CLASSES = {
@@ -43,7 +43,7 @@ const ROLE_CLASSES = {
   viewer:     'role-gray'
 }
 
-// Roles available in dropdowns (admin excluded — can only be set via SQL)
+// Roles available in dropdowns (admin excluded β€” can only be set via SQL)
 const ASSIGNABLE_ROLES = ['user', 'accountant', 'viewer']
 
 // Roles that require entity assignment
@@ -51,16 +51,16 @@ const RESTRICTED_ROLES = ['accountant', 'viewer']
 
 // M.6: All available sections for checkbox selection
 const ALL_SECTIONS = [
-  { key: 'dashboard',      label: 'Πίνακας Ελέγχου' },
-  { key: 'new-entry',      label: 'Νέα Καταχώριση' },
-  { key: 'transactions',   label: 'Κινήσεις' },
-  { key: 'payments',       label: 'Πληρωμές' },
-  { key: 'obligations',    label: 'Υποχρεώσεις' },
-  { key: 'karteles',       label: 'Καρτέλες' },
+  { key: 'dashboard',      label: 'Ξ Ξ―Ξ½Ξ±ΞΊΞ±Ο‚ Ξ•Ξ»Ξ­Ξ³Ο‡ΞΏΟ…' },
+  { key: 'new-entry',      label: 'ΞΞ­Ξ± ΞΞ±Ο„Ξ±Ο‡ΟΟΞΉΟƒΞ·' },
+  { key: 'transactions',   label: 'ΞΞΉΞ½Ξ®ΟƒΞµΞΉΟ‚' },
+  { key: 'payments',       label: 'Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚' },
+  { key: 'obligations',    label: 'Ξ¥Ο€ΞΏΟ‡ΟΞµΟΟƒΞµΞΉΟ‚' },
+  { key: 'karteles',       label: 'ΞΞ±ΟΟ„Ξ­Ξ»ΞµΟ‚' },
   { key: 'zip-export',     label: 'ZIP Export' },
-  { key: 'reports',        label: 'Αναφορές' },
+  { key: 'reports',        label: 'Ξ‘Ξ½Ξ±Ο†ΞΏΟΞ­Ο‚' },
   { key: 'report-builder', label: 'Report Builder' },
-  { key: 'ai-analysis',    label: 'AI Ανάλυση' },
+  { key: 'ai-analysis',    label: 'AI Ξ‘Ξ½Ξ¬Ξ»Ο…ΟƒΞ·' },
   { key: 'admin',          label: 'Admin Panel' },
 ]
 
@@ -98,14 +98,14 @@ async function fetchUsers() {
     if (res.data.success) {
       users.value = res.data.data
     } else {
-      usersError.value = res.data.error || 'Σφάλμα φόρτωσης'
+      usersError.value = res.data.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± Ο†ΟΟΟ„Ο‰ΟƒΞ·Ο‚'
     }
   } catch (e) {
     console.error('fetchUsers error:', e)
     if (e.response?.status === 403) {
-      usersError.value = 'Δεν έχετε δικαίωμα πρόσβασης σε αυτή τη σελίδα'
+      usersError.value = 'Ξ”ΞµΞ½ Ξ­Ο‡ΞµΟ„Ξµ Ξ΄ΞΉΞΊΞ±Ξ―Ο‰ΞΌΞ± Ο€ΟΟΟƒΞ²Ξ±ΟƒΞ·Ο‚ ΟƒΞµ Ξ±Ο…Ο„Ξ® Ο„Ξ· ΟƒΞµΞ»Ξ―Ξ΄Ξ±'
     } else {
-      usersError.value = e.response?.data?.error || 'Σφάλμα σύνδεσης'
+      usersError.value = e.response?.data?.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± ΟƒΟΞ½Ξ΄ΞµΟƒΞ·Ο‚'
     }
   } finally {
     usersLoading.value = false
@@ -114,9 +114,9 @@ async function fetchUsers() {
 
 async function fetchEntities() {
   try {
-    const res = await api.get('/api/config')
-    if (res.data.success && res.data.entities) {
-      entities.value = res.data.entities
+    const res = await api.get('/api/config/entities')
+    if (res.data.success && res.data.data) {
+      entities.value = res.data.data
       return
     }
   } catch (e) {
@@ -131,12 +131,12 @@ async function fetchEntities() {
 }
 
 function formatLastLogin(iso) {
-  if (!iso) return 'Ποτέ'
+  if (!iso) return 'Ξ ΞΏΟ„Ξ­'
   try {
     const d = new Date(iso)
     return d.toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: '2-digit' })
   } catch {
-    return '—'
+    return 'β€”'
   }
 }
 
@@ -149,9 +149,9 @@ function isSelf(u) {
   return currentUsername.value && currentUsername.value === u.username
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 //  CREATE USER
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 const newUser = ref({
   username: '',
   displayName: '',
@@ -193,15 +193,15 @@ watch(() => newUser.value.role, (role) => {
 async function createUser() {
   createError.value = null
   if (!newUser.value.username.trim()) {
-    createError.value = 'Username υποχρεωτικό'
+    createError.value = 'Username Ο…Ο€ΞΏΟ‡ΟΞµΟ‰Ο„ΞΉΞΊΟ'
     return
   }
   if (!newUser.value.password || newUser.value.password.length < 8) {
-    createError.value = 'Ο κωδικός πρέπει να είναι τουλάχιστον 8 χαρακτήρες'
+    createError.value = 'Ξ ΞΊΟ‰Ξ΄ΞΉΞΊΟΟ‚ Ο€ΟΞ­Ο€ΞµΞΉ Ξ½Ξ± ΞµΞ―Ξ½Ξ±ΞΉ Ο„ΞΏΟ…Ξ»Ξ¬Ο‡ΞΉΟƒΟ„ΞΏΞ½ 8 Ο‡Ξ±ΟΞ±ΞΊΟ„Ξ®ΟΞµΟ‚'
     return
   }
   if (createNeedsEntities.value && newEntityIds.value.length === 0) {
-    createError.value = 'Ο ρόλος "' + ROLE_LABELS[newUser.value.role] + '" απαιτεί τουλάχιστον μία εταιρεία.'
+    createError.value = 'Ξ ΟΟΞ»ΞΏΟ‚ "' + ROLE_LABELS[newUser.value.role] + '" Ξ±Ο€Ξ±ΞΉΟ„ΞµΞ― Ο„ΞΏΟ…Ξ»Ξ¬Ο‡ΞΉΟƒΟ„ΞΏΞ½ ΞΌΞ―Ξ± ΞµΟ„Ξ±ΞΉΟΞµΞ―Ξ±.'
     return
   }
   creating.value = true
@@ -231,7 +231,7 @@ async function createUser() {
             })
           } catch (entErr) {
             console.error('Entity assignment failed:', entErr)
-            alert('Ο χρήστης δημιουργήθηκε αλλά η αντιστοίχιση εταιρειών απέτυχε. Κάντε Επεξεργασία για να την επαναλάβετε.')
+            alert('Ξ Ο‡ΟΞ®ΟƒΟ„Ξ·Ο‚ Ξ΄Ξ·ΞΌΞΉΞΏΟ…ΟΞ³Ξ®ΞΈΞ·ΞΊΞµ Ξ±Ξ»Ξ»Ξ¬ Ξ· Ξ±Ξ½Ο„ΞΉΟƒΟ„ΞΏΞ―Ο‡ΞΉΟƒΞ· ΞµΟ„Ξ±ΞΉΟΞµΞΉΟΞ½ Ξ±Ο€Ξ­Ο„Ο…Ο‡Ξµ. ΞΞ¬Ξ½Ο„Ξµ Ξ•Ο€ΞµΞΎΞµΟΞ³Ξ±ΟƒΞ―Ξ± Ξ³ΞΉΞ± Ξ½Ξ± Ο„Ξ·Ξ½ ΞµΟ€Ξ±Ξ½Ξ±Ξ»Ξ¬Ξ²ΞµΟ„Ξµ.')
           }
         }
       }
@@ -239,20 +239,20 @@ async function createUser() {
       newEntityIds.value = []
       newSections.value = []
       await fetchUsers()
-      alert('Χρήστης δημιουργήθηκε επιτυχώς.')
+      alert('Ξ§ΟΞ®ΟƒΟ„Ξ·Ο‚ Ξ΄Ξ·ΞΌΞΉΞΏΟ…ΟΞ³Ξ®ΞΈΞ·ΞΊΞµ ΞµΟ€ΞΉΟ„Ο…Ο‡ΟΟ‚.')
     } else {
-      createError.value = res.data.error || 'Σφάλμα δημιουργίας'
+      createError.value = res.data.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± Ξ΄Ξ·ΞΌΞΉΞΏΟ…ΟΞ³Ξ―Ξ±Ο‚'
     }
   } catch (e) {
-    createError.value = e.response?.data?.error || 'Σφάλμα σύνδεσης'
+    createError.value = e.response?.data?.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± ΟƒΟΞ½Ξ΄ΞµΟƒΞ·Ο‚'
   } finally {
     creating.value = false
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 //  EDIT USER MODAL
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 const editModalOpen = ref(false)
 const editUser = ref(null)
 const editForm = ref({
@@ -342,7 +342,7 @@ async function saveEditUser() {
   editError.value = null
 
   if (needsEntities.value && editEntityIds.value.length === 0) {
-    editError.value = 'Ο ρόλος "' + ROLE_LABELS[editForm.value.role] + '" απαιτεί τουλάχιστον μία εταιρεία.'
+    editError.value = 'Ξ ΟΟΞ»ΞΏΟ‚ "' + ROLE_LABELS[editForm.value.role] + '" Ξ±Ο€Ξ±ΞΉΟ„ΞµΞ― Ο„ΞΏΟ…Ξ»Ξ¬Ο‡ΞΉΟƒΟ„ΞΏΞ½ ΞΌΞ―Ξ± ΞµΟ„Ξ±ΞΉΟΞµΞ―Ξ±.'
     return
   }
 
@@ -372,7 +372,7 @@ async function saveEditUser() {
 
       if (newPasswordField.value && newPasswordField.value.length > 0) {
         if (newPasswordField.value.length < 8) {
-          editError.value = 'Χρήστης ενημερώθηκε ΑΛΛΑ ο κωδικός δεν άλλαξε (απαιτεί τουλάχιστον 8 χαρακτήρες)'
+          editError.value = 'Ξ§ΟΞ®ΟƒΟ„Ξ·Ο‚ ΞµΞ½Ξ·ΞΌΞµΟΟΞΈΞ·ΞΊΞµ Ξ‘Ξ›Ξ›Ξ‘ ΞΏ ΞΊΟ‰Ξ΄ΞΉΞΊΟΟ‚ Ξ΄ΞµΞ½ Ξ¬Ξ»Ξ»Ξ±ΞΎΞµ (Ξ±Ο€Ξ±ΞΉΟ„ΞµΞ― Ο„ΞΏΟ…Ξ»Ξ¬Ο‡ΞΉΟƒΟ„ΞΏΞ½ 8 Ο‡Ξ±ΟΞ±ΞΊΟ„Ξ®ΟΞµΟ‚)'
           await fetchUsers()
           editSaving.value = false
           return
@@ -384,44 +384,44 @@ async function saveEditUser() {
 
       await fetchUsers()
       closeEditModal()
-      alert('Ο χρήστης ενημερώθηκε επιτυχώς')
+      alert('Ξ Ο‡ΟΞ®ΟƒΟ„Ξ·Ο‚ ΞµΞ½Ξ·ΞΌΞµΟΟΞΈΞ·ΞΊΞµ ΞµΟ€ΞΉΟ„Ο…Ο‡ΟΟ‚')
     } else {
-      editError.value = res.data.error || 'Σφάλμα ενημέρωσης'
+      editError.value = res.data.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± ΞµΞ½Ξ·ΞΌΞ­ΟΟ‰ΟƒΞ·Ο‚'
     }
   } catch (e) {
-    editError.value = e.response?.data?.error || 'Σφάλμα σύνδεσης'
+    editError.value = e.response?.data?.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± ΟƒΟΞ½Ξ΄ΞµΟƒΞ·Ο‚'
   } finally {
     editSaving.value = false
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 //  DELETE USER
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 async function deleteUser(u) {
   if (isSelf(u)) {
-    alert('Δεν μπορείτε να διαγράψετε τον εαυτό σας')
+    alert('Ξ”ΞµΞ½ ΞΌΟ€ΞΏΟΞµΞ―Ο„Ξµ Ξ½Ξ± Ξ΄ΞΉΞ±Ξ³ΟΞ¬ΟΞµΟ„Ξµ Ο„ΞΏΞ½ ΞµΞ±Ο…Ο„Ο ΟƒΞ±Ο‚')
     return
   }
-  if (!confirm('Απενεργοποίηση χρήστη "' + (u.displayName || u.username) + '";\n\nΟ χρήστης δεν θα μπορεί να συνδεθεί αλλά τα δεδομένα του θα διατηρηθούν.')) {
+  if (!confirm('Ξ‘Ο€ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ· Ο‡ΟΞ®ΟƒΟ„Ξ· "' + (u.displayName || u.username) + '";\n\nΞ Ο‡ΟΞ®ΟƒΟ„Ξ·Ο‚ Ξ΄ΞµΞ½ ΞΈΞ± ΞΌΟ€ΞΏΟΞµΞ― Ξ½Ξ± ΟƒΟ…Ξ½Ξ΄ΞµΞΈΞµΞ― Ξ±Ξ»Ξ»Ξ¬ Ο„Ξ± Ξ΄ΞµΞ΄ΞΏΞΌΞ­Ξ½Ξ± Ο„ΞΏΟ… ΞΈΞ± Ξ΄ΞΉΞ±Ο„Ξ·ΟΞ·ΞΈΞΏΟΞ½.')) {
     return
   }
   try {
     const res = await api.delete('/api/admin/users/' + u.id)
     if (res.data.success) {
       await fetchUsers()
-      alert('Ο χρήστης απενεργοποιήθηκε')
+      alert('Ξ Ο‡ΟΞ®ΟƒΟ„Ξ·Ο‚ Ξ±Ο€ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞΉΞ®ΞΈΞ·ΞΊΞµ')
     } else {
-      alert('Σφάλμα: ' + (res.data.error || ''))
+      alert('Ξ£Ο†Ξ¬Ξ»ΞΌΞ±: ' + (res.data.error || ''))
     }
   } catch (e) {
-    alert('Σφάλμα: ' + (e.response?.data?.error || 'Σφάλμα σύνδεσης'))
+    alert('Ξ£Ο†Ξ¬Ξ»ΞΌΞ±: ' + (e.response?.data?.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± ΟƒΟΞ½Ξ΄ΞµΟƒΞ·Ο‚'))
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 //  SELF CHANGE PASSWORD
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 const selfPasswordOpen = ref(false)
 const selfOldPassword = ref('')
 const selfNewPassword = ref('')
@@ -431,11 +431,11 @@ const selfPasswordSaving = ref(false)
 async function changeMyPassword() {
   selfPasswordError.value = null
   if (!selfOldPassword.value || !selfNewPassword.value) {
-    selfPasswordError.value = 'Συμπληρώστε όλα τα πεδία'
+    selfPasswordError.value = 'Ξ£Ο…ΞΌΟ€Ξ»Ξ·ΟΟΟƒΟ„Ξµ ΟΞ»Ξ± Ο„Ξ± Ο€ΞµΞ΄Ξ―Ξ±'
     return
   }
   if (selfNewPassword.value.length < 8) {
-    selfPasswordError.value = 'Ο νέος κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες'
+    selfPasswordError.value = 'Ξ Ξ½Ξ­ΞΏΟ‚ ΞΊΟ‰Ξ΄ΞΉΞΊΟΟ‚ Ο€ΟΞ­Ο€ΞµΞΉ Ξ½Ξ± Ξ­Ο‡ΞµΞΉ Ο„ΞΏΟ…Ξ»Ξ¬Ο‡ΞΉΟƒΟ„ΞΏΞ½ 8 Ο‡Ξ±ΟΞ±ΞΊΟ„Ξ®ΟΞµΟ‚'
     return
   }
   selfPasswordSaving.value = true
@@ -448,20 +448,20 @@ async function changeMyPassword() {
       selfOldPassword.value = ''
       selfNewPassword.value = ''
       selfPasswordOpen.value = false
-      alert('Ο κωδικός σας άλλαξε επιτυχώς')
+      alert('Ξ ΞΊΟ‰Ξ΄ΞΉΞΊΟΟ‚ ΟƒΞ±Ο‚ Ξ¬Ξ»Ξ»Ξ±ΞΎΞµ ΞµΟ€ΞΉΟ„Ο…Ο‡ΟΟ‚')
     } else {
-      selfPasswordError.value = res.data.error || 'Σφάλμα'
+      selfPasswordError.value = res.data.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ±'
     }
   } catch (e) {
-    selfPasswordError.value = e.response?.data?.error || 'Σφάλμα σύνδεσης'
+    selfPasswordError.value = e.response?.data?.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± ΟƒΟΞ½Ξ΄ΞµΟƒΞ·Ο‚'
   } finally {
     selfPasswordSaving.value = false
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 //  FILTERED USERS LIST (USER role sees only self)
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 const visibleUsers = computed(() => {
   if (!currentUser.value) return []
   if (currentUser.value.role === 'admin') return users.value
@@ -471,12 +471,12 @@ const visibleUsers = computed(() => {
   return []
 })
 
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 //  MOUNT
-// ═══════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════
-//  M.7 — Config Management State (Categories, Subcategories, Banks)
-// ═══════════════════════════════════════════════════════════════════
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
+//  M.7 β€” Config Management State (Categories, Subcategories, Banks)
+// β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•β•
 const ENTITIES_MAP = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
   house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
@@ -549,7 +549,7 @@ async function addCategory() {
       await loadAdminConfig()
     }
   } catch (e) {
-    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+    alert('Ξ£Ο†Ξ¬Ξ»ΞΌΞ±: ' + (e.response?.data?.error || e.message))
   }
 }
 
@@ -568,17 +568,17 @@ async function addSubcategory() {
       await loadAdminConfig()
     }
   } catch (e) {
-    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+    alert('Ξ£Ο†Ξ¬Ξ»ΞΌΞ±: ' + (e.response?.data?.error || e.message))
   }
 }
 
 async function deactivateConfig(item) {
-  if (!confirm('Απενεργοποίηση "' + item.configKey + '";\n\nΔεν θα εμφανίζεται πλέον στις νέες καταχωρήσεις.')) return
+  if (!confirm('Ξ‘Ο€ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ· "' + item.configKey + '";\n\nΞ”ΞµΞ½ ΞΈΞ± ΞµΞΌΟ†Ξ±Ξ½Ξ―Ξ¶ΞµΟ„Ξ±ΞΉ Ο€Ξ»Ξ­ΞΏΞ½ ΟƒΟ„ΞΉΟ‚ Ξ½Ξ­ΞµΟ‚ ΞΊΞ±Ο„Ξ±Ο‡Ο‰ΟΞ®ΟƒΞµΞΉΟ‚.')) return
   try {
     await api.delete('/api/config/items/' + item.id, { params: { entityId: adminEntityId.value } })
     await loadAdminConfig()
   } catch (e) {
-    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+    alert('Ξ£Ο†Ξ¬Ξ»ΞΌΞ±: ' + (e.response?.data?.error || e.message))
   }
 }
 
@@ -587,7 +587,7 @@ async function reactivateConfig(item) {
     await api.put('/api/config/items/' + item.id, { isActive: true }, { params: { entityId: adminEntityId.value } })
     await loadAdminConfig()
   } catch (e) {
-    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+    alert('Ξ£Ο†Ξ¬Ξ»ΞΌΞ±: ' + (e.response?.data?.error || e.message))
   }
 }
 
@@ -730,27 +730,27 @@ onMounted(async () => {
     <div v-if="activeTab === 'users'" class="tab-content">
 
       <div v-if="currentUser && currentUser.role === 'user'" class="notice notice-info">
-        Ως Χρήστης βλέπετε μόνο τα στοιχεία σας. Για αλλαγή κωδικού χρησιμοποιήστε το κουμπί "Αλλαγή Κωδικού Μου".
+        Ξ©Ο‚ Ξ§ΟΞ®ΟƒΟ„Ξ·Ο‚ Ξ²Ξ»Ξ­Ο€ΞµΟ„Ξµ ΞΌΟΞ½ΞΏ Ο„Ξ± ΟƒΟ„ΞΏΞΉΟ‡ΞµΞ―Ξ± ΟƒΞ±Ο‚. Ξ“ΞΉΞ± Ξ±Ξ»Ξ»Ξ±Ξ³Ξ® ΞΊΟ‰Ξ΄ΞΉΞΊΞΏΟ Ο‡ΟΞ·ΟƒΞΉΞΌΞΏΟ€ΞΏΞΉΞ®ΟƒΟ„Ξµ Ο„ΞΏ ΞΊΞΏΟ…ΞΌΟ€Ξ― "Ξ‘Ξ»Ξ»Ξ±Ξ³Ξ® ΞΟ‰Ξ΄ΞΉΞΊΞΏΟ ΞΞΏΟ…".
       </div>
 
       <div v-if="isAdmin" class="card">
-        <h2>Νέος Χρήστης</h2>
+        <h2>ΞΞ­ΞΏΟ‚ Ξ§ΟΞ®ΟƒΟ„Ξ·Ο‚</h2>
         <div class="form-row">
           <input v-model="newUser.username" placeholder="Username *" class="input" />
-          <input v-model="newUser.displayName" placeholder="Εμφανιζόμενο Όνομα" class="input" />
-          <input v-model="newUser.email" placeholder="Email (προαιρετικό)" type="email" class="input" />
+          <input v-model="newUser.displayName" placeholder="Ξ•ΞΌΟ†Ξ±Ξ½ΞΉΞ¶ΟΞΌΞµΞ½ΞΏ ΞΞ½ΞΏΞΌΞ±" class="input" />
+          <input v-model="newUser.email" placeholder="Email (Ο€ΟΞΏΞ±ΞΉΟΞµΟ„ΞΉΞΊΟ)" type="email" class="input" />
         </div>
         <div class="form-row">
-          <input v-model="newUser.password" placeholder="Κωδικός (min 8 χαρακτήρες) *" type="password" class="input" />
+          <input v-model="newUser.password" placeholder="ΞΟ‰Ξ΄ΞΉΞΊΟΟ‚ (min 8 Ο‡Ξ±ΟΞ±ΞΊΟ„Ξ®ΟΞµΟ‚) *" type="password" class="input" />
           <select v-model="newUser.role" class="input">
             <option v-for="r in ASSIGNABLE_ROLES" :key="r" :value="r">{{ ROLE_LABELS[r] }}</option>
           </select>
           <button class="btn btn-primary" :disabled="creating" @click="createUser">
-            {{ creating ? 'Δημιουργία...' : '+ Δημιουργία' }}
+            {{ creating ? 'Ξ”Ξ·ΞΌΞΉΞΏΟ…ΟΞ³Ξ―Ξ±...' : '+ Ξ”Ξ·ΞΌΞΉΞΏΟ…ΟΞ³Ξ―Ξ±' }}
           </button>
         </div>
         <div class="form-group" style="margin-top: 12px;">
-          <label>Εταιρείες που θα βλέπει ο χρήστης <small v-if="!createNeedsEntities">(κενό = όλες)</small><small v-else>*</small></label>
+          <label>Ξ•Ο„Ξ±ΞΉΟΞµΞ―ΞµΟ‚ Ο€ΞΏΟ… ΞΈΞ± Ξ²Ξ»Ξ­Ο€ΞµΞΉ ΞΏ Ο‡ΟΞ®ΟƒΟ„Ξ·Ο‚ <small v-if="!createNeedsEntities">(ΞΊΞµΞ½Ο = ΟΞ»ΞµΟ‚)</small><small v-else>*</small></label>
           <div class="entity-checkboxes">
             <label v-for="e in entities" :key="e.id" class="checkbox-label">
               <input
@@ -762,17 +762,17 @@ onMounted(async () => {
             </label>
           </div>
           <small v-if="newEntityIds.length === 0 && createNeedsEntities" class="help-text" style="color: #fbbf24;">
-            Υποχρεωτικό: επιλέξτε τουλάχιστον μία εταιρεία
+            Ξ¥Ο€ΞΏΟ‡ΟΞµΟ‰Ο„ΞΉΞΊΟ: ΞµΟ€ΞΉΞ»Ξ­ΞΎΟ„Ξµ Ο„ΞΏΟ…Ξ»Ξ¬Ο‡ΞΉΟƒΟ„ΞΏΞ½ ΞΌΞ―Ξ± ΞµΟ„Ξ±ΞΉΟΞµΞ―Ξ±
           </small>
           <small v-if="newEntityIds.length === 0 && !createNeedsEntities" class="help-text">
-            Κενό = όλες οι εταιρείες
+            ΞΞµΞ½Ο = ΟΞ»ΞµΟ‚ ΞΏΞΉ ΞµΟ„Ξ±ΞΉΟΞµΞ―ΞµΟ‚
           </small>
         </div>
         <div v-if="createError" class="error">{{ createError }}</div>
         <!-- M.6: Allowed sections checkboxes for create -->
         <div class="form-group" style="margin-top: 12px;">
-          <label>Σελίδες που θα βλέπει ο χρήστης
-            <small v-if="!DEFAULT_SECTIONS[newUser.role]">(κενό = όλες)</small>
+          <label>Ξ£ΞµΞ»Ξ―Ξ΄ΞµΟ‚ Ο€ΞΏΟ… ΞΈΞ± Ξ²Ξ»Ξ­Ο€ΞµΞΉ ΞΏ Ο‡ΟΞ®ΟƒΟ„Ξ·Ο‚
+            <small v-if="!DEFAULT_SECTIONS[newUser.role]">(ΞΊΞµΞ½Ο = ΟΞ»ΞµΟ‚)</small>
           </label>
           <div class="section-checkboxes">
             <label v-for="s in ALL_SECTIONS" :key="s.key" class="checkbox-label">
@@ -784,28 +784,28 @@ onMounted(async () => {
               {{ s.label }}
             </label>
           </div>
-          <small class="help-text">Κενό = πλήρης πρόσβαση (για Admin/User)</small>
+          <small class="help-text">ΞΞµΞ½Ο = Ο€Ξ»Ξ®ΟΞ·Ο‚ Ο€ΟΟΟƒΞ²Ξ±ΟƒΞ· (Ξ³ΞΉΞ± Admin/User)</small>
         </div>
         <p v-if="newUser.role === 'user'" class="warning">
-          Ο ρόλος "Χρήστης" δίνει σχεδόν πλήρη πρόσβαση στο σύστημα (εκτός από διαχείριση άλλων χρηστών).
+          Ξ ΟΟΞ»ΞΏΟ‚ "Ξ§ΟΞ®ΟƒΟ„Ξ·Ο‚" Ξ΄Ξ―Ξ½ΞµΞΉ ΟƒΟ‡ΞµΞ΄ΟΞ½ Ο€Ξ»Ξ®ΟΞ· Ο€ΟΟΟƒΞ²Ξ±ΟƒΞ· ΟƒΟ„ΞΏ ΟƒΟΟƒΟ„Ξ·ΞΌΞ± (ΞµΞΊΟ„ΟΟ‚ Ξ±Ο€Ο Ξ΄ΞΉΞ±Ο‡ΞµΞ―ΟΞΉΟƒΞ· Ξ¬Ξ»Ξ»Ο‰Ξ½ Ο‡ΟΞ·ΟƒΟ„ΟΞ½).
         </p>
       </div>
 
       <div class="card">
-        <h2>Ο Λογαριασμός Μου</h2>
+        <h2>Ξ Ξ›ΞΏΞ³Ξ±ΟΞΉΞ±ΟƒΞΌΟΟ‚ ΞΞΏΟ…</h2>
         <button v-if="!selfPasswordOpen" class="btn btn-secondary" @click="selfPasswordOpen = true">
-          Αλλαγή Κωδικού Μου
+          Ξ‘Ξ»Ξ»Ξ±Ξ³Ξ® ΞΟ‰Ξ΄ΞΉΞΊΞΏΟ ΞΞΏΟ…
         </button>
         <div v-else class="form-column">
-          <input v-model="selfOldPassword" placeholder="Τρέχων Κωδικός" type="password" class="input" />
-          <input v-model="selfNewPassword" placeholder="Νέος Κωδικός (min 8 χαρακτήρες)" type="password" class="input" />
+          <input v-model="selfOldPassword" placeholder="Ξ¤ΟΞ­Ο‡Ο‰Ξ½ ΞΟ‰Ξ΄ΞΉΞΊΟΟ‚" type="password" class="input" />
+          <input v-model="selfNewPassword" placeholder="ΞΞ­ΞΏΟ‚ ΞΟ‰Ξ΄ΞΉΞΊΟΟ‚ (min 8 Ο‡Ξ±ΟΞ±ΞΊΟ„Ξ®ΟΞµΟ‚)" type="password" class="input" />
           <div v-if="selfPasswordError" class="error">{{ selfPasswordError }}</div>
           <div class="form-row">
             <button class="btn btn-primary" :disabled="selfPasswordSaving" @click="changeMyPassword">
-              {{ selfPasswordSaving ? 'Αποθήκευση...' : 'Αποθήκευση' }}
+              {{ selfPasswordSaving ? 'Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·...' : 'Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·' }}
             </button>
             <button class="btn btn-secondary" @click="selfPasswordOpen = false; selfOldPassword=''; selfNewPassword=''; selfPasswordError=null">
-              Ακύρωση
+              Ξ‘ΞΊΟΟΟ‰ΟƒΞ·
             </button>
           </div>
         </div>
@@ -813,15 +813,15 @@ onMounted(async () => {
 
       <div class="card">
         <div class="card-header">
-          <h2>Χρήστες Συστήματος</h2>
+          <h2>Ξ§ΟΞ®ΟƒΟ„ΞµΟ‚ Ξ£Ο…ΟƒΟ„Ξ®ΞΌΞ±Ο„ΞΏΟ‚</h2>
           <button class="btn btn-secondary btn-sm" @click="fetchUsers" :disabled="usersLoading">
-            {{ usersLoading ? '...' : 'Ανανέωση' }}
+            {{ usersLoading ? '...' : 'Ξ‘Ξ½Ξ±Ξ½Ξ­Ο‰ΟƒΞ·' }}
           </button>
         </div>
 
-        <div v-if="usersLoading" class="loading">Φόρτωση...</div>
+        <div v-if="usersLoading" class="loading">Ξ¦ΟΟΟ„Ο‰ΟƒΞ·...</div>
         <div v-else-if="usersError" class="error">{{ usersError }}</div>
-        <div v-else-if="!visibleUsers.length" class="empty">Κανένας χρήστης</div>
+        <div v-else-if="!visibleUsers.length" class="empty">ΞΞ±Ξ½Ξ­Ξ½Ξ±Ο‚ Ο‡ΟΞ®ΟƒΟ„Ξ·Ο‚</div>
         <div v-else class="user-list">
           <div v-for="u in visibleUsers" :key="u.id" class="user-item">
             <div class="user-avatar">{{ userInitial(u) }}</div>
@@ -829,21 +829,21 @@ onMounted(async () => {
               <div class="user-name">
                 <span class="active-dot" :class="{ on: u.isActive !== false, off: u.isActive === false }"></span>
                 {{ u.displayName || u.username }}
-                <span v-if="isSelf(u)" class="self-badge">(εσείς)</span>
+                <span v-if="isSelf(u)" class="self-badge">(ΞµΟƒΞµΞ―Ο‚)</span>
               </div>
               <div class="user-meta">
-                @{{ u.username }} · Τελευταίο login: {{ formatLastLogin(u.lastLogin) }}
+                @{{ u.username }} Β· Ξ¤ΞµΞ»ΞµΟ…Ο„Ξ±Ξ―ΞΏ login: {{ formatLastLogin(u.lastLogin) }}
               </div>
             </div>
             <span class="role-badge" :class="ROLE_CLASSES[u.role]">{{ ROLE_LABELS[u.role] || u.role }}</span>
             <div v-if="isAdmin" class="user-actions">
-              <button class="btn-icon" title="Επεξεργασία" @click="openEditModal(u)">✏️</button>
+              <button class="btn-icon" title="Ξ•Ο€ΞµΞΎΞµΟΞ³Ξ±ΟƒΞ―Ξ±" @click="openEditModal(u)">βοΈ</button>
               <button
                 v-if="!isSelf(u) && u.isActive !== false"
                 class="btn-icon danger"
-                title="Απενεργοποίηση"
+                title="Ξ‘Ο€ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·"
                 @click="deleteUser(u)"
-              >🗑️</button>
+              >π—‘οΈ</button>
             </div>
           </div>
         </div>
@@ -852,41 +852,41 @@ onMounted(async () => {
 
     <div v-else-if="!isAdmin" class="tab-content">
       <div class="notice notice-warning">
-        Μόνο οι Διαχειριστές έχουν πρόσβαση σε αυτή τη σελίδα.
+        ΞΟΞ½ΞΏ ΞΏΞΉ Ξ”ΞΉΞ±Ο‡ΞµΞΉΟΞΉΟƒΟ„Ξ­Ο‚ Ξ­Ο‡ΞΏΟ…Ξ½ Ο€ΟΟΟƒΞ²Ξ±ΟƒΞ· ΟƒΞµ Ξ±Ο…Ο„Ξ® Ο„Ξ· ΟƒΞµΞ»Ξ―Ξ΄Ξ±.
       </div>
     </div>
 
-    <!-- ═══ CATEGORIES TAB ═══ -->
+    <!-- β•β•β• CATEGORIES TAB β•β•β• -->
     <div v-else-if="activeTab === 'categories'" class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h2>Κατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
+          <h2>ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―ΞµΟ‚ β€” {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
           <button class="btn btn-secondary btn-sm" @click="loadAdminConfig" :disabled="configLoading">
-            {{ configLoading ? '...' : 'Ανανέωση' }}
+            {{ configLoading ? '...' : 'Ξ‘Ξ½Ξ±Ξ½Ξ­Ο‰ΟƒΞ·' }}
           </button>
         </div>
 
-        <div v-if="configLoading" class="loading">Φόρτωση...</div>
+        <div v-if="configLoading" class="loading">Ξ¦ΟΟΟ„Ο‰ΟƒΞ·...</div>
         <div v-else>
           <!-- Add new category -->
           <div class="inline-form">
-            <input v-model="newCatKey" placeholder="Όνομα κατηγορίας (π.χ. ΜΕΤΑΦΟΡΕΣ)" class="input" />
-            <input v-model="newCatValue" placeholder="Εμφανιζόμενο (προαιρετικό)" class="input" />
-            <button class="btn btn-primary btn-sm" @click="addCategory" :disabled="!newCatKey.trim()">+ Προσθήκη</button>
+            <input v-model="newCatKey" placeholder="ΞΞ½ΞΏΞΌΞ± ΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±Ο‚ (Ο€.Ο‡. ΞΞ•Ξ¤Ξ‘Ξ¦ΞΞ΅Ξ•Ξ£)" class="input" />
+            <input v-model="newCatValue" placeholder="Ξ•ΞΌΟ†Ξ±Ξ½ΞΉΞ¶ΟΞΌΞµΞ½ΞΏ (Ο€ΟΞΏΞ±ΞΉΟΞµΟ„ΞΉΞΊΟ)" class="input" />
+            <button class="btn btn-primary btn-sm" @click="addCategory" :disabled="!newCatKey.trim()">+ Ξ ΟΞΏΟƒΞΈΞ®ΞΊΞ·</button>
           </div>
 
-          <div v-if="adminCategories.length === 0" class="empty">Δεν βρέθηκαν κατηγορίες</div>
+          <div v-if="adminCategories.length === 0" class="empty">Ξ”ΞµΞ½ Ξ²ΟΞ­ΞΈΞ·ΞΊΞ±Ξ½ ΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―ΞµΟ‚</div>
           <div v-else class="config-list">
             <div v-for="cat in adminCategories" :key="cat.id" class="config-item" :class="{ inactive: !cat.isActive }">
               <div class="config-info">
                 <span class="config-key">{{ cat.configKey }}</span>
-                <span v-if="cat.configValue && cat.configValue !== cat.configKey" class="config-val">→ {{ cat.configValue }}</span>
-                <span class="config-count">{{ countSubcats(cat.configKey) }} υποκατ.</span>
+                <span v-if="cat.configValue && cat.configValue !== cat.configKey" class="config-val">β†’ {{ cat.configValue }}</span>
+                <span class="config-count">{{ countSubcats(cat.configKey) }} Ο…Ο€ΞΏΞΊΞ±Ο„.</span>
               </div>
               <div class="config-actions">
-                <span v-if="!cat.isActive" class="inactive-badge">Ανενεργή</span>
-                <button v-if="cat.isActive" class="btn-icon danger" title="Απενεργοποίηση" @click="deactivateConfig(cat)">🗑️</button>
-                <button v-else class="btn-icon" title="Επανενεργοποίηση" @click="reactivateConfig(cat)">♻️</button>
+                <span v-if="!cat.isActive" class="inactive-badge">Ξ‘Ξ½ΞµΞ½ΞµΟΞ³Ξ®</span>
+                <button v-if="cat.isActive" class="btn-icon danger" title="Ξ‘Ο€ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·" @click="deactivateConfig(cat)">π—‘οΈ</button>
+                <button v-else class="btn-icon" title="Ξ•Ο€Ξ±Ξ½ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·" @click="reactivateConfig(cat)">β™»οΈ</button>
               </div>
             </div>
           </div>
@@ -894,23 +894,23 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ═══ SUBCATEGORIES (ACCOUNTS) TAB ═══ -->
+    <!-- β•β•β• SUBCATEGORIES (ACCOUNTS) TAB β•β•β• -->
     <div v-else-if="activeTab === 'accounts'" class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h2>Υποκατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
+          <h2>Ξ¥Ο€ΞΏΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―ΞµΟ‚ β€” {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
           <button class="btn btn-secondary btn-sm" @click="loadAdminConfig" :disabled="configLoading">
-            {{ configLoading ? '...' : 'Ανανέωση' }}
+            {{ configLoading ? '...' : 'Ξ‘Ξ½Ξ±Ξ½Ξ­Ο‰ΟƒΞ·' }}
           </button>
         </div>
 
-        <div v-if="configLoading" class="loading">Φόρτωση...</div>
+        <div v-if="configLoading" class="loading">Ξ¦ΟΟΟ„Ο‰ΟƒΞ·...</div>
         <div v-else>
           <!-- Filter by parent category -->
           <div class="filter-row">
-            <label>Φίλτρο κατηγορίας:</label>
+            <label>Ξ¦Ξ―Ξ»Ο„ΟΞΏ ΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±Ο‚:</label>
             <select v-model="subcatFilter" class="input" style="max-width:300px">
-              <option value="">— Όλες —</option>
+              <option value="">β€” ΞΞ»ΞµΟ‚ β€”</option>
               <option v-for="cat in activeCategories" :key="cat.configKey" :value="cat.configKey">{{ cat.configKey }}</option>
             </select>
           </div>
@@ -918,31 +918,31 @@ onMounted(async () => {
           <!-- Add new subcategory -->
           <div class="inline-form">
             <select v-model="newSubcatParent" class="input" style="max-width:220px">
-              <option value="">— Κατηγορία —</option>
+              <option value="">β€” ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ± β€”</option>
               <option v-for="cat in activeCategories" :key="cat.configKey" :value="cat.configKey">{{ cat.configKey }}</option>
             </select>
-            <input v-model="newSubcatKey" placeholder="Όνομα υποκατηγορίας" class="input" />
-            <input v-model="newSubcatValue" placeholder="Εμφανιζόμενο (προαιρ.)" class="input" />
-            <button class="btn btn-primary btn-sm" @click="addSubcategory" :disabled="!newSubcatKey.trim() || !newSubcatParent">+ Προσθήκη</button>
+            <input v-model="newSubcatKey" placeholder="ΞΞ½ΞΏΞΌΞ± Ο…Ο€ΞΏΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±Ο‚" class="input" />
+            <input v-model="newSubcatValue" placeholder="Ξ•ΞΌΟ†Ξ±Ξ½ΞΉΞ¶ΟΞΌΞµΞ½ΞΏ (Ο€ΟΞΏΞ±ΞΉΟ.)" class="input" />
+            <button class="btn btn-primary btn-sm" @click="addSubcategory" :disabled="!newSubcatKey.trim() || !newSubcatParent">+ Ξ ΟΞΏΟƒΞΈΞ®ΞΊΞ·</button>
           </div>
 
-          <div v-if="filteredSubcats.length === 0" class="empty">Δεν βρέθηκαν υποκατηγορίες</div>
+          <div v-if="filteredSubcats.length === 0" class="empty">Ξ”ΞµΞ½ Ξ²ΟΞ­ΞΈΞ·ΞΊΞ±Ξ½ Ο…Ο€ΞΏΞΊΞ±Ο„Ξ·Ξ³ΞΏΟΞ―ΞµΟ‚</div>
           <div v-else>
             <div v-for="group in groupedSubcats" :key="group.category" class="subcat-group">
               <div class="subcat-group-header">
                 <span class="subcat-group-title">{{ group.category }}</span>
-                <span class="config-count">{{ group.items.length }} υποκατ.</span>
+                <span class="config-count">{{ group.items.length }} Ο…Ο€ΞΏΞΊΞ±Ο„.</span>
               </div>
               <div class="config-list">
                 <div v-for="sub in group.items" :key="sub.id" class="config-item" :class="{ inactive: !sub.isActive }">
                   <div class="config-info">
                     <span class="config-key">{{ sub.configKey }}</span>
-                    <span v-if="sub.configValue && sub.configValue !== sub.configKey" class="config-val">→ {{ sub.configValue }}</span>
+                    <span v-if="sub.configValue && sub.configValue !== sub.configKey" class="config-val">β†’ {{ sub.configValue }}</span>
                   </div>
                   <div class="config-actions">
-                    <span v-if="!sub.isActive" class="inactive-badge">Ανενεργή</span>
-                    <button v-if="sub.isActive" class="btn-icon danger" title="Απενεργοποίηση" @click="deactivateConfig(sub)">🗑️</button>
-                    <button v-else class="btn-icon" title="Επανενεργοποίηση" @click="reactivateConfig(sub)">♻️</button>
+                    <span v-if="!sub.isActive" class="inactive-badge">Ξ‘Ξ½ΞµΞ½ΞµΟΞ³Ξ®</span>
+                    <button v-if="sub.isActive" class="btn-icon danger" title="Ξ‘Ο€ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·" @click="deactivateConfig(sub)">π—‘οΈ</button>
+                    <button v-else class="btn-icon" title="Ξ•Ο€Ξ±Ξ½ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·" @click="reactivateConfig(sub)">β™»οΈ</button>
                   </div>
                 </div>
               </div>
@@ -952,36 +952,36 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ═══ BANKS TAB ═══ -->
+    <!-- β•β•β• BANKS TAB β•β•β• -->
     <div v-else-if="activeTab === 'banks'" class="tab-content">
       <!-- Create new bank account -->
       <div class="card">
-        <h2>➕ Νέος Τραπεζικός Λογαριασμός</h2>
+        <h2>β• ΞΞ­ΞΏΟ‚ Ξ¤ΟΞ±Ο€ΞµΞ¶ΞΉΞΊΟΟ‚ Ξ›ΞΏΞ³Ξ±ΟΞΉΞ±ΟƒΞΌΟΟ‚</h2>
         <div class="bank-form">
           <div class="form-group">
-            <label>Ετικέτα <span class="req">*</span></label>
-            <input v-model="newBank.accountLabel" placeholder="π.χ. Eurobank Τρεχούμενος" class="input" />
+            <label>Ξ•Ο„ΞΉΞΊΞ­Ο„Ξ± <span class="req">*</span></label>
+            <input v-model="newBank.accountLabel" placeholder="Ο€.Ο‡. Eurobank Ξ¤ΟΞµΟ‡ΞΏΟΞΌΞµΞ½ΞΏΟ‚" class="input" />
           </div>
           <div class="form-group">
-            <label>Τράπεζα</label>
-            <input v-model="newBank.bankName" placeholder="π.χ. Eurobank" class="input" />
+            <label>Ξ¤ΟΞ¬Ο€ΞµΞ¶Ξ±</label>
+            <input v-model="newBank.bankName" placeholder="Ο€.Ο‡. Eurobank" class="input" />
           </div>
           <div class="form-group">
-            <label>Τύπος</label>
+            <label>Ξ¤ΟΟ€ΞΏΟ‚</label>
             <select v-model="newBank.accountType" class="input">
-              <option value="checking">Τρεχούμενος</option>
-              <option value="savings">Ταμιευτήριο</option>
-              <option value="cash">Μετρητά</option>
-              <option value="credit">Πιστωτική</option>
+              <option value="checking">Ξ¤ΟΞµΟ‡ΞΏΟΞΌΞµΞ½ΞΏΟ‚</option>
+              <option value="savings">Ξ¤Ξ±ΞΌΞΉΞµΟ…Ο„Ξ®ΟΞΉΞΏ</option>
+              <option value="cash">ΞΞµΟ„ΟΞ·Ο„Ξ¬</option>
+              <option value="credit">Ξ ΞΉΟƒΟ„Ο‰Ο„ΞΉΞΊΞ®</option>
               <option value="revolut">Revolut</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Αρχικό Υπόλοιπο (€)</label>
+            <label>Ξ‘ΟΟ‡ΞΉΞΊΟ Ξ¥Ο€ΟΞ»ΞΏΞΉΟ€ΞΏ (β‚¬)</label>
             <input v-model.number="newBank.currentBalance" type="number" step="0.01" placeholder="0" class="input" />
           </div>
           <div class="form-group">
-            <label>Νόμισμα</label>
+            <label>ΞΟΞΌΞΉΟƒΞΌΞ±</label>
             <select v-model="newBank.currency" class="input">
               <option value="EUR">EUR</option>
               <option value="USD">USD</option>
@@ -990,7 +990,7 @@ onMounted(async () => {
           </div>
           <div class="form-group" style="align-self:end">
             <button class="btn btn-primary" @click="createBankAccount" :disabled="!newBank.accountLabel.trim() || bankCreating">
-              {{ bankCreating ? '...' : '+ Δημιουργία' }}
+              {{ bankCreating ? '...' : '+ Ξ”Ξ·ΞΌΞΉΞΏΟ…ΟΞ³Ξ―Ξ±' }}
             </button>
           </div>
         </div>
@@ -999,17 +999,17 @@ onMounted(async () => {
       <!-- Bank accounts list -->
       <div class="card">
         <div class="card-header">
-          <h2>🏦 Τραπεζικοί Λογαριασμοί</h2>
+          <h2>π¦ Ξ¤ΟΞ±Ο€ΞµΞ¶ΞΉΞΊΞΏΞ― Ξ›ΞΏΞ³Ξ±ΟΞΉΞ±ΟƒΞΌΞΏΞ―</h2>
           <div style="display:flex;align-items:center;gap:12px">
-            <span class="help-text">Ενημερώστε υπόλοιπα χειροκίνητα</span>
+            <span class="help-text">Ξ•Ξ½Ξ·ΞΌΞµΟΟΟƒΟ„Ξµ Ο…Ο€ΟΞ»ΞΏΞΉΟ€Ξ± Ο‡ΞµΞΉΟΞΏΞΊΞ―Ξ½Ξ·Ο„Ξ±</span>
             <button class="btn btn-secondary btn-sm" @click="loadBankAccounts" :disabled="banksLoading">
-              {{ banksLoading ? '...' : 'Ανανέωση' }}
+              {{ banksLoading ? '...' : 'Ξ‘Ξ½Ξ±Ξ½Ξ­Ο‰ΟƒΞ·' }}
             </button>
           </div>
         </div>
 
-        <div v-if="banksLoading" class="loading">Φόρτωση...</div>
-        <div v-else-if="adminBanks.length === 0" class="empty">Δεν βρέθηκαν λογαριασμοί</div>
+        <div v-if="banksLoading" class="loading">Ξ¦ΟΟΟ„Ο‰ΟƒΞ·...</div>
+        <div v-else-if="adminBanks.length === 0" class="empty">Ξ”ΞµΞ½ Ξ²ΟΞ­ΞΈΞ·ΞΊΞ±Ξ½ Ξ»ΞΏΞ³Ξ±ΟΞΉΞ±ΟƒΞΌΞΏΞ―</div>
         <div v-else class="config-list">
           <div v-for="b in adminBanks" :key="b.id" class="bank-item" :class="{ inactive: b.active === false }">
             <div class="bank-icon-wrap">
@@ -1020,11 +1020,11 @@ onMounted(async () => {
                 <span class="active-dot" :class="{ on: b.active !== false, off: b.active === false }"></span>
                 {{ b.accountLabel }}
               </div>
-              <div class="bank-meta">{{ b.bankName }} · {{ b.accountType }} · {{ b.currency }} · Ενημ: {{ formatBankDate(b.balanceDate) }}</div>
+              <div class="bank-meta">{{ b.bankName }} Β· {{ b.accountType }} Β· {{ b.currency }} Β· Ξ•Ξ½Ξ·ΞΌ: {{ formatBankDate(b.balanceDate) }}</div>
             </div>
             <div class="bank-balance-area">
               <span class="balance-badge" :class="{ negative: b.currentBalance < 0 }">
-                {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2}) }} €
+                {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2}) }} β‚¬
               </span>
               <input
                 v-model.number="b._editBalance"
@@ -1032,7 +1032,7 @@ onMounted(async () => {
                 class="balance-input"
                 @focus="b._editBalance = b._editBalance ?? b.currentBalance"
               />
-              <button class="btn-balance-save" title="Αποθήκευση υπολοίπου" @click="updateBankBalance(b)">
+              <button class="btn-balance-save" title="Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ· Ο…Ο€ΞΏΞ»ΞΏΞ―Ο€ΞΏΟ…" @click="updateBankBalance(b)">
                 <i class="fas fa-check"></i>
               </button>
             </div>
@@ -1041,29 +1041,29 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ═══ AUDIT LOG TAB ═══ -->
+    <!-- β•β•β• AUDIT LOG TAB β•β•β• -->
     <div v-else-if="activeTab === 'audit'" class="tab-content">
       <div class="card">
         <div class="card-header">
           <h2>Audit Log</h2>
         </div>
         <div class="notice notice-info">
-          Το Audit Log θα ενεργοποιηθεί σε επόμενη φάση (M.6 — Security & Polish).
+          Ξ¤ΞΏ Audit Log ΞΈΞ± ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞΉΞ·ΞΈΞµΞ― ΟƒΞµ ΞµΟ€ΟΞΌΞµΞ½Ξ· Ο†Ξ¬ΟƒΞ· (M.6 β€” Security & Polish).
         </div>
       </div>
     </div>
 
-    <!-- ═══ FALLBACK ═══ -->
+    <!-- β•β•β• FALLBACK β•β•β• -->
     <div v-else class="tab-content">
       <div class="notice notice-info">
-        Η σελίδα <strong>{{ tabs.find(t => t.id === activeTab)?.label }}</strong> δεν είναι ακόμα διαθέσιμη.
+        Ξ— ΟƒΞµΞ»Ξ―Ξ΄Ξ± <strong>{{ tabs.find(t => t.id === activeTab)?.label }}</strong> Ξ΄ΞµΞ½ ΞµΞ―Ξ½Ξ±ΞΉ Ξ±ΞΊΟΞΌΞ± Ξ΄ΞΉΞ±ΞΈΞ­ΟƒΞΉΞΌΞ·.
       </div>
     </div>
 
     <div v-if="editModalOpen" class="modal-overlay" @click.self="closeEditModal">
       <div class="modal-card">
-        <button class="modal-close" @click="closeEditModal">×</button>
-        <h2>Επεξεργασία Χρήστη</h2>
+        <button class="modal-close" @click="closeEditModal">Γ—</button>
+        <h2>Ξ•Ο€ΞµΞΎΞµΟΞ³Ξ±ΟƒΞ―Ξ± Ξ§ΟΞ®ΟƒΟ„Ξ·</h2>
 
         <div class="form-group">
           <label>Username</label>
@@ -1071,7 +1071,7 @@ onMounted(async () => {
         </div>
 
         <div class="form-group">
-          <label>Εμφανιζόμενο Όνομα</label>
+          <label>Ξ•ΞΌΟ†Ξ±Ξ½ΞΉΞ¶ΟΞΌΞµΞ½ΞΏ ΞΞ½ΞΏΞΌΞ±</label>
           <input v-model="editForm.displayName" class="input" />
         </div>
 
@@ -1081,30 +1081,30 @@ onMounted(async () => {
         </div>
 
         <div v-if="!isSelf(editUser)" class="form-group">
-          <label>Νέος Κωδικός <small>(κενό = χωρίς αλλαγή, min 8 χαρακτήρες)</small></label>
-          <input v-model="newPasswordField" type="password" placeholder="Αφήστε κενό αν δεν αλλάζει" class="input" />
-          <small class="help-text">Admin reset - δεν απαιτείται ο τρέχων κωδικός του χρήστη</small>
+          <label>ΞΞ­ΞΏΟ‚ ΞΟ‰Ξ΄ΞΉΞΊΟΟ‚ <small>(ΞΊΞµΞ½Ο = Ο‡Ο‰ΟΞ―Ο‚ Ξ±Ξ»Ξ»Ξ±Ξ³Ξ®, min 8 Ο‡Ξ±ΟΞ±ΞΊΟ„Ξ®ΟΞµΟ‚)</small></label>
+          <input v-model="newPasswordField" type="password" placeholder="Ξ‘Ο†Ξ®ΟƒΟ„Ξµ ΞΊΞµΞ½Ο Ξ±Ξ½ Ξ΄ΞµΞ½ Ξ±Ξ»Ξ»Ξ¬Ξ¶ΞµΞΉ" class="input" />
+          <small class="help-text">Admin reset - Ξ΄ΞµΞ½ Ξ±Ο€Ξ±ΞΉΟ„ΞµΞ―Ο„Ξ±ΞΉ ΞΏ Ο„ΟΞ­Ο‡Ο‰Ξ½ ΞΊΟ‰Ξ΄ΞΉΞΊΟΟ‚ Ο„ΞΏΟ… Ο‡ΟΞ®ΟƒΟ„Ξ·</small>
         </div>
         <div v-else class="form-group notice-box">
-          <strong>Αλλαγή Δικού Σας Κωδικού:</strong>
-          Κλείστε αυτό το παράθυρο και χρησιμοποιήστε το κουμπί "Αλλαγή Κωδικού Μου" πάνω (απαιτεί τρέχοντα κωδικό για ασφάλεια).
+          <strong>Ξ‘Ξ»Ξ»Ξ±Ξ³Ξ® Ξ”ΞΉΞΊΞΏΟ Ξ£Ξ±Ο‚ ΞΟ‰Ξ΄ΞΉΞΊΞΏΟ:</strong>
+          ΞΞ»ΞµΞ―ΟƒΟ„Ξµ Ξ±Ο…Ο„Ο Ο„ΞΏ Ο€Ξ±ΟΞ¬ΞΈΟ…ΟΞΏ ΞΊΞ±ΞΉ Ο‡ΟΞ·ΟƒΞΉΞΌΞΏΟ€ΞΏΞΉΞ®ΟƒΟ„Ξµ Ο„ΞΏ ΞΊΞΏΟ…ΞΌΟ€Ξ― "Ξ‘Ξ»Ξ»Ξ±Ξ³Ξ® ΞΟ‰Ξ΄ΞΉΞΊΞΏΟ ΞΞΏΟ…" Ο€Ξ¬Ξ½Ο‰ (Ξ±Ο€Ξ±ΞΉΟ„ΞµΞ― Ο„ΟΞ­Ο‡ΞΏΞ½Ο„Ξ± ΞΊΟ‰Ξ΄ΞΉΞΊΟ Ξ³ΞΉΞ± Ξ±ΟƒΟ†Ξ¬Ξ»ΞµΞΉΞ±).
         </div>
 
         <div class="form-group" v-if="!isSelf(editUser)">
-          <label>Ρόλος</label>
+          <label>Ξ΅ΟΞ»ΞΏΟ‚</label>
           <select v-model="editForm.role" class="input">
             <option v-for="r in ASSIGNABLE_ROLES" :key="r" :value="r">{{ ROLE_LABELS[r] }}</option>
-            <option v-if="editUser?.role === 'admin'" value="admin">Διαχειριστής</option>
+            <option v-if="editUser?.role === 'admin'" value="admin">Ξ”ΞΉΞ±Ο‡ΞµΞΉΟΞΉΟƒΟ„Ξ®Ο‚</option>
           </select>
         </div>
         <div v-else class="form-group">
-          <label>Ρόλος</label>
+          <label>Ξ΅ΟΞ»ΞΏΟ‚</label>
           <input :value="ROLE_LABELS[editUser?.role]" disabled class="input input-disabled" />
-          <small>Δεν μπορείτε να αλλάξετε τον δικό σας ρόλο</small>
+          <small>Ξ”ΞµΞ½ ΞΌΟ€ΞΏΟΞµΞ―Ο„Ξµ Ξ½Ξ± Ξ±Ξ»Ξ»Ξ¬ΞΎΞµΟ„Ξµ Ο„ΞΏΞ½ Ξ΄ΞΉΞΊΟ ΟƒΞ±Ο‚ ΟΟΞ»ΞΏ</small>
         </div>
 
         <div class="form-group">
-          <label>Εταιρείες που βλέπει <small v-if="!needsEntities">(κενό = όλες)</small><small v-else>*</small></label>
+          <label>Ξ•Ο„Ξ±ΞΉΟΞµΞ―ΞµΟ‚ Ο€ΞΏΟ… Ξ²Ξ»Ξ­Ο€ΞµΞΉ <small v-if="!needsEntities">(ΞΊΞµΞ½Ο = ΟΞ»ΞµΟ‚)</small><small v-else>*</small></label>
           <div class="entity-checkboxes">
             <label v-for="e in entities" :key="e.id" class="checkbox-label">
               <input
@@ -1116,18 +1116,18 @@ onMounted(async () => {
             </label>
           </div>
           <small v-if="editEntityIds.length === 0 && needsEntities" class="error">
-            Υποχρεωτικό: επιλέξτε τουλάχιστον μία εταιρεία
+            Ξ¥Ο€ΞΏΟ‡ΟΞµΟ‰Ο„ΞΉΞΊΟ: ΞµΟ€ΞΉΞ»Ξ­ΞΎΟ„Ξµ Ο„ΞΏΟ…Ξ»Ξ¬Ο‡ΞΉΟƒΟ„ΞΏΞ½ ΞΌΞ―Ξ± ΞµΟ„Ξ±ΞΉΟΞµΞ―Ξ±
           </small>
           <small v-if="editEntityIds.length === 0 && !needsEntities" class="help-text">
-            Κενό = όλες οι εταιρείες
+            ΞΞµΞ½Ο = ΟΞ»ΞµΟ‚ ΞΏΞΉ ΞµΟ„Ξ±ΞΉΟΞµΞ―ΞµΟ‚
           </small>
         </div>
 
         <!-- M.6: Allowed sections checkboxes for edit -->
         <div class="form-group">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <label style="margin-bottom:0">Σελίδες που βλέπει
-              <small v-if="editSections.length === 0">(όλες)</small>
+            <label style="margin-bottom:0">Ξ£ΞµΞ»Ξ―Ξ΄ΞµΟ‚ Ο€ΞΏΟ… Ξ²Ξ»Ξ­Ο€ΞµΞΉ
+              <small v-if="editSections.length === 0">(ΟΞ»ΞµΟ‚)</small>
             </label>
             <button type="button" class="btn btn-secondary btn-sm" @click="resetEditSectionsToDefaults" style="padding:4px 10px;font-size:.75rem">
               Defaults
@@ -1143,27 +1143,27 @@ onMounted(async () => {
               {{ s.label }}
             </label>
           </div>
-          <small class="help-text">Κενό = πλήρης πρόσβαση (για Admin/User)</small>
+          <small class="help-text">ΞΞµΞ½Ο = Ο€Ξ»Ξ®ΟΞ·Ο‚ Ο€ΟΟΟƒΞ²Ξ±ΟƒΞ· (Ξ³ΞΉΞ± Admin/User)</small>
         </div>
 
         <div class="form-group" v-if="!isSelf(editUser)">
-          <label>Κατάσταση</label>
+          <label>ΞΞ±Ο„Ξ¬ΟƒΟ„Ξ±ΟƒΞ·</label>
           <select v-model="editForm.isActive" class="input">
-            <option :value="true">Ενεργός</option>
-            <option :value="false">Ανενεργός</option>
+            <option :value="true">Ξ•Ξ½ΞµΟΞ³ΟΟ‚</option>
+            <option :value="false">Ξ‘Ξ½ΞµΞ½ΞµΟΞ³ΟΟ‚</option>
           </select>
         </div>
 
         <div v-if="editForm.role === 'user'" class="warning">
-          Ο ρόλος "Χρήστης" δίνει σχεδόν πλήρη πρόσβαση στο σύστημα.
+          Ξ ΟΟΞ»ΞΏΟ‚ "Ξ§ΟΞ®ΟƒΟ„Ξ·Ο‚" Ξ΄Ξ―Ξ½ΞµΞΉ ΟƒΟ‡ΞµΞ΄ΟΞ½ Ο€Ξ»Ξ®ΟΞ· Ο€ΟΟΟƒΞ²Ξ±ΟƒΞ· ΟƒΟ„ΞΏ ΟƒΟΟƒΟ„Ξ·ΞΌΞ±.
         </div>
 
         <div v-if="editError" class="error">{{ editError }}</div>
 
         <div class="modal-actions">
-          <button class="btn btn-secondary" @click="closeEditModal">Ακύρωση</button>
+          <button class="btn btn-secondary" @click="closeEditModal">Ξ‘ΞΊΟΟΟ‰ΟƒΞ·</button>
           <button class="btn btn-primary" :disabled="editSaving" @click="saveEditUser">
-            {{ editSaving ? 'Αποθήκευση...' : 'Αποθήκευση' }}
+            {{ editSaving ? 'Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·...' : 'Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·' }}
           </button>
         </div>
       </div>
@@ -1239,7 +1239,7 @@ onMounted(async () => {
 /* M.6: Section checkboxes grid */
 .section-checkboxes { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; padding: 12px; background: var(--bg-input, #111827); border-radius: 6px; border: 1px solid var(--border, #374151); }
 
-/* M.7 — Config management styles */
+/* M.7 β€” Config management styles */
 .inline-form { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
 .inline-form .input { flex: 1; min-width: 160px; }
 .filter-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -1257,7 +1257,7 @@ onMounted(async () => {
 .balance-badge { font-size: .85rem; font-weight: 600; color: #10b981; font-family: monospace; }
 .balance-badge.negative { color: #f87171; }
 
-/* M.7.2 — Bank form + grouped subcategories */
+/* M.7.2 β€” Bank form + grouped subcategories */
 .bank-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; align-items: end; }
 .bank-item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--bg-input, #111827); border: 1px solid var(--border, #374151); border-radius: 6px; transition: opacity .2s; }
 .bank-item.inactive { opacity: .45; }

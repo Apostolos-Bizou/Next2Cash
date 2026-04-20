@@ -2,6 +2,8 @@ package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.model.Config;
 import com.next2me.next2cash.model.User;
+import com.next2me.next2cash.model.CompanyEntity;
+import com.next2me.next2cash.repository.CompanyEntityRepository;
 import com.next2me.next2cash.repository.ConfigRepository;
 import com.next2me.next2cash.service.CardExportService;
 import com.next2me.next2cash.service.CardService;
@@ -23,6 +25,7 @@ import java.util.*;
 public class ConfigController {
 
     private final ConfigRepository configRepository;
+    private final CompanyEntityRepository companyEntityRepository;
     private final UserAccessService userAccessService;
     private final CardService cardService;
     private final CardExportService cardExportService;
@@ -51,11 +54,15 @@ public class ConfigController {
             item.put("parentKey", c.getParentKey());
             item.put("icon",      c.getIcon());
 
-            switch (c.getConfigType()) {
-                case "category"       -> categories.add(item);
-                case "subcategory"    -> subcategories.add(item);
-                case "account"        -> accounts.add(item);
-                case "payment_method" -> paymentMethods.add(item);
+            String configType = c.getConfigType();
+            if ("category".equals(configType)) {
+                categories.add(item);
+            } else if ("subcategory".equals(configType)) {
+                subcategories.add(item);
+            } else if ("account".equals(configType)) {
+                accounts.add(item);
+            } else if ("payment_method".equals(configType)) {
+                paymentMethods.add(item);
             }
         }
 
@@ -68,7 +75,39 @@ public class ConfigController {
         ));
     }
 
-    // ══════ Phase H v2 + Phase K — Cards (karteles with rules) ══════
+
+    @GetMapping("/entities")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')")
+    public ResponseEntity<?> listEntities() {
+        List<CompanyEntity> active = companyEntityRepository.findAll()
+            .stream()
+            .filter(e -> Boolean.TRUE.equals(e.getIsActive()))
+            .sorted((a, b) -> Integer.compare(
+                a.getSortOrder() != null ? a.getSortOrder() : 0,
+                b.getSortOrder() != null ? b.getSortOrder() : 0))
+            .toList();
+
+        List<Map<String, Object>> data = new ArrayList<>();
+        for (CompanyEntity e : active) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", e.getId());
+            m.put("code", e.getCode());
+            m.put("name", e.getName());
+            m.put("icon", e.getIcon());
+            m.put("color", e.getColor());
+            m.put("currency", e.getCurrency());
+            m.put("country", e.getCountry());
+            data.add(m);
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "data", data,
+            "total", data.size()
+        ));
+    }
+
+    // β•β•β•β•β•β• Phase H v2 + Phase K β€” Cards (karteles with rules) β•β•β•β•β•β•
 
     @GetMapping("/cards")
     @PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
@@ -242,7 +281,7 @@ public class ConfigController {
         ));
     }
 
-    // ─── Export endpoints (unchanged — Phase K.3 will migrate to rows) ───
+    // β”€β”€β”€ Export endpoints (unchanged β€” Phase K.3 will migrate to rows) β”€β”€β”€
 
     @GetMapping("/cards/{id}/export/excel")
     @PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
@@ -311,7 +350,7 @@ public class ConfigController {
     }
 
     // ===================================================================
-    //  M.7 — CRUD for Config items (categories, subcategories, etc.)
+    //  M.7 β€” CRUD for Config items (categories, subcategories, etc.)
     // ===================================================================
 
     /**
@@ -475,7 +514,7 @@ public class ConfigController {
         return m;
     }
 
-    // ─── helper ───
+    // β”€β”€β”€ helper β”€β”€β”€
 
     private static Map<String, Object> toCardDto(Config c) {
         Map<String, Object> m = new LinkedHashMap<>();

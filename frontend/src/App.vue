@@ -1,6 +1,7 @@
-﻿<script setup>
-import { computed, ref } from 'vue'
+<script setup>
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import api from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { useUserStore } from '@/stores/user'
 
@@ -47,7 +48,7 @@ const filteredNavSections = computed(() => {
 // M.6: Filter entities for restricted users
 const filteredEntities = computed(() => {
   const restricted = userEntityIds.value
-  if (restricted === null) return entities // null = all entities
+  if (restricted === null) return entities.value // null = all entities
 
   // Map entity UUIDs to keys
   const uuidToKey = {
@@ -56,7 +57,7 @@ const filteredEntities = computed(() => {
     '50317f44-9961-4fb4-add0-7a118e32dc14': 'polaris',
   }
   const allowedKeys = restricted.map(uuid => uuidToKey[uuid]).filter(Boolean)
-  return entities.filter(e => allowedKeys.includes(e.key))
+  return entities.value.filter(e => allowedKeys.includes(e.key))
 })
 
 // M.6: User display name for topbar
@@ -78,10 +79,11 @@ const logout = () => {
 }
 
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
-const entities = [
+const entities = ref([
   { key: 'next2me', label: 'Next2Me' },
-  { key: 'house',   label: 'House' }
-]
+  { key: 'house',   label: 'House' },
+  { key: 'polaris', label: 'Polaris' }
+])
 function selectEntity(e) {
   selectedEntity.value = e.key
   localStorage.setItem('n2c_entity', e.key)
@@ -90,6 +92,17 @@ function selectEntity(e) {
 }
 const showEntityMenu = ref(false)
 
+// Load entities from API (dynamic)
+onMounted(async () => {
+  try {
+    const res = await api.get('/api/config/entities')
+    if (res.data.success && res.data.data && res.data.data.length > 0) {
+      entities.value = res.data.data.map(e => ({ key: e.code, label: e.name, id: e.id }))
+    }
+  } catch (e) {
+    // Silent fallback to hardcoded defaults
+  }
+})
 // M.6: Auto-select entity for restricted users (ACCOUNTANT/VIEWER)
 if (filteredEntities.value.length === 1 && selectedEntity.value !== filteredEntities.value[0].key) {
   selectEntity(filteredEntities.value[0])
@@ -97,32 +110,32 @@ if (filteredEntities.value.length === 1 && selectedEntity.value !== filteredEnti
 
 const navSections = [
   {
-    label: 'ΚΥΡΙΑ',
+    label: 'ΞΞ¥Ξ΅Ξ™Ξ‘',
     items: [
-      { to: '/dashboard', section: 'dashboard',     label: 'Πίνακας Ελέγχου', icon: 'M3 12l9-9 9 9v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z' },
-      { to: '/new-entry', section: 'new-entry',     label: 'Νέα Καταχώριση',  icon: 'M12 5v14M5 12h14' },
-      { to: '/transactions', section: 'transactions',  label: 'Κινήσεις',         icon: 'M7 7h10M7 12h10M7 17h6M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
-      { to: '/payments', section: 'payments',      label: 'Πληρωμές',         icon: 'M2 8h20M2 12h20M5 16h4M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z' },
-      { to: '/obligations', section: 'obligations',   label: 'Υποχρεώσεις',      icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z' },
-      { to: '/karteles', section: 'karteles',      label: 'Καρτέλες',         icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6' },
+      { to: '/dashboard', section: 'dashboard',     label: 'Ξ Ξ―Ξ½Ξ±ΞΊΞ±Ο‚ Ξ•Ξ»Ξ­Ξ³Ο‡ΞΏΟ…', icon: 'M3 12l9-9 9 9v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z' },
+      { to: '/new-entry', section: 'new-entry',     label: 'ΞΞ­Ξ± ΞΞ±Ο„Ξ±Ο‡ΟΟΞΉΟƒΞ·',  icon: 'M12 5v14M5 12h14' },
+      { to: '/transactions', section: 'transactions',  label: 'ΞΞΉΞ½Ξ®ΟƒΞµΞΉΟ‚',         icon: 'M7 7h10M7 12h10M7 17h6M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+      { to: '/payments', section: 'payments',      label: 'Ξ Ξ»Ξ·ΟΟ‰ΞΌΞ­Ο‚',         icon: 'M2 8h20M2 12h20M5 16h4M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z' },
+      { to: '/obligations', section: 'obligations',   label: 'Ξ¥Ο€ΞΏΟ‡ΟΞµΟΟƒΞµΞΉΟ‚',      icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z' },
+      { to: '/karteles', section: 'karteles',      label: 'ΞΞ±ΟΟ„Ξ­Ξ»ΞµΟ‚',         icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6' },
     ]
   },
   {
-    label: 'ΛΟΓΙΣΤΗΡΙΟ',
+    label: 'Ξ›ΞΞ“Ξ™Ξ£Ξ¤Ξ—Ξ΅Ξ™Ξ',
     items: [
-      { to: '/documents', section: 'zip-export',   label: 'Παραστατικά',     icon: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' },
+      { to: '/documents', section: 'zip-export',   label: 'Ξ Ξ±ΟΞ±ΟƒΟ„Ξ±Ο„ΞΉΞΊΞ¬',     icon: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' },
     ]
   },
   {
-    label: 'ΑΝΑΦΟΡΕΣ',
+    label: 'Ξ‘ΞΞ‘Ξ¦ΞΞ΅Ξ•Ξ£',
     items: [
-      { to: '/reports', section: 'reports',        label: 'Αναφορές',        icon: 'M3 3v18h18M8 17V9M13 17V5M18 17v-7' },
+      { to: '/reports', section: 'reports',        label: 'Ξ‘Ξ½Ξ±Ο†ΞΏΟΞ­Ο‚',        icon: 'M3 3v18h18M8 17V9M13 17V5M18 17v-7' },
       { to: '/report-builder', section: 'report-builder', label: 'Report Builder',  icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', badge: 'NEW' },
-      { to: '/ai-analysis', section: 'ai-analysis',    label: 'AI Ανάλυση',      icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3', badge: 'NEW' },
+      { to: '/ai-analysis', section: 'ai-analysis',    label: 'AI Ξ‘Ξ½Ξ¬Ξ»Ο…ΟƒΞ·',      icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3', badge: 'NEW' },
     ]
   },
   {
-    label: 'ΔΙΑΧΕΙΡΙΣΗ',
+    label: 'Ξ”Ξ™Ξ‘Ξ§Ξ•Ξ™Ξ΅Ξ™Ξ£Ξ—',
     items: [
       { to: '/admin', section: 'admin',          label: 'Admin Panel',     icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0' },
     ]
@@ -139,14 +152,14 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
         <div class="sidebar__logo">A</div>
         <div class="sidebar__brand-text" v-if="!ui.sidebarCollapsed">
           <div class="sidebar__brand-title">CashControl</div>
-          <div class="sidebar__brand-sub">Next2Me</div>
+          <div class="sidebar__brand-sub">{{ entities.find(e => e.key === selectedEntity)?.label || 'Next2Me' }}</div>
         </div>
       </div>
 
       <div class="entity-selector" v-if="!ui.sidebarCollapsed && filteredEntities.length > 1">
         <div class="entity-btn" @click="showEntityMenu = !showEntityMenu">
           <span>{{ entities.find(e => e.key === selectedEntity)?.label || 'Next2Me' }}</span>
-          <span>▾</span>
+          <span>β–Ύ</span>
         </div>
         <div class="entity-menu" v-if="showEntityMenu">
           <div v-for="e in filteredEntities" :key="e.key" class="entity-option" :class="{ active: e.key === selectedEntity }" @click="selectEntity(e)">{{ e.label }}</div>
@@ -167,17 +180,17 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
       </nav>
 
       <div class="sidebar__bottom">
-        <button class="logout-btn" @click="logout" :title="ui.sidebarCollapsed ? 'Αποσύνδεση' : ''">
+        <button class="logout-btn" @click="logout" :title="ui.sidebarCollapsed ? 'Ξ‘Ο€ΞΏΟƒΟΞ½Ξ΄ΞµΟƒΞ·' : ''">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="logout-icon">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
             <polyline points="16 17 21 12 16 7" />
             <line x1="21" y1="12" x2="9" y2="12" />
           </svg>
-          <span v-if="!ui.sidebarCollapsed">Αποσύνδεση</span>
+          <span v-if="!ui.sidebarCollapsed">Ξ‘Ο€ΞΏΟƒΟΞ½Ξ΄ΞµΟƒΞ·</span>
         </button>
       </div>
       <button class="sidebar__collapse" type="button" @click="ui.toggleSidebar()">
-        <span>{{ ui.sidebarCollapsed ? '›' : '‹' }}</span>
+        <span>{{ ui.sidebarCollapsed ? 'β€Ί' : 'β€Ή' }}</span>
       </button>
     </aside>
 
