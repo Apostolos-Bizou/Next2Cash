@@ -1,85 +1,165 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import api from '@/api'
+
+/* ── Entity mapping ── */
+const ENTITY_MAP = {
+  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
+  house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
+  polaris: '50317f44-9961-4fb4-add0-7a118e32dc14',
+}
 
 /* ── State ── */
 const reportTitle = ref('')
 const reportDesc = ref('')
-const selectedCategory = ref('Όλες οι κατηγορίες')
-const selectedSubcategory = ref('Όλες')
+const selectedCategory = ref('all')
+const selectedSubcategory = ref('all')
 const dateFrom = ref('')
 const dateTo = ref('')
-const selectedMethod = ref('Όλες')
-const displayMode = ref('Έσοδα + Έξοδα')
+const selectedMethod = ref('all')
+const displayMode = ref('both')
 const groupByCategory = ref(false)
+const loading = ref(false)
 
-const sections = ref([
-  {
-    id: 1,
-    type: 'income',
-    label: 'Εισπράξεις',
-    items: [
-      { id: 4777,  date: '14/04/2026', desc: '4777 - ΕΣΟΔΑ ΠΡΟΣΩΠΙΚΑ ΤΡΑΠΕΖΑ',      category: 'Έσοδα Β',    amount: 150.00 },
-      { id: -35,   date: '07/04/2026', desc: 'Πληρωμή #4747 — ΕΣΟΔΑ ΠΡΟΣΩΠΙΚΑ ΤΡΑΠΕΖΑ', category: 'Έσοδα Β', amount: 134.00 },
-    ]
-  },
-  {
-    id: 2,
-    type: 'expense',
-    label: 'Έξοδα',
-    items: [
-      { id: -62,   date: '14/04/2026', desc: 'Πληρωμή #4776 — ΠΑΠΑΚΙ ΑΓΟΡΑ DOMAIN Next2View.com', category: 'Εξοπλισμός', amount: -12.40 },
-      { id: 4776,  date: '09/04/2026', desc: '4776 - ΠΑΠΑΚΙ ΑΓΟΡΑ DOMAIN Next2View.com',           category: 'Εξοπλισμός', amount: -12.40 },
-      { id: 4775,  date: '09/04/2026', desc: '4775 - MICROSOFT AZURE 03ος 2026',                   category: 'Εξοπλισμός', amount: -112.42 },
-      { id: -61,   date: '08/04/2026', desc: 'Πληρωμή #4732 — ΠΑΠΑΚΙ doctornexttome.gr ΤΙΜΟΛΟΓΙΟ 27-03-2026', category: 'Εξοπλισμός', amount: -36.08 },
-      { id: 4748,  date: '07/04/2026', desc: '4748 - EPASS',                                       category: 'Λειτουργικά', amount: -50.00 },
-      { id: -34,   date: '07/04/2026', desc: 'Πληρωμή #4738 — 4735 - ΠΑΠΑΚΙ HireBases.com ΤΙΜΟΛΟΓΙΟ 01-04-2026', category: 'Εξοπλισμός', amount: -12.40 },
-      { id: 4732,  date: '06/04/2026', desc: '4732 - ΠΑΠΑΚΙ doctornexttome.gr ΤΙΜΟΛΟΓΙΟ 27-03-2026', category: 'Εξοπλισμός', amount: -36.08 },
-      { id: -26,   date: '05/04/2026', desc: 'Πληρωμή #4656 — ΜΑΛΑΜΙΤΣΗΣ ΓΙΑ ΛΟΓΙΣΤΙΚΑ 10ος 2025', category: 'Απασχόληση', amount: -186.00 },
-    ]
-  }
-])
+const sections = ref([])
+const allTransactions = ref([])
 
-// Available items panel (right side)
-const allItems = ref([
-  { id: 4777,  date: '14/04/2026', desc: '4777 - ΕΣΟΔΑ ΠΡΟΣΩΠΙΚΑ ΤΡΑΠΕΖΑ',      category: 'Έσοδα Β',    amount: +150.00 },
-  { id: -62,   date: '14/04/2026', desc: 'Πληρωμή #4776 — ΠΑΠΑΚΙ ΑΓΟΡΑ DOM...',  category: 'Εξοπλισμός', amount: -12.40  },
-  { id: 4776,  date: '09/04/2026', desc: '4776 - ΠΑΠΑΚΙ ΑΓΟΡΑ DOMAIN Next2Vie...', category: 'Εξοπλισμός', amount: -12.40 },
-  { id: 4775,  date: '09/04/2026', desc: '4775 - MICROSOFT AZURE 03ος 2026',      category: 'Εξοπλισμός', amount: -112.42 },
-  { id: -61,   date: '08/04/2026', desc: 'Πληρωμή #4732 — ΠΑΠΑΚΙ doctornex...',  category: 'Εξοπλισμός', amount: -36.08  },
-  { id: 4748,  date: '07/04/2026', desc: '4748 - EPASS',                          category: 'Λειτουργικά', amount: -50.00 },
-  { id: -34,   date: '07/04/2026', desc: 'Πληρωμή #4738 — 4735 - ΠΑΠΑΚΙ Hi...',  category: 'Εξοπλισμός', amount: -12.40  },
-  { id: -35,   date: '07/04/2026', desc: 'Πληρωμή #4747 — ΕΣΟΔΑ ΠΡΟΣΩΠΙΚΑ',      category: 'Έσοδα Β',    amount: +134.00 },
-  { id: 4732,  date: '06/04/2026', desc: '4732 - ΠΑΠΑΚΙ doctornexttome.gr',       category: 'Εξοπλισμός', amount: -36.08  },
-  { id: -26,   date: '05/04/2026', desc: 'Πληρωμή #4656 — ΜΑΛΑΜΙΤΣΗΣ ΓΙΑ Λ...',  category: 'Απασχόληση', amount: -186.00 },
-  { id: -28,   date: '05/04/2026', desc: 'Πληρωμή #4657 — ΜΑΛΑΜΙΤΣΗΣ ΓΙΑ Λ...',  category: 'Απασχόληση', amount: -186.00 },
-  { id: -29,   date: '05/04/2026', desc: 'Πληρωμή #4658 — ΜΑΛΑΜΙΤΣΗΣ ΓΙΑ Λ...',  category: 'Απασχόληση', amount: -186.00 },
-])
+// Dynamic categories/subcategories from API
+const categoriesList = ref([])
+const subcategoriesList = ref([])
 
+// Right panel
 const itemFilter = ref('')
-const itemFilterTab = ref('all') // all / income / expense / urgent
-
+const itemFilterTab = ref('all')
 const selectedItems = ref([])
+const isPanelOpen = ref(true)
 
-const categories = ['Όλες οι κατηγορίες','Λειτουργικά','Προβολή & Προώθηση','Ανάπτυξη Λογισμικού','Εξοπλισμός','Απασχόληση','Προσωπικό','Λοιπά','Εισπράξεις','Έσοδα','Έσοδα Β']
-const subcategories = ['Όλες','Ενοίκιο','Τηλέφωνα','Άδειες Χρήσης','ΚΑΓΚΕΛΑΡΗΣ','ΒΑΡΙΑΣ','Finance','Dn2Me-UK']
-const methods = ['Όλες','Μετρητά','Τράπεζα','Απόδειξη','HSBC','Πειραιώς','Πορτοφόλι','Revolut GBP','Revolut USD','Revolut EUR']
-const displayModes = ['Έσοδα + Έξοδα','Μόνο Έσοδα','Μόνο Έξοδα']
+// Display mode options
+const displayModes = [
+  { value: 'both',    label: 'Έσοδα + Έξοδα' },
+  { value: 'income',  label: 'Μόνο Έσοδα' },
+  { value: 'expense', label: 'Μόνο Έξοδα' },
+]
 
-/* ── Computed ── */
-const sectionCount = computed(() => sections.value.reduce((s, sec) => s + sec.items.length, 0))
-const totalIncome = computed(() => sections.value.filter(s => s.type === 'income').flatMap(s => s.items).reduce((s, i) => s + i.amount, 0))
-const totalExpense = computed(() => sections.value.filter(s => s.type === 'expense').flatMap(s => s.items).reduce((s, i) => s + Math.abs(i.amount), 0))
+// Payment methods (static — same as legacy)
+const methods = [
+  { value: 'all',            label: 'Όλες' },
+  { value: 'Μετρητά',       label: 'Μετρητά' },
+  { value: 'Τράπεζα',       label: 'Τράπεζα' },
+  { value: 'Απόδειξη',  label: 'Απόδειξη' },
+  { value: 'HSBC',           label: 'HSBC' },
+  { value: 'Πειραιώς',  label: 'Πειραιώς' },
+  { value: 'Πορτοφόλι', label: 'Πορτοφόλι' },
+  { value: 'Revolut GBP',   label: 'Revolut GBP' },
+  { value: 'Revolut USD',   label: 'Revolut USD' },
+  { value: 'Revolut EUR',   label: 'Revolut EUR' },
+]
+
+/* ── Fetch transactions ── */
+async function loadTransactions() {
+  const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
+  const entityId = ENTITY_MAP[entityKey]
+  if (!entityId) return
+
+  loading.value = true
+  try {
+    const res = await api.get('/api/transactions', {
+      params: { entityId, page: 0, perPage: 9999 }
+    })
+    const data = res.data?.data || res.data || []
+    allTransactions.value = (Array.isArray(data) ? data : []).filter(
+      t => (t.recordStatus || 'active') === 'active'
+    )
+  } catch (err) {
+    console.error('ReportBuilder: failed to load transactions', err)
+    allTransactions.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+/* ── Fetch categories from config ── */
+async function loadConfig() {
+  const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
+  const entityId = ENTITY_MAP[entityKey]
+  if (!entityId) return
+
+  try {
+    const res = await api.get('/api/config', { params: { entityId } })
+    const items = res.data || []
+    categoriesList.value = items.filter(i => i.configType === 'category' && i.isActive !== false)
+    subcategoriesList.value = items.filter(i => i.configType === 'subcategory' && i.isActive !== false)
+  } catch (err) {
+    console.error('ReportBuilder: failed to load config', err)
+  }
+}
+
+/* ── Filtered items for right panel ── */
+const panelItems = computed(() => {
+  let items = allTransactions.value.map(t => ({
+    id: t.id,
+    date: t.docDate || '',
+    desc: t.description || t.comments || '',
+    category: t.category || '',
+    subcategory: t.subcategory || '',
+    amount: t.type === 'income' ? Number(t.amount) || 0 : -(Number(t.amount) || 0),
+    type: t.type,
+    paymentMethod: t.paymentMethod || '',
+    paymentStatus: t.paymentStatus || 'unpaid',
+    amountPaid: Number(t.amountPaid) || 0,
+    amountRemaining: Number(t.amountRemaining) || 0,
+    paymentDate: t.paymentDate || '',
+  }))
+
+  // Apply sidebar filters
+  if (selectedCategory.value !== 'all') {
+    items = items.filter(i => i.category === selectedCategory.value)
+  }
+  if (selectedSubcategory.value !== 'all') {
+    items = items.filter(i => i.subcategory === selectedSubcategory.value)
+  }
+  if (dateFrom.value) {
+    items = items.filter(i => i.date >= dateFrom.value)
+  }
+  if (dateTo.value) {
+    items = items.filter(i => i.date <= dateTo.value)
+  }
+  if (selectedMethod.value !== 'all') {
+    items = items.filter(i => i.paymentMethod === selectedMethod.value)
+  }
+  if (displayMode.value === 'income') {
+    items = items.filter(i => i.type === 'income')
+  } else if (displayMode.value === 'expense') {
+    items = items.filter(i => i.type === 'expense')
+  }
+
+  // Sort by date desc
+  items.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+  return items
+})
 
 const filteredItems = computed(() => {
-  let items = allItems.value
+  let items = panelItems.value
+
+  // Search filter
   if (itemFilter.value) {
     const q = itemFilter.value.toLowerCase()
     items = items.filter(i => i.desc.toLowerCase().includes(q) || String(i.id).includes(q))
   }
+
+  // Tab filter
   if (itemFilterTab.value === 'income')  items = items.filter(i => i.amount > 0)
   if (itemFilterTab.value === 'expense') items = items.filter(i => i.amount < 0)
+  if (itemFilterTab.value === 'urgent')  items = items.filter(i => i.paymentStatus === 'urgent' || i.paymentStatus === 'unpaid')
+
   return items
 })
+
+/* ── Computed ── */
+const sectionCount = computed(() => sections.value.reduce((s, sec) => s + sec.items.length, 0))
+const totalIncome = computed(() => sections.value.filter(s => s.type === 'income').flatMap(s => s.items).reduce((s, i) => s + Math.abs(i.amount), 0))
+const totalExpense = computed(() => sections.value.filter(s => s.type === 'expense').flatMap(s => s.items).reduce((s, i) => s + Math.abs(i.amount), 0))
 
 const isItemSelected = (id) => selectedItems.value.includes(id)
 
@@ -98,16 +178,16 @@ const addSelectedToReport = () => {
     return
   }
   const lastSection = sections.value[sections.value.length - 1]
-  const itemsToAdd = allItems.value.filter(i => selectedItems.value.includes(i.id))
+  const itemsToAdd = panelItems.value.filter(i => selectedItems.value.includes(i.id))
   itemsToAdd.forEach(item => {
     if (!lastSection.items.find(i => i.id === item.id)) {
-      lastSection.items.push(item)
+      lastSection.items.push({ ...item })
     }
   })
   selectedItems.value = []
 }
 
-/* ── Actions ── */
+/* ── Section Actions ── */
 const addSection = (type) => {
   sections.value.push({
     id: Date.now(),
@@ -121,13 +201,129 @@ const removeSection = (id) => {
   sections.value = sections.value.filter(s => s.id !== id)
 }
 
+/* ── Apply Filters (re-filter panel) ── */
 const applyFilters = () => {
-  // In real implementation, this would filter from backend
-  alert('Φίλτρα εφαρμόστηκαν! (Demo mode)')
+  // Filters are reactive via computed — this is just UX feedback
+  selectedItems.value = []
 }
 
-const exportPDF = () => alert('Export PDF — θα συνδεθεί με backend στη φάση 2')
-const exportExcel = () => alert('Export Excel — θα συνδεθεί με backend στη φάση 2')
+/* ── Export stubs (will be activated in Step 2) ── */
+const exportPDF = () => {
+  if (sectionCount.value === 0) {
+    alert('Δεν υπάρχουν κινήσεις στο report')
+    return
+  }
+  // Collect ALL transactions from ALL sections
+  const seenIds = new Set()
+  const allTxns = []
+  sections.value.forEach(sec => {
+    sec.items.forEach(t => {
+      const sid = String(t.id)
+      if (!seenIds.has(sid)) {
+        seenIds.add(sid)
+        allTxns.push(t)
+      }
+    })
+  })
+  allTxns.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+  const title = reportTitle.value || 'Custom Report'
+  const today = new Date().toLocaleDateString('el-GR')
+  const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
+
+  // Calculate KPIs
+  const incData = allTxns.filter(t => t.type === 'income')
+  const expData = allTxns.filter(t => t.type !== 'income')
+  const totalInc = incData.reduce((s, t) => s + Math.abs(t.amount), 0)
+  const totalExp = expData.reduce((s, t) => s + Math.abs(t.amount), 0)
+  const expPaid = expData.filter(t => t.paymentStatus === 'paid' || t.paymentStatus === 'received')
+  const expPaidAmt = expPaid.reduce((s, t) => s + Math.abs(t.amount), 0)
+  const expUnpaid = expData.filter(t => t.paymentStatus === 'unpaid' || t.paymentStatus === 'urgent')
+  const expUnpaidAmt = expUnpaid.reduce((s, t) => s + Math.abs(t.amountRemaining || t.amount), 0)
+  const kpiBalance = totalInc - expPaidAmt - expUnpaidAmt
+  const kpiCash = kpiBalance - expUnpaidAmt
+
+  const statusLabel = { unpaid: 'Απλήρωτη', urgent: '⚡ Εκκρεμής', partial: 'Μερ. Πληρωμένη', paid: 'Εξοφλημένη', received: 'Εισπράχθηκε' }
+  const statusColor = { unpaid: '#e74c3c', urgent: '#ff6400', partial: '#f39c12', paid: '#27ae60', received: '#27ae60' }
+
+  const fmtPdf = (n) => new Intl.NumberFormat('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))
+  const dispDate = (d) => { if (!d) return '—'; const parts = d.split('-'); return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : d }
+
+  const rows = allTxns.map(t => {
+    const sc = statusColor[t.paymentStatus] || '#666'
+    const sl = statusLabel[t.paymentStatus] || t.paymentStatus || ''
+    const isInc = t.type === 'income'
+    const paid = isInc ? Math.abs(t.amount) : (t.amountPaid || 0)
+    const rem = isInc ? 0 : (t.amountRemaining || 0)
+    return `<tr>
+      <td style="font-family:monospace;color:#666;font-size:9px">${t.id}</td>
+      <td style="white-space:nowrap">${dispDate(t.date)}</td>
+      <td style="max-width:200px">${t.desc || ''}</td>
+      <td style="white-space:nowrap">${t.category || ''}</td>
+      <td style="white-space:nowrap">${t.paymentMethod || '—'}</td>
+      <td style="text-align:right;white-space:nowrap;font-family:monospace">${fmtPdf(t.amount)} €</td>
+      <td style="text-align:right;white-space:nowrap;font-family:monospace;color:#27ae60">${paid > 0 ? fmtPdf(paid) + ' €' : '—'}</td>
+      <td style="text-align:right;white-space:nowrap;font-family:monospace;color:${rem > 0 ? '#e74c3c' : '#27ae60'}">${fmtPdf(rem)} €</td>
+      <td style="white-space:nowrap;font-size:9px">${dispDate(t.paymentDate) || '—'}</td>
+      <td><span style="background:${sc}22;color:${sc};border:1px solid ${sc}44;padding:2px 8px;border-radius:10px;font-size:8px;font-weight:700;white-space:nowrap">${sl}</span></td>
+    </tr>`
+  }).join('')
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Καρτέλα ${title}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Montserrat',Arial,sans-serif;font-size:11px;color:#1a1a2e;background:#fff;padding:28px 32px}
+    .header{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:2px solid #162B40;margin-bottom:20px}
+    .logo-area{display:flex;align-items:center;gap:14px}
+    .logo-text{display:flex;flex-direction:column}
+    .logo-name{font-size:16px;font-weight:800;color:#162B40;letter-spacing:2px}
+    .logo-sub{font-size:8px;font-weight:500;color:#2E75B6;letter-spacing:3px;margin-top:1px}
+    .header-right{text-align:right}
+    .doc-title{font-size:13px;font-weight:700;color:#162B40;text-transform:uppercase;letter-spacing:1px}
+    .doc-date{font-size:9px;color:#888;margin-top:3px}
+    .supplier-section{background:#f0f4f8;border-left:4px solid #2E75B6;padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:18px}
+    .supplier-label{font-size:8px;font-weight:600;color:#2E75B6;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
+    .supplier-name{font-size:20px;font-weight:800;color:#162B40}
+    .summary{display:flex;gap:0;margin-bottom:20px;border:1px solid #e0e6ed;border-radius:8px;overflow:hidden}
+    .sum-item{flex:1;padding:12px 8px;text-align:center;border-right:1px solid #e0e6ed}
+    .sum-item:last-child{border-right:none}
+    .sum-label{font-size:8px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+    .sum-value{font-size:15px;font-weight:800;color:#162B40}
+    table{width:100%;border-collapse:collapse;font-size:10px}
+    thead tr{background:#162B40;color:#fff}
+    thead th{padding:9px 8px;text-align:left;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+    tbody tr{border-bottom:1px solid #f0f0f0}
+    tbody tr:nth-child(even){background:#fafbfc}
+    td{padding:8px;vertical-align:middle}
+    .footer{margin-top:24px;display:flex;justify-content:space-between;padding-top:12px;border-top:1px solid #e0e6ed;font-size:8px;color:#aaa}
+    @media print{body{padding:15px}@page{margin:1cm;size:A4 landscape}}
+  </style></head><body>
+  <div class="header">
+    <div class="logo-area">
+      <div class="logo-text"><div class="logo-name">CashControl</div><div class="logo-sub">N e x t 2 M e</div></div>
+    </div>
+    <div class="header-right"><div class="doc-title">ΚΑΡΤΕΛΑ ΠΡΟΜΗΘΕΥΤΗ</div><div class="doc-date">Εκτυπώθηκε: ${today}</div></div>
+  </div>
+  <div class="supplier-section"><div class="supplier-label">Προμηθευτής / Αντισυμβαλλόμενος</div><div class="supplier-name">${title}</div></div>
+  <div class="summary">
+    <div class="sum-item"><div class="sum-label">Εισπράξεις</div><div class="sum-value" style="color:#27ae60">${fmtPdf(totalInc)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${incData.length} κινήσεις</div></div></div>
+    <div class="sum-item"><div class="sum-label">Εξοφλημένες</div><div class="sum-value" style="color:#2E75B6">${fmtPdf(expPaidAmt)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${expPaid.length} κινήσεις</div></div></div>
+    <div class="sum-item"><div class="sum-label">Υπόλοιπο</div><div class="sum-value" style="color:${kpiBalance>=0?'#27ae60':'#e74c3c'}">${kpiBalance>=0?'+':'−'} ${fmtPdf(kpiBalance)} €</div></div>
+    <div class="sum-item"><div class="sum-label">Εκκρεμότητες</div><div class="sum-value" style="color:${expUnpaidAmt>0?'#ff6400':'#27ae60'}">${fmtPdf(expUnpaidAmt)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${expUnpaid.length} κινήσεις</div></div></div>
+    <div class="sum-item" style="background:#f0faf4"><div class="sum-label" style="color:#27ae60">Ταμειακά Διαθέσιμα</div><div class="sum-value" style="color:${kpiCash>=0?'#27ae60':'#e74c3c'}">${kpiCash>=0?'+':'−'} ${fmtPdf(kpiCash)} €</div></div>
+  </div>
+  <table><thead><tr><th>ID</th><th>Ημ/νία</th><th>Περιγραφή</th><th>Κατηγορία</th><th>Μέθοδος</th><th style="text-align:right">Ποσό</th><th style="text-align:right">Πληρωμένο</th><th style="text-align:right">Υπόλοιπο</th><th>Ημ/νία Πληρωμής</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="footer"><span>CashControl · Next2Me Financial System</span><span>Σύνολο: ${allTxns.length} κινήσεις · ${today}</span></div>
+  </body></html>`
+
+  const w = window.open('', '_blank', 'width=1100,height=800')
+  w.document.write(html)
+  w.document.close()
+  setTimeout(() => w.print(), 500)
+}
+
+const exportExcel = () => alert('Export Excel — θα συνδεθεί στη φάση 2')
 
 const fmt = (n) => {
   const abs = Math.abs(n)
@@ -135,7 +331,21 @@ const fmt = (n) => {
   return n >= 0 ? '+ ' + str : '- ' + str
 }
 
-const isPanelOpen = ref(true)
+const fmtDate = (d) => {
+  if (!d) return '—'
+  const parts = d.split('-')
+  return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : d
+}
+
+/* ── Lifecycle ── */
+onMounted(() => {
+  loadTransactions()
+  loadConfig()
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'n2c_entity') { loadTransactions(); loadConfig() }
+  })
+  window.addEventListener('entity-changed', () => { loadTransactions(); loadConfig() })
+})
 </script>
 
 <template>
@@ -163,14 +373,16 @@ const isPanelOpen = ref(true)
         <div class="form-group">
           <label>Κατηγορία</label>
           <select v-model="selectedCategory" class="rb-select">
-            <option v-for="c in categories" :key="c">{{ c }}</option>
+            <option value="all">Όλες οι κατηγορίες</option>
+            <option v-for="c in categoriesList" :key="c.id" :value="c.name">{{ c.name }}</option>
           </select>
         </div>
 
         <div class="form-group">
           <label>Υποκατηγορία</label>
           <select v-model="selectedSubcategory" class="rb-select">
-            <option v-for="s in subcategories" :key="s">{{ s }}</option>
+            <option value="all">Όλες</option>
+            <option v-for="s in subcategoriesList" :key="s.id" :value="s.name">{{ s.name }}</option>
           </select>
         </div>
 
@@ -185,14 +397,14 @@ const isPanelOpen = ref(true)
         <div class="form-group">
           <label>Μέθοδος Πληρωμής</label>
           <select v-model="selectedMethod" class="rb-select">
-            <option v-for="m in methods" :key="m">{{ m }}</option>
+            <option v-for="m in methods" :key="m.value" :value="m.value">{{ m.label }}</option>
           </select>
         </div>
 
         <div class="form-group">
           <label>Εμφάνιση</label>
           <select v-model="displayMode" class="rb-select">
-            <option v-for="d in displayModes" :key="d">{{ d }}</option>
+            <option v-for="d in displayModes" :key="d.value" :value="d.value">{{ d.label }}</option>
           </select>
         </div>
 
@@ -267,7 +479,7 @@ const isPanelOpen = ref(true)
               <tbody>
                 <tr v-for="item in section.items" :key="item.id">
                   <td class="id-col">{{ item.id }}</td>
-                  <td class="date-col">{{ item.date }}</td>
+                  <td class="date-col">{{ fmtDate(item.date) }}</td>
                   <td class="desc-col">{{ item.desc }}</td>
                   <td><span class="cat-badge">{{ item.category }}</span></td>
                   <td class="num" :class="item.amount >= 0 ? 'income-col' : 'expense-col'">
@@ -295,7 +507,7 @@ const isPanelOpen = ref(true)
       <div class="rb-panel" v-if="isPanelOpen">
         <div class="panel-header">
           <span class="panel-title-text">ΚΙΝΗΣΕΙΣ</span>
-          <span class="panel-count">{{ allItems.length.toLocaleString() }}</span>
+          <span class="panel-count">{{ filteredItems.length.toLocaleString() }}</span>
           <button class="panel-close" @click="isPanelOpen = false">✕</button>
         </div>
 
@@ -322,7 +534,7 @@ const isPanelOpen = ref(true)
             <input type="checkbox" :checked="isItemSelected(item.id)" @click.stop="toggleItem(item)" />
             <div class="panel-item-info">
               <div class="panel-item-desc">{{ item.desc }}</div>
-              <div class="panel-item-meta">{{ item.id }} · {{ item.date }} · {{ item.category }}</div>
+              <div class="panel-item-meta">{{ item.id }} · {{ fmtDate(item.date) }} · {{ item.category }}</div>
             </div>
             <div class="panel-item-amount" :class="item.amount >= 0 ? 'income-col' : 'expense-col'">
               {{ item.amount >= 0 ? '+' : '' }}{{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(item.amount) }} €
