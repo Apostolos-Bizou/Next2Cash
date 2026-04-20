@@ -510,6 +510,49 @@ const ENTITIES_MAP = {
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const adminEntityId = computed(() => ENTITIES_MAP[selectedEntity.value])
 
+// ═══ AUDIT LOG state ═══
+const auditEntries = ref([])
+const auditLoading = ref(false)
+const auditTotal = ref(0)
+const auditPage = ref(0)
+const auditFilter = ref({ action: '', username: '', from: '', to: '' })
+
+async function loadAuditLog(page = 0) {
+  auditLoading.value = true
+  try {
+    const params = { entityId: adminEntityId.value, page, size: 50 }
+    if (auditFilter.value.action) params.action = auditFilter.value.action
+    if (auditFilter.value.username) params.username = auditFilter.value.username
+    if (auditFilter.value.from) params.from = auditFilter.value.from
+    if (auditFilter.value.to) params.to = auditFilter.value.to
+    const res = await api.get('/api/audit', { params })
+    if (res.data.success) {
+      auditEntries.value = res.data.data || []
+      auditTotal.value = res.data.total || 0
+      auditPage.value = page
+    }
+  } catch (e) {
+    console.warn('Audit load failed:', e)
+  } finally {
+    auditLoading.value = false
+  }
+}
+
+function formatAuditDate(iso) {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  return d.toLocaleDateString('el-GR') + ' ' + d.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })
+}
+
+const ACTION_LABELS = {
+  LOGIN_SUCCESS: 'Είσοδος',
+  PASSWORD_CHANGED: 'Αλλαγή Κωδικού',
+  TRANSACTION_CREATE: 'Νέα Κίνηση',
+  TRANSACTION_UPDATE: 'Επεξεργασία Κίνησης',
+  TRANSACTION_VOID: 'Ακύρωση Κίνησης',
+}
+
+
 // Config items state
 const configLoading = ref(false)
 const allConfigItems = ref([])
@@ -1066,9 +1109,61 @@ onMounted(async () => {
       <div class="card">
         <div class="card-header">
           <h2>Audit Log</h2>
+          <button class="btn btn-secondary btn-sm" @click="loadAuditLog(0)" :disabled="auditLoading">
+            {{ auditLoading ? '...' : 'Ανανέωση' }}
+          </button>
         </div>
-        <div class="notice notice-info">
-          Το Audit Log θα ενεργοποιηθεί σε επόμενη φάση (M.6 — Security & Polish).
+
+        <div class="audit-filters" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+          <select v-model="auditFilter.action" @change="loadAuditLog(0)" style="padding:8px 12px;background:#1a2332;color:#e0e6ed;border:1px solid #2c3e50;border-radius:8px;">
+            <option value="">Όλες οι ενέργειες</option>
+            <option value="LOGIN_SUCCESS">Είσοδος</option>
+            <option value="TRANSACTION_CREATE">Νέα Κίνηση</option>
+            <option value="TRANSACTION_UPDATE">Επεξεργασία</option>
+            <option value="TRANSACTION_VOID">Ακύρωση</option>
+            <option value="PASSWORD_CHANGED">Αλλαγή Κωδικού</option>
+          </select>
+          <input v-model="auditFilter.username" placeholder="Username" @keyup.enter="loadAuditLog(0)" style="padding:8px 12px;background:#1a2332;color:#e0e6ed;border:1px solid #2c3e50;border-radius:8px;width:150px;" />
+          <input type="date" v-model="auditFilter.from" @change="loadAuditLog(0)" style="padding:8px 12px;background:#1a2332;color:#e0e6ed;border:1px solid #2c3e50;border-radius:8px;" />
+          <input type="date" v-model="auditFilter.to" @change="loadAuditLog(0)" style="padding:8px 12px;background:#1a2332;color:#e0e6ed;border:1px solid #2c3e50;border-radius:8px;" />
+        </div>
+
+        <div v-if="auditLoading" class="loading">Φόρτωση...</div>
+        <div v-else-if="auditEntries.length === 0" class="empty">Δεν βρέθηκαν εγγραφές. Πατήστε Ανανέωση για φόρτωση.</div>
+        <div v-else>
+          <table class="data-table" style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1px solid #2c3e50;">
+                <th style="text-align:left;padding:10px 8px;color:#9aa5b1;">Ημερομηνία</th>
+                <th style="text-align:left;padding:10px 8px;color:#9aa5b1;">Χρήστης</th>
+                <th style="text-align:left;padding:10px 8px;color:#9aa5b1;">Ενέργεια</th>
+                <th style="text-align:left;padding:10px 8px;color:#9aa5b1;">Πίνακας</th>
+                <th style="text-align:left;padding:10px 8px;color:#9aa5b1;">ID</th>
+                <th style="text-align:left;padding:10px 8px;color:#9aa5b1;">Λεπτομέρειες</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="entry in auditEntries" :key="entry.id" style="border-bottom:1px solid #1a2332;">
+                <td style="padding:10px 8px;color:#e0e6ed;white-space:nowrap;">{{ formatAuditDate(entry.createdAt) }}</td>
+                <td style="padding:10px 8px;color:#4A9EFF;font-weight:600;">{{ entry.username || '-' }}</td>
+                <td style="padding:10px 8px;">
+                  <span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;" :style="{
+                    background: entry.action === 'LOGIN_SUCCESS' ? '#1a3a2a' : entry.action === 'TRANSACTION_CREATE' ? '#1a2a3a' : entry.action === 'TRANSACTION_VOID' ? '#3a1a1a' : '#2a2a1a',
+                    color: entry.action === 'LOGIN_SUCCESS' ? '#4FC3A1' : entry.action === 'TRANSACTION_CREATE' ? '#4A9EFF' : entry.action === 'TRANSACTION_VOID' ? '#FF6B6B' : '#FFC107'
+                  }">{{ ACTION_LABELS[entry.action] || entry.action }}</span>
+                </td>
+                <td style="padding:10px 8px;color:#9aa5b1;">{{ entry.targetTable || '-' }}</td>
+                <td style="padding:10px 8px;color:#6c7a8a;font-size:12px;">{{ entry.targetId ? entry.targetId.substring(0,8) + '...' : '-' }}</td>
+                <td style="padding:10px 8px;color:#9aa5b1;font-size:12px;">{{ entry.details ? JSON.parse(entry.details || '{}').type || '-' : '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div v-if="auditTotal > 50" style="display:flex;justify-content:center;gap:10px;margin-top:16px;">
+            <button class="btn btn-secondary btn-sm" :disabled="auditPage <= 0" @click="loadAuditLog(auditPage - 1)">Αριστερά</button>
+            <span style="color:#9aa5b1;padding:6px;">Σελίδα {{ auditPage + 1 }} / {{ Math.ceil(auditTotal / 50) }}</span>
+            <button class="btn btn-secondary btn-sm" :disabled="(auditPage + 1) * 50 >= auditTotal" @click="loadAuditLog(auditPage + 1)">Δεξιά</button>
+          </div>
         </div>
       </div>
     </div>

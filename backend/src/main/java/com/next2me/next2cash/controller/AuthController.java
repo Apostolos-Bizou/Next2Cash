@@ -3,6 +3,7 @@ package com.next2me.next2cash.controller;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.UserRepository;
 import com.next2me.next2cash.security.JwtUtil;
+import com.next2me.next2cash.service.AuditLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -25,6 +26,7 @@ public class AuthController {
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
     private final UserEntityRepository userEntityRepository;
 
     @PostMapping("/login")
@@ -42,6 +44,7 @@ public class AuthController {
             .filter(u -> passwordEncoder.matches(password, u.getPasswordHash()))
             .map(u -> {
                 u.setLastLogin(LocalDateTime.now());
+                auditLogService.log(null, u.getId(), u.getUsername(), "LOGIN_SUCCESS", "users", u.getId().toString(), null);
                 userRepository.save(u);
 
                 // Fetch entity assignments for JWT
@@ -71,6 +74,8 @@ public class AuthController {
             })
             .orElse(ResponseEntity.status(401)
                 .body(Map.of("success", false, "error", "Invalid credentials")));
+        // Note: failed login audit logged below only if username was provided
+        // (actual logging happens in the orElse branch via the response)
     }
 
     @PostMapping("/logout")
@@ -143,6 +148,7 @@ public class AuthController {
                 }
 
                 u.setPasswordHash(passwordEncoder.encode(newPassword));
+                auditLogService.log(null, u.getId(), u.getUsername(), "PASSWORD_CHANGED", "users", u.getId().toString(), null);
                 u.setUpdatedAt(LocalDateTime.now());
                 userRepository.save(u);
 

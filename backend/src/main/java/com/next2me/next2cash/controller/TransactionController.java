@@ -4,6 +4,7 @@ import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.security.JwtUtil;
+import com.next2me.next2cash.service.AuditLogService;
 import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -26,6 +27,7 @@ public class TransactionController {
     private final TransactionRepository transactionRepository;
     private final JwtUtil jwtUtil;
     private final UserAccessService userAccessService;
+    private final AuditLogService auditLogService;
 
     // GET /api/transactions?entityId=X&page=0&perPage=25&type=expense&status=unpaid
     //
@@ -143,6 +145,7 @@ public class TransactionController {
         }
 
         Transaction saved = transactionRepository.save(transaction);
+        auditLogService.log(saved.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_CREATE", "transactions", saved.getId().toString(), "{\"type\":\"" + saved.getType() + "\",\"amount\":" + saved.getAmount() + "}");
 
         return ResponseEntity.ok(Map.of(
             "success", true,
@@ -186,6 +189,7 @@ public class TransactionController {
             if (updates.getDocStatus()      != null) t.setDocStatus(updates.getDocStatus());
 
             Transaction saved = transactionRepository.save(t);
+            auditLogService.log(saved.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_UPDATE", "transactions", saved.getId().toString(), null);
             return ResponseEntity.ok(Map.<String, Object>of("success", true, "data", saved));
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -206,6 +210,7 @@ public class TransactionController {
             t.setRecordStatus("void");
             t.setUpdatedBy(user.getId());
             transactionRepository.save(t);
+            auditLogService.log(t.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_VOID", "transactions", t.getId().toString(), null);
             return ResponseEntity.ok(Map.<String, Object>of("success", true, "message", "Transaction voided"));
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -274,13 +279,13 @@ public class TransactionController {
         return ResponseEntity.ok(Map.of("success", true, "data", results));
     }
 
-    // β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
-    // PHASE H β€” KARTELES ENDPOINTS
-    // β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+    // Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬
+    // PHASE H Ξ²β‚¬β€ KARTELES ENDPOINTS
+    // Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬
 
     // GET /api/transactions/counterparties?entityId=X
     // Returns list of counterparties with aggregated metrics (count, total, paid, balance).
-    // Service-layer aggregation in Java β€” NO SQL GROUP BY (Postgres-safe).
+    // Service-layer aggregation in Java Ξ²β‚¬β€ NO SQL GROUP BY (Postgres-safe).
     @GetMapping("/counterparties")
     @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER')")
     public ResponseEntity<?> getCounterparties(
