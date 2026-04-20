@@ -1242,7 +1242,7 @@ onMounted(async () => {
 .modal-close { position: absolute; top: 14px; right: 14px; background: transparent; border: none; color: var(--text-muted, #9ca3af); font-size: 1.5rem; cursor: pointer; line-height: 1; }
 .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
 .entity-checkboxes { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--bg-input, #111827); border-radius: 6px; border: 1px solid var(--border, #374151); }
-.checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.9rem; color: var(--text-primary, #e5e7eb); }
+.checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.9rem; color: #ffffff; font-weight: 500; }
 .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
 
 /* M.6: Section checkboxes grid */
