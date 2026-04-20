@@ -290,9 +290,8 @@ function openEditModal(u) {
     editSections.value = []
   }
 
-  if (RESTRICTED_ROLES.includes(u.role)) {
-    fetchUserEntities(u.id)
-  }
+  // M.6: Always fetch entity assignments for all roles
+  fetchUserEntities(u.id)
   editModalOpen.value = true
 }
 
@@ -759,8 +758,8 @@ onMounted(async () => {
             {{ creating ? 'Δημιουργία...' : '+ Δημιουργία' }}
           </button>
         </div>
-        <div v-if="createNeedsEntities" class="form-group" style="margin-top: 12px;">
-          <label>Εταιρείες που θα βλέπει ο χρήστης *</label>
+        <div class="form-group" style="margin-top: 12px;">
+          <label>Εταιρείες που θα βλέπει ο χρήστης <small v-if="!createNeedsEntities">(κενό = όλες)</small><small v-else>*</small></label>
           <div class="entity-checkboxes">
             <label v-for="e in entities" :key="e.id" class="checkbox-label">
               <input
@@ -771,8 +770,11 @@ onMounted(async () => {
               {{ e.name }}
             </label>
           </div>
-          <small v-if="newEntityIds.length === 0" class="help-text" style="color: #fbbf24;">
+          <small v-if="newEntityIds.length === 0 && createNeedsEntities" class="help-text" style="color: #fbbf24;">
             Υποχρεωτικό: επιλέξτε τουλάχιστον μία εταιρεία
+          </small>
+          <small v-if="newEntityIds.length === 0 && !createNeedsEntities" class="help-text">
+            Κενό = όλες οι εταιρείες
           </small>
         </div>
         <div v-if="createError" class="error">{{ createError }}</div>
@@ -1110,8 +1112,8 @@ onMounted(async () => {
           <small>Δεν μπορείτε να αλλάξετε τον δικό σας ρόλο</small>
         </div>
 
-        <div v-if="needsEntities" class="form-group">
-          <label>Εταιρείες που βλέπει *</label>
+        <div class="form-group">
+          <label>Εταιρείες που βλέπει <small v-if="!needsEntities">(κενό = όλες)</small><small v-else>*</small></label>
           <div class="entity-checkboxes">
             <label v-for="e in entities" :key="e.id" class="checkbox-label">
               <input
@@ -1122,8 +1124,11 @@ onMounted(async () => {
               {{ e.name }}
             </label>
           </div>
-          <small v-if="editEntityIds.length === 0" class="error">
+          <small v-if="editEntityIds.length === 0 && needsEntities" class="error">
             Υποχρεωτικό: επιλέξτε τουλάχιστον μία εταιρεία
+          </small>
+          <small v-if="editEntityIds.length === 0 && !needsEntities" class="help-text">
+            Κενό = όλες οι εταιρείες
           </small>
         </div>
 
