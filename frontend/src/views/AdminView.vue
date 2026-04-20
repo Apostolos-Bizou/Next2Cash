@@ -49,6 +49,29 @@ const ASSIGNABLE_ROLES = ['user', 'accountant', 'viewer']
 // Roles that require entity assignment
 const RESTRICTED_ROLES = ['accountant', 'viewer']
 
+// M.6: All available sections for checkbox selection
+const ALL_SECTIONS = [
+  { key: 'dashboard',      label: 'Πίνακας Ελέγχου' },
+  { key: 'new-entry',      label: 'Νέα Καταχώριση' },
+  { key: 'transactions',   label: 'Κινήσεις' },
+  { key: 'payments',       label: 'Πληρωμές' },
+  { key: 'obligations',    label: 'Υποχρεώσεις' },
+  { key: 'karteles',       label: 'Καρτέλες' },
+  { key: 'zip-export',     label: 'ZIP Export' },
+  { key: 'reports',        label: 'Αναφορές' },
+  { key: 'report-builder', label: 'Report Builder' },
+  { key: 'ai-analysis',    label: 'AI Ανάλυση' },
+  { key: 'admin',          label: 'Admin Panel' },
+]
+
+// M.6: Default sections per role
+const DEFAULT_SECTIONS = {
+  admin: null,
+  user: null,
+  accountant: ['zip-export'],
+  viewer: ['dashboard', 'ai-analysis'],
+}
+
 // Entities list (for assignment dropdowns)
 const entities = ref([])
 
@@ -137,6 +160,7 @@ const newUser = ref({
   role: 'user'
 })
 const newEntityIds = ref([])
+const newSections = ref([])
 const creating = ref(false)
 const createError = ref(null)
 
@@ -150,6 +174,21 @@ function toggleNewEntity(entityId) {
     newEntityIds.value.push(entityId)
   }
 }
+
+function toggleNewSection(sectionKey) {
+  const idx = newSections.value.indexOf(sectionKey)
+  if (idx >= 0) {
+    newSections.value.splice(idx, 1)
+  } else {
+    newSections.value.push(sectionKey)
+  }
+}
+
+// Auto-set default sections when role changes in create form
+watch(() => newUser.value.role, (role) => {
+  const defaults = DEFAULT_SECTIONS[role]
+  newSections.value = defaults ? [...defaults] : []
+})
 
 async function createUser() {
   createError.value = null
@@ -168,12 +207,18 @@ async function createUser() {
   creating.value = true
   try {
     // STEP 1: Create the user
+    // M.6: Build allowedSections JSON string (null = all)
+    const sectionsPayload = newSections.value.length > 0
+      ? JSON.stringify(newSections.value)
+      : (DEFAULT_SECTIONS[newUser.value.role] ? JSON.stringify(DEFAULT_SECTIONS[newUser.value.role]) : null)
+
     const res = await api.post('/api/admin/users', {
-      username:    newUser.value.username.trim(),
-      password:    newUser.value.password,
-      displayName: newUser.value.displayName.trim() || newUser.value.username.trim(),
-      email:       newUser.value.email.trim() || null,
-      role:        newUser.value.role
+      username:        newUser.value.username.trim(),
+      password:        newUser.value.password,
+      displayName:     newUser.value.displayName.trim() || newUser.value.username.trim(),
+      email:           newUser.value.email.trim() || null,
+      role:            newUser.value.role,
+      allowedSections: sectionsPayload
     })
     if (res.data.success) {
       // STEP 2: If restricted role, assign entities
@@ -192,6 +237,7 @@ async function createUser() {
       }
       newUser.value = { username: '', displayName: '', email: '', password: '', role: 'user' }
       newEntityIds.value = []
+      newSections.value = []
       await fetchUsers()
       alert('Χρήστης δημιουργήθηκε επιτυχώς.')
     } else {
@@ -216,6 +262,7 @@ const editForm = ref({
   isActive: true
 })
 const editEntityIds = ref([])
+const editSections = ref([])
 const editSaving = ref(false)
 const editError = ref(null)
 const newPasswordField = ref('')
@@ -231,6 +278,17 @@ function openEditModal(u) {
   editEntityIds.value = []
   newPasswordField.value = ''
   editError.value = null
+
+  // M.6: Load allowed sections
+  if (u.allowedSections) {
+    try {
+      editSections.value = JSON.parse(u.allowedSections)
+    } catch {
+      editSections.value = []
+    }
+  } else {
+    editSections.value = []
+  }
 
   if (RESTRICTED_ROLES.includes(u.role)) {
     fetchUserEntities(u.id)
@@ -265,6 +323,20 @@ function toggleEntity(entityId) {
   }
 }
 
+function toggleEditSection(sectionKey) {
+  const idx = editSections.value.indexOf(sectionKey)
+  if (idx >= 0) {
+    editSections.value.splice(idx, 1)
+  } else {
+    editSections.value.push(sectionKey)
+  }
+}
+
+function resetEditSectionsToDefaults() {
+  const defaults = DEFAULT_SECTIONS[editForm.value.role]
+  editSections.value = defaults ? [...defaults] : []
+}
+
 const needsEntities = computed(() => RESTRICTED_ROLES.includes(editForm.value.role))
 
 async function saveEditUser() {
@@ -283,11 +355,17 @@ async function saveEditUser() {
       })
     }
 
+    // M.6: Build allowedSections for save
+    const editSectionsPayload = editSections.value.length > 0
+      ? JSON.stringify(editSections.value)
+      : null
+
     const payload = {
-      displayName: editForm.value.displayName || null,
-      email:       editForm.value.email || null,
-      role:        editForm.value.role,
-      isActive:    editForm.value.isActive
+      displayName:     editForm.value.displayName || null,
+      email:           editForm.value.email || null,
+      role:            editForm.value.role,
+      isActive:        editForm.value.isActive,
+      allowedSections: editSectionsPayload
     }
     const res = await api.put('/api/admin/users/' + editUser.value.id, payload)
 
@@ -698,6 +776,23 @@ onMounted(async () => {
           </small>
         </div>
         <div v-if="createError" class="error">{{ createError }}</div>
+        <!-- M.6: Allowed sections checkboxes for create -->
+        <div class="form-group" style="margin-top: 12px;">
+          <label>Σελίδες που θα βλέπει ο χρήστης
+            <small v-if="!DEFAULT_SECTIONS[newUser.role]">(κενό = όλες)</small>
+          </label>
+          <div class="section-checkboxes">
+            <label v-for="s in ALL_SECTIONS" :key="s.key" class="checkbox-label">
+              <input
+                type="checkbox"
+                :checked="newSections.includes(s.key)"
+                @change="toggleNewSection(s.key)"
+              />
+              {{ s.label }}
+            </label>
+          </div>
+          <small class="help-text">Κενό = πλήρης πρόσβαση (για Admin/User)</small>
+        </div>
         <p v-if="newUser.role === 'user'" class="warning">
           Ο ρόλος "Χρήστης" δίνει σχεδόν πλήρη πρόσβαση στο σύστημα (εκτός από διαχείριση άλλων χρηστών).
         </p>
@@ -1032,6 +1127,29 @@ onMounted(async () => {
           </small>
         </div>
 
+        <!-- M.6: Allowed sections checkboxes for edit -->
+        <div class="form-group">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label style="margin-bottom:0">Σελίδες που βλέπει
+              <small v-if="editSections.length === 0">(όλες)</small>
+            </label>
+            <button type="button" class="btn btn-secondary btn-sm" @click="resetEditSectionsToDefaults" style="padding:4px 10px;font-size:.75rem">
+              Defaults
+            </button>
+          </div>
+          <div class="section-checkboxes">
+            <label v-for="s in ALL_SECTIONS" :key="s.key" class="checkbox-label">
+              <input
+                type="checkbox"
+                :checked="editSections.includes(s.key)"
+                @change="toggleEditSection(s.key)"
+              />
+              {{ s.label }}
+            </label>
+          </div>
+          <small class="help-text">Κενό = πλήρης πρόσβαση (για Admin/User)</small>
+        </div>
+
         <div class="form-group" v-if="!isSelf(editUser)">
           <label>Κατάσταση</label>
           <select v-model="editForm.isActive" class="input">
@@ -1121,6 +1239,9 @@ onMounted(async () => {
 .entity-checkboxes { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--bg-input, #111827); border-radius: 6px; border: 1px solid var(--border, #374151); }
 .checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.9rem; color: var(--text-primary, #e5e7eb); }
 .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+
+/* M.6: Section checkboxes grid */
+.section-checkboxes { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; padding: 12px; background: var(--bg-input, #111827); border-radius: 6px; border: 1px solid var(--border, #374151); }
 
 /* M.7 — Config management styles */
 .inline-form { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
