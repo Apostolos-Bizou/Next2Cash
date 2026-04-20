@@ -118,7 +118,7 @@ public class TestDataBuilder {
      *   headers.set("Authorization", tdb.bearerToken(user));
      */
     public String bearerToken(User user) {
-        String token = jwtUtil.generateToken(user.getUsername(), user.getRole(), user.getId());
+        String token = jwtUtil.generateToken(user.getUsername(), user.getRole(), user.getId(), null, null);
         return "Bearer " + token;
     }
 

@@ -43,4 +43,7 @@ public class User {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
+
+    @Column(name = "allowed_sections")
+    private String allowedSections; // JSON array: ["dashboard","zip-export",...] or null = all
 }

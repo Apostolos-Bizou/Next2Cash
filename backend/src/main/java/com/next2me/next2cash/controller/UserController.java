@@ -114,6 +114,19 @@ public class UserController {
         u.setCreatedAt(LocalDateTime.now());
         u.setUpdatedAt(LocalDateTime.now());
 
+        // M.6: allowed_sections (JSON array or null)
+        if (request.containsKey("allowedSections")) {
+            Object sectionsRaw = request.get("allowedSections");
+            if (sectionsRaw == null) {
+                u.setAllowedSections(null);
+            } else {
+                u.setAllowedSections(String.valueOf(sectionsRaw));
+            }
+        } else {
+            // Set defaults based on role
+            u.setAllowedSections(getDefaultSections(role));
+        }
+
         User saved = userRepository.save(u);
 
         return ResponseEntity.ok(Map.of(
@@ -218,6 +231,16 @@ public class UserController {
                 }
             }
             u.setIsActive(newActive);
+        }
+
+        // M.6: allowed_sections update
+        if (request.containsKey("allowedSections")) {
+            Object sectionsRaw = request.get("allowedSections");
+            if (sectionsRaw == null) {
+                u.setAllowedSections(null);
+            } else {
+                u.setAllowedSections(String.valueOf(sectionsRaw));
+            }
         }
 
         u.setUpdatedAt(LocalDateTime.now());
@@ -416,6 +439,19 @@ public class UserController {
     // ─────────────────────────────────────────────────────────────────
 
     /** Count active admin users OTHER than the given userId. */
+    /** M.6: Default allowed sections per role. Returns JSON array string or null. */
+    private static String getDefaultSections(String role) {
+        if ("admin".equals(role) || "user".equals(role)) {
+            return null;
+        } else if ("accountant".equals(role)) {
+            return "[\"zip-export\"]";
+        } else if ("viewer".equals(role)) {
+            return "[\"dashboard\",\"ai-analysis\"]";
+        }
+        return null;
+    }
+
+
     private long countOtherActiveAdmins(UUID excludeUserId) {
         return userRepository.findAllByOrderByUsernameAsc().stream()
             .filter(usr -> "admin".equals(usr.getRole()))
@@ -448,6 +484,7 @@ public class UserController {
         dto.put("lastLogin",    u.getLastLogin());
         dto.put("createdAt",    u.getCreatedAt());
         dto.put("updatedAt",    u.getUpdatedAt());
+        dto.put("allowedSections", u.getAllowedSections());
         return dto;
     }
 

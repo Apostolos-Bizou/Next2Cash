@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -22,15 +23,23 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes());
     }
 
-    public String generateToken(String username, String role, UUID userId) {
-        return Jwts.builder()
+    public String generateToken(String username, String role, UUID userId,
+                                 String allowedSections, List<String> entityIds) {
+        var builder = Jwts.builder()
                 .subject(username)
                 .claim("role", role)
                 .claim("userId", userId.toString())
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
-                .signWith(getSigningKey())
-                .compact();
+                .expiration(new Date(System.currentTimeMillis() + jwtExpiration));
+
+        if (allowedSections != null) {
+            builder.claim("allowedSections", allowedSections);
+        }
+        if (entityIds != null && !entityIds.isEmpty()) {
+            builder.claim("entityIds", String.join(",", entityIds));
+        }
+
+        return builder.signWith(getSigningKey()).compact();
     }
 
     public String getUsernameFromToken(String token) {
@@ -43,6 +52,14 @@ public class JwtUtil {
 
     public String getUserIdFromToken(String token) {
         return getClaims(token).get("userId", String.class);
+    }
+
+    public String getAllowedSectionsFromToken(String token) {
+        return getClaims(token).get("allowedSections", String.class);
+    }
+
+    public String getEntityIdsFromToken(String token) {
+        return getClaims(token).get("entityIds", String.class);
     }
 
     public boolean validateToken(String token) {

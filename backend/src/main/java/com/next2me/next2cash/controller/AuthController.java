@@ -9,8 +9,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import com.next2me.next2cash.repository.UserEntityRepository;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -20,6 +25,7 @@ public class AuthController {
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
+    private final UserEntityRepository userEntityRepository;
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> request) {
@@ -38,17 +44,29 @@ public class AuthController {
                 u.setLastLogin(LocalDateTime.now());
                 userRepository.save(u);
 
-                String token = jwtUtil.generateToken(u.getUsername(), u.getRole(), u.getId());
+                // Fetch entity assignments for JWT
+                List<UUID> entityUuids = userEntityRepository.findEntityIdsByUserId(u.getId());
+                List<String> entityIdStrings = entityUuids.stream()
+                    .map(UUID::toString)
+                    .collect(Collectors.toList());
+
+                String token = jwtUtil.generateToken(
+                    u.getUsername(), u.getRole(), u.getId(),
+                    u.getAllowedSections(), entityIdStrings);
+
+                // Build user response
+                LinkedHashMap<String, Object> userMap = new LinkedHashMap<>();
+                userMap.put("id", u.getId());
+                userMap.put("username", u.getUsername());
+                userMap.put("displayName", u.getDisplayName() != null ? u.getDisplayName() : u.getUsername());
+                userMap.put("role", u.getRole());
+                userMap.put("allowedSections", u.getAllowedSections());
+                userMap.put("entityIds", entityIdStrings);
 
                 return ResponseEntity.ok(Map.of(
                     "success", true,
                     "token",   token,
-                    "user", Map.of(
-                        "id",          u.getId(),
-                        "username",    u.getUsername(),
-                        "displayName", u.getDisplayName() != null ? u.getDisplayName() : u.getUsername(),
-                        "role",        u.getRole()
-                    )
+                    "user",    userMap
                 ));
             })
             .orElse(ResponseEntity.status(401)
@@ -70,12 +88,22 @@ public class AuthController {
         String username = authentication.getName();
 
         return userRepository.findByUsername(username)
-            .map(u -> ResponseEntity.ok(Map.of(
-                "id",          u.getId(),
-                "username",    u.getUsername(),
-                "displayName", u.getDisplayName() != null ? u.getDisplayName() : u.getUsername(),
-                "role",        u.getRole()
-            )))
+            .map(u -> {
+                List<UUID> entityUuids = userEntityRepository.findEntityIdsByUserId(u.getId());
+                List<String> entityIdStrings = entityUuids.stream()
+                    .map(UUID::toString)
+                    .collect(Collectors.toList());
+
+                LinkedHashMap<String, Object> data = new LinkedHashMap<>();
+                data.put("id", u.getId());
+                data.put("username", u.getUsername());
+                data.put("displayName", u.getDisplayName() != null ? u.getDisplayName() : u.getUsername());
+                data.put("role", u.getRole());
+                data.put("allowedSections", u.getAllowedSections());
+                data.put("entityIds", entityIdStrings);
+
+                return ResponseEntity.ok(data);
+            })
             .orElse(ResponseEntity.notFound().build());
     }
 

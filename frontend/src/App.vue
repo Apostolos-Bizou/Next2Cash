@@ -2,10 +2,75 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
+const userStore = useUserStore()
+
+// M.6: Parse allowed sections from user profile
+const userAllowedSections = computed(() => {
+  const user = userStore.profile
+  if (!user) return null // not logged in
+  if (!user.allowedSections) return null // null = all sections allowed
+  try {
+    return JSON.parse(user.allowedSections)
+  } catch {
+    return null
+  }
+})
+
+// M.6: Check if user has entity restrictions
+const userEntityIds = computed(() => {
+  const user = userStore.profile
+  if (!user || !user.entityIds || user.entityIds.length === 0) return null // null = all entities
+  return user.entityIds
+})
+
+// M.6: Filter nav sections based on allowed sections
+const filteredNavSections = computed(() => {
+  const allowed = userAllowedSections.value
+  if (allowed === null) return navSections // null = show all
+
+  return navSections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        if (!item.section) return true // no section key = always show
+        return allowed.includes(item.section)
+      })
+    }))
+    .filter(section => section.items.length > 0) // remove empty sections
+})
+
+// M.6: Filter entities for restricted users
+const filteredEntities = computed(() => {
+  const restricted = userEntityIds.value
+  if (restricted === null) return entities // null = all entities
+
+  // Map entity UUIDs to keys
+  const uuidToKey = {
+    '58202b71-4ddb-45c9-8e3c-39e816bde972': 'next2me',
+    'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
+    '50317f44-9961-4fb4-add0-7a118e32dc14': 'polaris',
+  }
+  const allowedKeys = restricted.map(uuid => uuidToKey[uuid]).filter(Boolean)
+  return entities.filter(e => allowedKeys.includes(e.key))
+})
+
+// M.6: User display name for topbar
+const userDisplayName = computed(() => {
+  const user = userStore.profile
+  if (!user) return 'User'
+  return user.displayName || user.username || 'User'
+})
+
+// M.6: User initials for avatar
+const userInitial = computed(() => {
+  const name = userDisplayName.value
+  return name.charAt(0).toUpperCase()
+})
 
 const logout = () => {
   localStorage.removeItem('n2c_user')
@@ -25,36 +90,41 @@ function selectEntity(e) {
 }
 const showEntityMenu = ref(false)
 
+// M.6: Auto-select entity for restricted users (ACCOUNTANT/VIEWER)
+if (filteredEntities.value.length === 1 && selectedEntity.value !== filteredEntities.value[0].key) {
+  selectEntity(filteredEntities.value[0])
+}
+
 const navSections = [
   {
     label: 'ΚΥΡΙΑ',
     items: [
-      { to: '/dashboard',     label: 'Πίνακας Ελέγχου', icon: 'M3 12l9-9 9 9v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z' },
-      { to: '/new-entry',     label: 'Νέα Καταχώριση',  icon: 'M12 5v14M5 12h14' },
-      { to: '/transactions',  label: 'Κινήσεις',         icon: 'M7 7h10M7 12h10M7 17h6M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
-      { to: '/payments',      label: 'Πληρωμές',         icon: 'M2 8h20M2 12h20M5 16h4M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z' },
-      { to: '/obligations',   label: 'Υποχρεώσεις',      icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z' },
-      { to: '/karteles',      label: 'Καρτέλες',         icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6' },
+      { to: '/dashboard', section: 'dashboard',     label: 'Πίνακας Ελέγχου', icon: 'M3 12l9-9 9 9v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z' },
+      { to: '/new-entry', section: 'new-entry',     label: 'Νέα Καταχώριση',  icon: 'M12 5v14M5 12h14' },
+      { to: '/transactions', section: 'transactions',  label: 'Κινήσεις',         icon: 'M7 7h10M7 12h10M7 17h6M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+      { to: '/payments', section: 'payments',      label: 'Πληρωμές',         icon: 'M2 8h20M2 12h20M5 16h4M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z' },
+      { to: '/obligations', section: 'obligations',   label: 'Υποχρεώσεις',      icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z' },
+      { to: '/karteles', section: 'karteles',      label: 'Καρτέλες',         icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6' },
     ]
   },
   {
     label: 'ΛΟΓΙΣΤΗΡΙΟ',
     items: [
-      { to: '/documents',   label: 'Παραστατικά',     icon: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' },
+      { to: '/documents', section: 'zip-export',   label: 'Παραστατικά',     icon: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' },
     ]
   },
   {
     label: 'ΑΝΑΦΟΡΕΣ',
     items: [
-      { to: '/reports',        label: 'Αναφορές',        icon: 'M3 3v18h18M8 17V9M13 17V5M18 17v-7' },
-      { to: '/report-builder', label: 'Report Builder',  icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', badge: 'NEW' },
-      { to: '/ai-analysis',    label: 'AI Ανάλυση',      icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3', badge: 'NEW' },
+      { to: '/reports', section: 'reports',        label: 'Αναφορές',        icon: 'M3 3v18h18M8 17V9M13 17V5M18 17v-7' },
+      { to: '/report-builder', section: 'report-builder', label: 'Report Builder',  icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', badge: 'NEW' },
+      { to: '/ai-analysis', section: 'ai-analysis',    label: 'AI Ανάλυση',      icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3', badge: 'NEW' },
     ]
   },
   {
     label: 'ΔΙΑΧΕΙΡΙΣΗ',
     items: [
-      { to: '/admin',          label: 'Admin Panel',     icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0' },
+      { to: '/admin', section: 'admin',          label: 'Admin Panel',     icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0' },
     ]
   }
 ]
@@ -73,18 +143,18 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
         </div>
       </div>
 
-      <div class="entity-selector" v-if="!ui.sidebarCollapsed">
+      <div class="entity-selector" v-if="!ui.sidebarCollapsed && filteredEntities.length > 1">
         <div class="entity-btn" @click="showEntityMenu = !showEntityMenu">
           <span>{{ entities.find(e => e.key === selectedEntity)?.label || 'Next2Me' }}</span>
           <span>▾</span>
         </div>
         <div class="entity-menu" v-if="showEntityMenu">
-          <div v-for="e in entities" :key="e.key" class="entity-option" :class="{ active: e.key === selectedEntity }" @click="selectEntity(e)">{{ e.label }}</div>
+          <div v-for="e in filteredEntities" :key="e.key" class="entity-option" :class="{ active: e.key === selectedEntity }" @click="selectEntity(e)">{{ e.label }}</div>
         </div>
       </div>
 
       <nav class="sidebar__nav">
-        <template v-for="section in navSections" :key="section.label">
+        <template v-for="section in filteredNavSections" :key="section.label">
           <div class="nav-section-label" v-if="!ui.sidebarCollapsed">{{ section.label }}</div>
           <RouterLink v-for="item in section.items" :key="item.to" :to="item.to" class="nav-item" active-class="nav-item--active">
             <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -115,8 +185,8 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
       <header class="topbar">
         <h1 class="topbar__title">{{ currentTitle }}</h1>
         <div class="topbar__user">
-          <span class="topbar__user-name">Administrator</span>
-          <div class="topbar__avatar">A</div>
+          <span class="topbar__user-name">{{ userDisplayName }}</span>
+          <div class="topbar__avatar">{{ userInitial }}</div>
         </div>
       </header>
       <main class="content">
