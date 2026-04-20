@@ -94,9 +94,9 @@ async function loadConfig() {
     // Fallback: extract unique categories from transactions
     if (allTransactions.value.length > 0) {
       const cats = [...new Set(allTransactions.value.map(t => t.category).filter(Boolean))]
-      categoriesList.value = cats.map((name, i) => ({ id: i, name, configType: 'category', isActive: true }))
+      categoriesList.value = cats.map((name, i) => ({ id: i, configKey: name, configValue: name, configType: 'category', isActive: true }))
       const subs = [...new Set(allTransactions.value.map(t => t.subcategory).filter(Boolean))]
-      subcategoriesList.value = subs.map((name, i) => ({ id: i, name, configType: 'subcategory', isActive: true }))
+      subcategoriesList.value = subs.map((name, i) => ({ id: i, configKey: name, configValue: name, configType: 'subcategory', isActive: true }))
     }
   }
 }
@@ -464,7 +464,7 @@ onMounted(async () => {
           <label>Κατηγορία</label>
           <select v-model="selectedCategory" class="rb-select">
             <option value="all">Όλες οι κατηγορίες</option>
-            <option v-for="c in categoriesList" :key="c.id" :value="c.name">{{ c.name }}</option>
+            <option v-for="c in categoriesList" :key="c.id" :value="c.configKey">{{ c.configValue || c.configKey }}</option>
           </select>
         </div>
 
@@ -472,7 +472,7 @@ onMounted(async () => {
           <label>Υποκατηγορία</label>
           <select v-model="selectedSubcategory" class="rb-select">
             <option value="all">Όλες</option>
-            <option v-for="s in subcategoriesList" :key="s.id" :value="s.name">{{ s.name }}</option>
+            <option v-for="s in subcategoriesList" :key="s.id" :value="s.configKey || s.configValue">{{ s.configValue || s.configKey }}</option>
           </select>
         </div>
 
@@ -556,7 +556,7 @@ onMounted(async () => {
             </div>
 
             <!-- Section Table -->
-            <table class="section-table">
+            <table class="section-table" v-if="section.type !== 'summary'">
               <thead>
                 <tr>
                   <th>#ID</th>
@@ -578,6 +578,23 @@ onMounted(async () => {
                 </tr>
               </tbody>
             </table>
+            <!-- Summary section -->
+            <div v-if="section.type === 'summary'" class="summary-section-body">
+              <div class="summary-row">
+                <span class="summary-label">Σύνολο Εισπράξεων</span>
+                <span class="summary-val income-col">+ {{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(totalIncome) }} €</span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Σύνολο Εξόδων</span>
+                <span class="summary-val expense-col">- {{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(totalExpense) }} €</span>
+              </div>
+              <div class="summary-row summary-net">
+                <span class="summary-label-bold">Καθαρό Υπόλοιπο</span>
+                <span class="summary-val" :class="totalIncome - totalExpense >= 0 ? 'income-col' : 'expense-col'">
+                  {{ totalIncome - totalExpense >= 0 ? '+ ' : '- ' }}{{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(Math.abs(totalIncome - totalExpense)) }} €
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -733,6 +750,7 @@ onMounted(async () => {
 .report-section { background: #1a2f45; border-radius: 10px; overflow: hidden; }
 .report-section.income { border-left: 3px solid #4FC3A1; }
 .report-section.expense { border-left: 3px solid #ef5350; }
+.report-section.summary { border-left: 3px solid #29b6f6; }
 
 .section-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -743,6 +761,15 @@ onMounted(async () => {
 .section-arrow { font-size: 0.8rem; }
 .income .section-arrow { color: #4FC3A1; }
 .expense .section-arrow { color: #ef5350; }
+
+/* Summary section */
+.summary-section-body { padding: 12px 16px; }
+.summary-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #1e3448; }
+.summary-row:last-child { border-bottom: none; }
+.summary-net { border-top: 2px solid #2a4a6a; margin-top: 4px; padding-top: 14px; }
+.summary-label { font-size: 0.88rem; color: #c8d8e8; }
+.summary-label-bold { font-size: 0.92rem; color: #e0e6ed; font-weight: 700; }
+.summary-val { font-family: monospace; font-size: 1rem; font-weight: 700; }
 .section-badge.clickable { cursor: pointer; }
 .section-badge.clickable:hover { background: #2a4a6a; }
 .section-badge { background: #1a2f45; padding: 3px 10px; border-radius: 10px; font-size: 0.72rem; color: #8899aa; }
