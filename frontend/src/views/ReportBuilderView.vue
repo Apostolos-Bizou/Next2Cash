@@ -85,12 +85,19 @@ async function loadConfig() {
   if (!entityId) return
 
   try {
-    const res = await api.get('/api/config', { params: { entityId } })
+    const res = await api.get('/api/config/items', { params: { entityId } })
     const items = res.data || []
     categoriesList.value = items.filter(i => i.configType === 'category' && i.isActive !== false)
     subcategoriesList.value = items.filter(i => i.configType === 'subcategory' && i.isActive !== false)
   } catch (err) {
     console.error('ReportBuilder: failed to load config', err)
+    // Fallback: extract unique categories from transactions
+    if (allTransactions.value.length > 0) {
+      const cats = [...new Set(allTransactions.value.map(t => t.category).filter(Boolean))]
+      categoriesList.value = cats.map((name, i) => ({ id: i, name, configType: 'category', isActive: true }))
+      const subs = [...new Set(allTransactions.value.map(t => t.subcategory).filter(Boolean))]
+      subcategoriesList.value = subs.map((name, i) => ({ id: i, name, configType: 'subcategory', isActive: true }))
+    }
   }
 }
 
@@ -145,7 +152,10 @@ const filteredItems = computed(() => {
   // Search filter
   if (itemFilter.value) {
     const q = itemFilter.value.toLowerCase()
-    items = items.filter(i => i.desc.toLowerCase().includes(q) || String(i.id).includes(q))
+    items = items.filter(i => {
+      const dateStr = i.date ? i.date.split('-').reverse().join('/') : ''
+      return i.desc.toLowerCase().includes(q) || String(i.id).includes(q) || dateStr.includes(q) || (i.category || '').toLowerCase().includes(q)
+    })
   }
 
   // Tab filter
@@ -173,17 +183,51 @@ const toggleItem = (item) => {
 
 const addSelectedToReport = () => {
   if (selectedItems.value.length === 0) return
-  if (sections.value.length === 0) {
-    alert('Προσθέσε πρώτα ένα section (+ Έσοδα ή + Έξοδα)')
+
+  // Collect all existing IDs across all sections (dedup)
+  const existingIds = new Set()
+  sections.value.forEach(s => s.items.forEach(i => existingIds.add(String(i.id))))
+
+  const itemsToAdd = panelItems.value.filter(i =>
+    selectedItems.value.includes(i.id) && !existingIds.has(String(i.id))
+  )
+  if (itemsToAdd.length === 0) {
+    selectedItems.value = []
     return
   }
-  const lastSection = sections.value[sections.value.length - 1]
-  const itemsToAdd = panelItems.value.filter(i => selectedItems.value.includes(i.id))
-  itemsToAdd.forEach(item => {
-    if (!lastSection.items.find(i => i.id === item.id)) {
-      lastSection.items.push({ ...item })
+
+  // Auto-distribute: income -> income section, expense -> expense section
+  const incomeTxns = itemsToAdd.filter(i => i.type === 'income')
+  const expenseTxns = itemsToAdd.filter(i => i.type !== 'income')
+
+  if (incomeTxns.length > 0) {
+    let incSec = sections.value.find(s => s.type === 'income')
+    if (!incSec) {
+      addSection('income')
+      incSec = sections.value[sections.value.length - 1]
     }
-  })
+    incomeTxns.forEach(item => {
+      if (!incSec.items.find(i => i.id === item.id)) {
+        incSec.items.push({ ...item })
+      }
+    })
+    incSec.items.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  }
+
+  if (expenseTxns.length > 0) {
+    let expSec = sections.value.find(s => s.type === 'expense')
+    if (!expSec) {
+      addSection('expense')
+      expSec = sections.value[sections.value.length - 1]
+    }
+    expenseTxns.forEach(item => {
+      if (!expSec.items.find(i => i.id === item.id)) {
+        expSec.items.push({ ...item })
+      }
+    })
+    expSec.items.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  }
+
   selectedItems.value = []
 }
 
@@ -338,8 +382,8 @@ const fmtDate = (d) => {
 }
 
 /* ── Lifecycle ── */
-onMounted(() => {
-  loadTransactions()
+onMounted(async () => {
+  await loadTransactions()
   loadConfig()
   window.addEventListener('storage', (e) => {
     if (e.key === 'n2c_entity') { loadTransactions(); loadConfig() }
