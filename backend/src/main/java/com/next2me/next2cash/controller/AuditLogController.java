@@ -25,31 +25,6 @@ public class AuditLogController {
     private final AuditLogRepository auditLogRepository;
     private final UserAccessService userAccessService;
 
-    @GetMapping("/debug")
-    public ResponseEntity<?> debug(
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
-        Map<String, Object> info = new LinkedHashMap<>();
-        info.put("authHeaderPresent", authHeader != null);
-        info.put("authHeaderLength", authHeader != null ? authHeader.length() : 0);
-        try {
-            User user = userAccessService.getCurrentUser(authHeader);
-            info.put("userId", user.getId());
-            info.put("username", user.getUsername());
-            info.put("role", user.getRole());
-            info.put("step", "user resolved OK");
-            UUID testEntity = UUID.fromString("58202b71-4ddb-45c9-8e3c-39e816bde972");
-            boolean canAccess = userAccessService.canAccessEntity(user, testEntity);
-            info.put("canAccessNext2me", canAccess);
-        } catch (Exception e) {
-            info.put("error", e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-        return ResponseEntity.ok(info);
-    }
-    @GetMapping("/ping")
-    public ResponseEntity<?> ping() {
-        return ResponseEntity.ok(Map.of("success", true, "message", "audit controller alive"));
-    }
-
     @GetMapping("/{entityId}")
     public ResponseEntity<?> getAuditLog(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
