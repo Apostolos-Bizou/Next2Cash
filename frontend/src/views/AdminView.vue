@@ -221,8 +221,8 @@ async function createUser() {
       allowedSections: sectionsPayload
     })
     if (res.data.success) {
-      // STEP 2: If restricted role, assign entities
-      if (createNeedsEntities.value && newEntityIds.value.length > 0) {
+      // STEP 2: Assign entities if any selected (for ALL roles)
+      if (newEntityIds.value.length > 0) {
         const newUserId = res.data.data?.id
         if (newUserId) {
           try {
@@ -348,11 +348,10 @@ async function saveEditUser() {
 
   editSaving.value = true
   try {
-    if (RESTRICTED_ROLES.includes(editForm.value.role)) {
-      await api.put('/api/admin/users/' + editUser.value.id + '/entities', {
-        entityIds: editEntityIds.value
-      })
-    }
+    // M.6: Always save entity assignments (for all roles)
+    await api.put('/api/admin/users/' + editUser.value.id + '/entities', {
+      entityIds: editEntityIds.value
+    })
 
     // M.6: Build allowedSections for save
     const editSectionsPayload = editSections.value.length > 0
@@ -369,15 +368,7 @@ async function saveEditUser() {
     const res = await api.put('/api/admin/users/' + editUser.value.id, payload)
 
     if (res.data.success) {
-      if (!RESTRICTED_ROLES.includes(editForm.value.role)) {
-        try {
-          await api.put('/api/admin/users/' + editUser.value.id + '/entities', {
-            entityIds: []
-          })
-        } catch {
-          // Silent
-        }
-      }
+      // M.6: Entity assignment already saved above for all roles
 
       if (newPasswordField.value && newPasswordField.value.length > 0) {
         if (newPasswordField.value.length < 8) {
