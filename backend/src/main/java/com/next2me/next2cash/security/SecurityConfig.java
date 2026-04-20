@@ -40,22 +40,25 @@ public class SecurityConfig {
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // CORS preflight — always public
+                // CORS preflight - always public
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // Public endpoints
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/health").permitAll()
-                // Admin password reset — ADMIN only (more specific, must come first)
+                .requestMatchers("/api/activity-log/**").permitAll()
+                // Admin password reset - ADMIN only (more specific, must come first)
                 .requestMatchers(HttpMethod.POST, "/api/admin/users/*/reset-password").hasRole("ADMIN")
-                // DELETE on admin users — ADMIN only
+                // DELETE on admin users - ADMIN only
                 .requestMatchers(HttpMethod.DELETE, "/api/admin/users/**").hasRole("ADMIN")
-                // Other admin endpoints — ADMIN and USER
+                // Other admin endpoints - ADMIN and USER
                 .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "USER")
-                // ZIP export — ADMIN and ACCOUNTANT
+                // ZIP export - ADMIN and ACCOUNTANT
                 .requestMatchers("/api/documents/export").hasAnyRole("ADMIN", "ACCOUNTANT")
-                // Self-service password change — any authenticated user
+                // Audit log - any authenticated user
+                // activity-log now covered by permitAll above
+                // Self-service password change - any authenticated user
                 .requestMatchers("/api/auth/change-password").authenticated()
-                // Everything else — require authentication
+                // Everything else - require authentication
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

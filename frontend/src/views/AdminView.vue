@@ -525,7 +525,7 @@ async function loadAuditLog(page = 0) {
     if (auditFilter.value.username) params.username = auditFilter.value.username
     if (auditFilter.value.from) params.from = auditFilter.value.from
     if (auditFilter.value.to) params.to = auditFilter.value.to
-    const res = await api.get('/api/audit', { params })
+    const res = await api.get(`/api/activity-log/${params.entityId}`, { params: (() => { const { entityId: _e, ...rest } = params; return rest; })() })
     if (res.data.success) {
       auditEntries.value = res.data.data || []
       auditTotal.value = res.data.total || 0

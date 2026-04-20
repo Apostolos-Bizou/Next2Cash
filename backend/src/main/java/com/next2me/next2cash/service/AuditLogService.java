@@ -4,7 +4,6 @@ import com.next2me.next2cash.model.AuditLog;
 import com.next2me.next2cash.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -16,7 +15,6 @@ public class AuditLogService {
 
     private final AuditLogRepository auditLogRepository;
 
-    @Async
     public void log(UUID entityId, UUID userId, String username,
                     String action, String targetTable, String targetId,
                     String details, String ipAddress) {

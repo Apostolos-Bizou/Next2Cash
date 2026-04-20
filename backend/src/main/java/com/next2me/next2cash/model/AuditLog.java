@@ -6,6 +6,8 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "audit_log")
 @Data
@@ -34,6 +36,7 @@ public class AuditLog {
     @Column(name = "target_id", length = 100)
     private String targetId;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private String details;
 
