@@ -20,6 +20,27 @@ const tabs = [
 // Current user (for self-detection)
 const currentUser = ref(null)
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
+
+// Map admin tabs to section keys
+const TAB_SECTION_MAP = {
+  categories: 'admin-categories',
+  accounts:   'admin-accounts',
+  banks:      'admin-banks',
+  audit:      'admin-audit',
+}
+function canAccessTab(tabId) {
+  if (tabId === 'users') return true // everyone with admin access can see users
+  if (isAdmin.value) return true // admin sees all
+  const sectionKey = TAB_SECTION_MAP[tabId]
+  if (!sectionKey) return true
+  const user = currentUser.value
+  if (!user || !user.allowedSections) return true // null = all access
+  try {
+    const sections = typeof user.allowedSections === "string" ? JSON.parse(user.allowedSections) : user.allowedSections
+    return sections.includes(sectionKey)
+  } catch { return false }
+}
+
 const currentUsername = computed(() => currentUser.value?.username)
 
 // ═══════════════════════════════════════════════════════════════════
@@ -62,6 +83,10 @@ const ALL_SECTIONS = [
   { key: 'report-builder', label: 'Report Builder' },
   { key: 'ai-analysis',    label: 'AI Ανάλυση' },
   { key: 'admin',          label: 'Admin Panel' },
+  { key: 'admin-categories', label: 'Κατηγορίες (Admin)' },
+  { key: 'admin-accounts',   label: 'Λογαριασμοί (Admin)' },
+  { key: 'admin-banks',      label: 'Τράπεζες (Admin)' },
+  { key: 'admin-audit',      label: 'Audit Log' },
 ]
 
 // M.6: Default sections per role
@@ -719,7 +744,7 @@ onMounted(async () => {
         :key="tab.id"
         class="tab-btn"
         :class="{ active: activeTab === tab.id }"
-        :disabled="!isAdmin && tab.id !== 'users'"
+        :disabled="!canAccessTab(tab.id)"
         @click="activeTab = tab.id"
       >
         <span>{{ tab.icon }}</span> {{ tab.label }}
@@ -850,14 +875,9 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-else-if="!isAdmin" class="tab-content">
-      <div class="notice notice-warning">
-        Μόνο οι Διαχειριστές έχουν πρόσβαση σε αυτή τη σελίδα.
-      </div>
-    </div>
 
     <!-- ═══ CATEGORIES TAB ═══ -->
-    <div v-else-if="activeTab === 'categories'" class="tab-content">
+    <div v-else-if="activeTab === 'categories' && canAccessTab('categories')" class="tab-content">
       <div class="card">
         <div class="card-header">
           <h2>Κατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
@@ -895,7 +915,7 @@ onMounted(async () => {
     </div>
 
     <!-- ═══ SUBCATEGORIES (ACCOUNTS) TAB ═══ -->
-    <div v-else-if="activeTab === 'accounts'" class="tab-content">
+    <div v-else-if="activeTab === 'accounts' && canAccessTab('accounts')" class="tab-content">
       <div class="card">
         <div class="card-header">
           <h2>Υποκατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
@@ -953,7 +973,7 @@ onMounted(async () => {
     </div>
 
     <!-- ═══ BANKS TAB ═══ -->
-    <div v-else-if="activeTab === 'banks'" class="tab-content">
+    <div v-else-if="activeTab === 'banks' && canAccessTab('banks')" class="tab-content">
       <!-- Create new bank account -->
       <div class="card">
         <h2>➕ Νέος Τραπεζικός Λογαριασμός</h2>
@@ -1042,7 +1062,7 @@ onMounted(async () => {
     </div>
 
     <!-- ═══ AUDIT LOG TAB ═══ -->
-    <div v-else-if="activeTab === 'audit'" class="tab-content">
+    <div v-else-if="activeTab === 'audit' && canAccessTab('audit')" class="tab-content">
       <div class="card">
         <div class="card-header">
           <h2>Audit Log</h2>
