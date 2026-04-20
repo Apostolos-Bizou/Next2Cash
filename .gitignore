@@ -176,3 +176,8 @@ target/
 
 # Phase K schema inspection (local only)
 _phase_k_inspection/
+
+audit.ps1
+audit-v2.ps1
+audit-manual-checklist.md
+audit-report.csv
