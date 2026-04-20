@@ -21,6 +21,22 @@ const login = async () => {
     })
     if (res.data.success) {
       userStore.setUser(res.data.user, res.data.token)
+
+      // M.6: Auto-select entity based on user's entityIds
+      const user = res.data.user
+      if (user.entityIds && user.entityIds.length > 0) {
+        // User has entity restriction - map UUID to key
+        const uuidToKey = {
+          '58202b71-4ddb-45c9-8e3c-39e816bde972': 'next2me',
+          'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
+          '50317f44-9961-4fb4-add0-7a118e32dc14': 'polaris',
+        }
+        const firstKey = uuidToKey[user.entityIds[0]]
+        if (firstKey) {
+          localStorage.setItem('n2c_entity', firstKey)
+        }
+      }
+
       router.push('/dashboard')
     } else {
       error.value = 'Λάθος username ή password'
