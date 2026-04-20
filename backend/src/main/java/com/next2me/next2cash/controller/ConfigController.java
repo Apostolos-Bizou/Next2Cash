@@ -319,7 +319,7 @@ public class ConfigController {
      * Returns ALL config items (including inactive) for admin management.
      */
     @GetMapping("/items")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
     public ResponseEntity<?> listAllConfigItems(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID entityId,
