@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import api from '@/api'
 
 const selectedAnalysis = ref('Investor Report')
 const userQuestion = ref('')
@@ -37,13 +38,43 @@ const sendQuestion = async () => {
   isLoading.value = true
   chatHistory.value.push({ role: 'user', text: q })
 
-  // Simulate AI response
-  await new Promise(r => setTimeout(r, 1200))
-  chatHistory.value.push({
-    role: 'ai',
-    text: `Ανάλυση για: "${q}"\n\nΑυτή η λειτουργία θα συνδεθεί με το backend API (Spring Boot + Claude AI) στη φάση 2 της ανάπτυξης. Τα δεδομένα θα αναλύονται σε πραγματικό χρόνο από τη βάση δεδομένων PostgreSQL.`
-  })
-  isLoading.value = false
+  try {
+    const res = await api.post('/api/ai/analyze', {
+      question: q,
+      analysisType: selectedAnalysis.value,
+      entityScope: 'all',      // default: both entities
+      dateRange: 'ytd'          // default: year-to-date
+    })
+
+    if (res.data && res.data.success) {
+      const d = res.data
+      // Format cost για εμφάνιση
+      const costEur = d.costEur != null ? Number(d.costEur).toFixed(4) : '—'
+      const rows = d.rowsAnalyzed != null ? d.rowsAnalyzed : 0
+      chatHistory.value.push({
+        role: 'ai',
+        text: d.answer,
+        meta: `Κόστος: €${costEur} · ${rows} εγγραφές · ${d.tier}`
+      })
+    } else {
+      chatHistory.value.push({
+        role: 'ai',
+        text: `⚠ Σφάλμα: ${res.data?.error || 'unknown'}`
+      })
+    }
+  } catch (err) {
+    console.error('AI error:', err)
+    const status = err.response?.status
+    const errCode = err.response?.data?.error
+    const errMsg = err.response?.data?.message || err.message
+    let msg = 'Σφάλμα σύνδεσης'
+    if (status === 403) msg = 'Μόνο ADMIN μπορούν να χρησιμοποιήσουν το AI'
+    else if (status === 503) msg = `AI μη διαθέσιμο: ${errMsg}`
+    else if (errCode) msg = `${errCode}: ${errMsg}`
+    chatHistory.value.push({ role: 'ai', text: `⚠ ${msg}` })
+  } finally {
+    isLoading.value = false
+  }
 }
 
 const selectTab = (tab) => {
