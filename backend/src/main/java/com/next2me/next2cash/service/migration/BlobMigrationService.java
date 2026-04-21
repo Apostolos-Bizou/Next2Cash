@@ -53,8 +53,17 @@ public class BlobMigrationService {
         "ORDER BY doc_date DESC, id DESC";
 
     private static final int PROGRESS_INTERVAL = 500;
-    private static final int PILOT_SIZE = 100;
     private static final long DRIVE_RATE_LIMIT_DELAY_MS = 200L;
+
+    /**
+     * Maximum number of DRIVE_ID_ONLY transactions to process per run.
+     * Configurable via application property {@code migration.pilot.size}.
+     * Default 3000 is sized for the S#32 Phase 3 full-batch migration
+     * (~2.599 remaining DRIVE_ID_ONLY transactions + buffer).
+     * Idempotent uploads ensure re-runs are safe.
+     */
+    @org.springframework.beans.factory.annotation.Value("${migration.pilot.size:3000}")
+    private int pilotSize;
 
     private final JdbcTemplate jdbc;
 
@@ -117,7 +126,7 @@ public class BlobMigrationService {
     // ========================================================================
 
     /**
-     * Execute the pilot migration: select 100 most-recent DRIVE_ID_ONLY
+     * Execute the pilot/batch migration: select up to {@code migration.pilot.size} most-recent DRIVE_ID_ONLY
      * transactions and migrate each Drive file to Azure Blob Storage.
      *
      * @param execute {@code true} to perform real downloads, uploads, and DB
@@ -131,13 +140,13 @@ public class BlobMigrationService {
 
         PilotReport report = new PilotReport();
 
-        // Step 1: select candidate transactions (more than PILOT_SIZE to allow
+        // Step 1: select candidate transactions (more than pilotSize to allow
         // skipping of non-DRIVE_ID_ONLY rows that slip through the WHERE clause)
-        List<PilotCandidate> candidates = selectPilotCandidates(PILOT_SIZE * 2);
+        List<PilotCandidate> candidates = selectPilotCandidates(pilotSize * 2);
         log.info("Selected {} candidate transactions (pre-classification)", candidates.size());
 
-        // Step 2: filter to actually-DRIVE_ID_ONLY, cap at PILOT_SIZE
-        List<PilotCandidate> pilotSet = filterDriveIdOnly(candidates, PILOT_SIZE);
+        // Step 2: filter to actually-DRIVE_ID_ONLY, cap at pilotSize
+        List<PilotCandidate> pilotSet = filterDriveIdOnly(candidates, pilotSize);
         log.info("Pilot target: {} transactions with DRIVE_ID_ONLY classification", pilotSet.size());
 
         if (pilotSet.isEmpty()) {
