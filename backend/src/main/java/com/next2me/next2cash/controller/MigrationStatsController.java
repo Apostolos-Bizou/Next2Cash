@@ -15,12 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * TEMPORARY ? Session #33 Priority 1 verification endpoint.
- * Returns classification counts for post-migration sanity check.
- * TO BE REMOVED once verification completes.
- *
- * Uses manual role check (instead of @PreAuthorize) to match
- * the rest of the codebase's security pattern.
+ * TEMPORARY - Session #33 Priority 1 verification endpoint.
+ * Manual role check (NOT @PreAuthorize).
  */
 @RestController
 @RequestMapping("/api/admin/migration")
@@ -33,13 +29,12 @@ public class MigrationStatsController {
     @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> classificationStats() {
 
-        // Manual admin check ? matches the codebase pattern
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
-            return ResponseEntity.status(401).body(Map.of(
-                "success", false,
-                "error", "Unauthenticated"
-            ));
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error", "Unauthenticated");
+            return ResponseEntity.status(401).body(err);
         }
         boolean isAdmin = auth.getAuthorities().stream()
             .map(GrantedAuthority::getAuthority)
@@ -47,14 +42,14 @@ public class MigrationStatsController {
                         || a.equalsIgnoreCase("ADMIN")
                         || a.equalsIgnoreCase("admin"));
         if (!isAdmin) {
-            return ResponseEntity.status(403).body(Map.of(
-                "success", false,
-                "error", "Admin role required",
-                "authoritiesSeen", auth.getAuthorities().toString()
-            ));
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error", "Admin role required");
+            err.put("authoritiesSeen", auth.getAuthorities().toString());
+            err.put("principalName", auth.getName());
+            return ResponseEntity.status(403).body(err);
         }
 
-        // Count query ? JSONB-based
         String sql =
             "SELECT " +
             "  COUNT(*) FILTER (WHERE " +
@@ -96,7 +91,7 @@ public class MigrationStatsController {
         response.put("success", true);
         response.put("actual", actual);
         response.put("expected", expected);
-        response.put("note", "Temporary S#33 endpoint. Remove after verification.");
+        response.put("note", "Temporary S#33 endpoint v3");
 
         return ResponseEntity.ok(response);
     }
