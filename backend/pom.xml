@@ -95,6 +95,12 @@
             <artifactId>google-auth-library-oauth2-http</artifactId>
             <version>1.30.0</version>
         </dependency>
+        <!-- Explicit credentials library to match oauth2-http version (S#31 fix for classpath conflict) -->
+        <dependency>
+            <groupId>com.google.auth</groupId>
+            <artifactId>google-auth-library-credentials</artifactId>
+            <version>1.30.0</version>
+        </dependency>
 
         <!-- Apache POI (Excel .xlsx export) -->
         <dependency>
