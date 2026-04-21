@@ -288,7 +288,7 @@ const runAnalysis = () => {
 /* ─────────────────────────────────────────────────────── */
 .answer-card {
   background: #ffffff;
-  color: #1a2332;
+  color: #000000;
   border-radius: 12px;
   padding: 32px 40px;
   max-width: 85%;
@@ -297,16 +297,16 @@ const runAnalysis = () => {
   line-height: 1.75;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
-.answer-content { color: #1a2332; }
-.answer-content h1 { font-size: 1.85rem; font-weight: 800; color: #0d1e2e; margin: 1.3em 0 0.5em 0; padding-bottom: 0.35em; border-bottom: 2px solid #e5e9ed; }
+.answer-content { color: #000000; }
+.answer-content h1 { font-size: 2rem; font-weight: 900; color: #000000; margin: 1.3em 0 0.6em 0; padding-bottom: 0.35em; border-bottom: 3px solid #000000; letter-spacing: -0.01em; }
 .answer-content h1:first-child { margin-top: 0; }
-.answer-content h2 { font-size: 1.45rem; font-weight: 700; color: #0d1e2e; margin: 1.4em 0 0.5em 0; }
-.answer-content h3 { font-size: 1.2rem; font-weight: 700; color: #1a2332; margin: 1.2em 0 0.4em 0; }
-.answer-content p { margin: 0.7em 0; color: #1a2332; font-size: 1.05rem; }
-.answer-content strong { font-weight: 700; color: #000000; }
+.answer-content h2 { font-size: 1.55rem; font-weight: 800; color: #000000; margin: 1.5em 0 0.55em 0; letter-spacing: -0.01em; }
+.answer-content h3 { font-size: 1.25rem; font-weight: 700; color: #000000; margin: 1.3em 0 0.45em 0; }
+.answer-content p { margin: 0.75em 0; color: #000000; font-size: 1.05rem; }
+.answer-content strong { font-weight: 800; color: #000000; }
 .answer-content em { font-style: italic; color: #333; }
 .answer-content ul, .answer-content ol { margin: 0.5em 0 0.8em 0; padding-left: 1.4em; }
-.answer-content li { margin: 0.35em 0; color: #1a2332; font-size: 1.05rem; }
+.answer-content li { margin: 0.4em 0; color: #000000; font-size: 1.05rem; }
 .answer-content code { background: #f1f3f5; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; color: #2d3748; }
 .answer-content hr { border: none; border-top: 1px solid #e5e9ed; margin: 1.3em 0; }
 
