@@ -50,30 +50,106 @@ const quickTabs = [
 // ── Simple markdown renderer ──
 function renderMarkdown(text) {
   if (!text) return ''
-  let html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-  // Headings (process largest to smallest)
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
-  // Bold + italic
-  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
-  // Inline code
-  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>')
-  // Horizontal rule
-  html = html.replace(/^---+$/gm, '<hr/>')
-  // Unordered list
-  html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>')
-  html = html.replace(/(<li>[\s\S]*?<\/li>\n?)+/g, m => '<ul>' + m + '</ul>')
-  // Paragraphs from double newlines
-  html = html.split(/\n\n+/).map(block => {
-    if (/^<(h[1-6]|ul|ol|hr)/.test(block)) return block
-    return '<p>' + block.replace(/\n/g, '<br/>') + '</p>'
-  }).join('\n')
-  return html
+  // Split into lines for proper block-level parsing
+  const rawLines = text.split('\n')
+  const out = []
+  let i = 0
+  while (i < rawLines.length) {
+    let line = rawLines[i]
+    // Skip empty lines
+    if (!line.trim()) { i++; continue }
+    // HR (three or more dashes)
+    if (/^-{3,}\s*$/.test(line)) { out.push('<hr/>'); i++; continue }
+    // Headings
+    let m
+    if (m = line.match(/^###\s+(.+)$/)) { out.push('<h3>' + escapeHtml(m[1]) + '</h3>'); i++; continue }
+    if (m = line.match(/^##\s+(.+)$/)) { out.push('<h2>' + escapeHtml(m[1]) + '</h2>'); i++; continue }
+    if (m = line.match(/^#\s+(.+)$/)) { out.push('<h1>' + escapeHtml(m[1]) + '</h1>'); i++; continue }
+    // Table: current line is pipe-row AND next line is separator row
+    if (line.trim().startsWith('|') && i + 1 < rawLines.length && /^\s*\|[\s\-|:]+\|\s*$/.test(rawLines[i+1])) {
+      // Header row
+      const headerCells = splitPipeRow(line)
+      i += 2 // skip header + separator
+      const bodyRows = []
+      while (i < rawLines.length && rawLines[i].trim().startsWith('|')) {
+        bodyRows.push(splitPipeRow(rawLines[i]))
+        i++
+      }
+      let table = '<table class="ai-table"><thead><tr>'
+      for (const c of headerCells) table += '<th>' + inline(c) + '</th>'
+      table += '</tr></thead><tbody>'
+      for (const row of bodyRows) {
+        table += '<tr>'
+        for (const c of row) table += '<td>' + inline(c) + '</td>'
+        table += '</tr>'
+      }
+      table += '</tbody></table>'
+      out.push(table)
+      continue
+    }
+    // Unordered list
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items = []
+      while (i < rawLines.length && /^\s*[-*]\s+/.test(rawLines[i])) {
+        const item = rawLines[i].replace(/^\s*[-*]\s+/, '')
+        items.push('<li>' + inline(item) + '</li>')
+        i++
+      }
+      out.push('<ul>' + items.join('') + '</ul>')
+      continue
+    }
+    // Ordered list
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items = []
+      while (i < rawLines.length && /^\s*\d+\.\s+/.test(rawLines[i])) {
+        const item = rawLines[i].replace(/^\s*\d+\.\s+/, '')
+        items.push('<li>' + inline(item) + '</li>')
+        i++
+      }
+      out.push('<ol>' + items.join('') + '</ol>')
+      continue
+    }
+    // Regular paragraph: collect consecutive non-empty non-special lines
+    const paraLines = [line]
+    i++
+    while (i < rawLines.length && rawLines[i].trim() && !isBlockStart(rawLines[i])) {
+      paraLines.push(rawLines[i])
+      i++
+    }
+    out.push('<p>' + paraLines.map(l => inline(l)).join('<br/>') + '</p>')
+  }
+  return out.join('\n')
+}
+
+function isBlockStart(line) {
+  if (!line) return false
+  if (/^#{1,6}\s/.test(line)) return true
+  if (/^-{3,}\s*$/.test(line)) return true
+  if (line.trim().startsWith('|')) return true
+  if (/^\s*[-*]\s+/.test(line)) return true
+  if (/^\s*\d+\.\s+/.test(line)) return true
+  return false
+}
+
+function splitPipeRow(row) {
+  // Strip leading/trailing pipes and whitespace, split on |
+  let t = row.trim()
+  if (t.startsWith('|')) t = t.substring(1)
+  if (t.endsWith('|')) t = t.substring(0, t.length - 1)
+  return t.split('|').map(s => s.trim())
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function inline(s) {
+  // Apply inline formatting AFTER escaping
+  let t = escapeHtml(s)
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+  t = t.replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+  t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>')
+  return t
 }
 
 // ── Export PDF/Word ──
@@ -345,29 +421,36 @@ const runAnalysis = () => {
   background: #ffffff;
   color: #000000;
   border-radius: 12px;
-  padding: 32px 40px;
-  max-width: 85%;
+  padding: 36px 44px;
+  max-width: 90%;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
-  font-size: 1.05rem;
-  line-height: 1.75;
+  font-size: 1.2rem;
+  line-height: 1.8;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
-.answer-content { color: #000000; }
-.answer-content h1 { font-size: 2rem; font-weight: 900; color: #000000; margin: 1.3em 0 0.6em 0; padding-bottom: 0.35em; border-bottom: 3px solid #000000; letter-spacing: -0.01em; }
+.answer-content, .answer-content * { color: #000000 !important; }
+.answer-content h1 { font-size: 2.4rem !important; font-weight: 900 !important; margin: 1.3em 0 0.6em 0; padding-bottom: 0.35em; border-bottom: 3px solid #000000; letter-spacing: -0.01em; line-height: 1.25; }
 .answer-content h1:first-child { margin-top: 0; }
-.answer-content h2 { font-size: 1.55rem; font-weight: 800; color: #000000; margin: 1.5em 0 0.55em 0; letter-spacing: -0.01em; }
-.answer-content h3 { font-size: 1.25rem; font-weight: 700; color: #000000; margin: 1.3em 0 0.45em 0; }
-.answer-content p { margin: 0.75em 0; color: #000000; font-size: 1.05rem; }
-.answer-content strong { font-weight: 800; color: #000000; }
-.answer-content em { font-style: italic; color: #333; }
-.answer-content ul, .answer-content ol { margin: 0.5em 0 0.8em 0; padding-left: 1.4em; }
-.answer-content li { margin: 0.4em 0; color: #000000; font-size: 1.05rem; }
-.answer-content code { background: #f1f3f5; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; color: #2d3748; }
-.answer-content hr { border: none; border-top: 1px solid #e5e9ed; margin: 1.3em 0; }
+.answer-content h2 { font-size: 1.85rem !important; font-weight: 800 !important; margin: 1.5em 0 0.55em 0; letter-spacing: -0.01em; line-height: 1.3; padding-bottom: 0.25em; border-bottom: 1.5px solid #000000; }
+.answer-content h3 { font-size: 1.5rem !important; font-weight: 700 !important; margin: 1.3em 0 0.45em 0; line-height: 1.35; }
+.answer-content p { margin: 0.85em 0; font-size: 1.2rem; line-height: 1.8; }
+.answer-content strong { font-weight: 800; }
+.answer-content em { font-style: italic; color: #222 !important; }
+.answer-content ul, .answer-content ol { margin: 0.6em 0 1em 0; padding-left: 1.6em; }
+.answer-content li { margin: 0.5em 0; font-size: 1.2rem; line-height: 1.75; }
+.answer-content code { background: #f1f3f5; padding: 3px 8px; border-radius: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.95em; color: #2d3748 !important; }
+.answer-content hr { border: none; border-top: 1px solid #000000 !important; margin: 1.5em 0; opacity: 0.35; }
 
-.answer-meta { margin-top: 1.6em; padding-top: 1em; border-top: 1px solid #e5e9ed; font-size: 0.78rem; color: #6c7a8a; font-weight: 500; }
-.answer-actions { display: flex; gap: 10px; margin-top: 1em; }
-.btn-export { padding: 10px 18px; background: #1a2332; color: #fff; border: none; border-radius: 6px; font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+/* Tables from markdown */
+.answer-content table.ai-table { width: 100%; border-collapse: collapse; margin: 1.2em 0 1.4em 0; font-size: 1.1rem; }
+.answer-content table.ai-table th { background: #1a2332; color: #ffffff !important; padding: 12px 14px; text-align: left; font-weight: 700; border: 1px solid #1a2332; }
+.answer-content table.ai-table td { padding: 10px 14px; border: 1px solid #d0d7de; vertical-align: top; }
+.answer-content table.ai-table tbody tr:nth-child(even) td { background: #f6f8fa; }
+.answer-content table.ai-table tbody tr:hover td { background: #eef2f6; }
+
+.answer-meta { margin-top: 1.8em; padding-top: 1em; border-top: 1px solid #d0d7de; font-size: 0.88rem !important; color: #6c7a8a !important; font-weight: 500; }
+.answer-actions { display: flex; gap: 12px; margin-top: 1.2em; }
+.btn-export { padding: 12px 22px; background: #1a2332; color: #ffffff !important; border: none; border-radius: 6px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
 .btn-export:hover { background: #2a3c52; }
 
 /* ─────────────────────────────────────── */
