@@ -1,0 +1,141 @@
+/* Global mobile responsive overrides
+ * Targets viewport < 768px only. Desktop/tablet unaffected.
+ * Added in Session #38 to fix overflow issues on Android phones.
+ */
+
+@media (max-width: 768px) {
+  /* Universal safety */
+  *, *::before, *::after {
+    box-sizing: border-box;
+    max-width: 100%;
+  }
+
+  /* Main content area breathing room */
+  .content {
+    padding: 12px !important;
+  }
+
+  /* ── Tables: horizontal scroll instead of overflow ── */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  /* Wrap around tables for safe scroll */
+  .table-wrap, .tbl-wrap, .transactions-table, .karteles-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Grids → single column ── */
+  .kpi-grid,
+  .kpi-row,
+  .form-row,
+  .form-grid,
+  .dash-4col,
+  .dash-2col,
+  .dash-2equal,
+  .dash-3col {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* ── Flex rows wrap ── */
+  .filters-row,
+  .toolbar,
+  .action-row,
+  .kpi-strip,
+  .stats-row,
+  .header-row {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* ── Cards full width ── */
+  .kpi-card,
+  .kpi-item,
+  .sum-card,
+  .panel-card,
+  .card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* ── Numbers that must not break layout ── */
+  .kpi-val,
+  .sum-value,
+  .big-number {
+    font-size: 1.2rem !important;
+    word-break: break-all;
+    overflow-wrap: break-word;
+  }
+
+  /* ── Search/filter inputs full width ── */
+  .search-wrap,
+  .filter-select,
+  .analysis-select {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* ── Buttons wrap nicely ── */
+  .btn-group {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* ── Modals full screen on mobile ── */
+  .modal, .modal-card {
+    width: 94vw !important;
+    max-width: 94vw !important;
+    margin: 10px auto !important;
+  }
+
+  /* ── Admin & views with fixed max-widths ── */
+  .admin-page,
+  .new-entry-page,
+  .dashboard-page,
+  .reports-page {
+    padding: 12px !important;
+    max-width: 100% !important;
+  }
+
+  /* ── Descriptions that were nowrap+ellipsis cause layout issues ── */
+  .desc-col {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+  }
+
+  /* ── Report Builder specific: stack the two columns ── */
+  .builder-layout,
+  .report-builder,
+  .rb-columns {
+    display: block !important;
+  }
+  .rb-sidebar,
+  .rb-main,
+  .builder-sidebar,
+  .builder-main {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 12px;
+  }
+
+  /* ── Charts container overflow protection ── */
+  .chart-wrap, canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* ── Disable horizontal scroll on body ── */
+  body, html, #app {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+  }
+}
