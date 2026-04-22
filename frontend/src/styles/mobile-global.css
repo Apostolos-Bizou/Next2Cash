@@ -174,3 +174,105 @@
     max-width: 100% !important;
   }
 }
+
+
+/* ═══ SESSION #38 v3: KPI cards vertical stacking ═══
+ * Applied to Transactions, Payments, and any similar KPI row.
+ * Discovered classes from actual views (not guessed):
+ * TX: search-wrap | load-wrap | table-wrap | empty-row | 'row-urgent' | modal-header | form-grid
+ * PM: search-wrap | table-wrap
+ * RB: rb-layout | 'panel-open': | isPanelOpen | rb-sidebar | sidebar-title | sidebar-section-title | btn-add-section | sections-area | report-section | section.type | section-header | section-header-left | section-arrow | section-label | section-header-right | section-badge | section-total | 'income-col' | 'expense-col' | section-arrow-btn | btn-remove-section | section-table | id-col | date-col | desc-col | summary-section-body | income-col | expense-col | rb-panel | panel-header | panel-title-text | panel-count | panel-close | panel-search | panel-tabs | ['panel-tab', | panel-items | panel-item | panel-item-info | panel-item-desc | panel-item-meta | panel-item-amount | panel-add-btn-wrap
+ */
+
+@media (max-width: 768px) {
+  /* Discovered container classes - force stack */
+  .search-wrap,
+  .load-wrap,
+  .table-wrap,
+  .empty-row,
+  .'row-urgent',
+  .modal-header,
+  .form-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: wrap !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Discovered card classes - full width */
+  .kpi-bar,
+  .kpi-item,
+  .kpi-lbl,
+  .kpi-val,
+  .kpis.net,
+  .t.paymentStatus,
+  .status-badge,
+  .statusClass(t.paymentStatus),
+  .summary-cards,
+  .sum-card,
+  .sum-label,
+  .sum-amount,
+  .loading-state,
+  .empty-state,
+  .statusClass(p.status) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Report Builder: force ALL discovered layout classes to stack */
+  .rb-layout,
+  .'panel-open':,
+  .isPanelOpen,
+  .rb-sidebar,
+  .sidebar-title,
+  .sidebar-section-title,
+  .btn-add-section,
+  .sections-area,
+  .report-section,
+  .section.type,
+  .section-header,
+  .section-header-left,
+  .section-arrow,
+  .section-label,
+  .section-header-right,
+  .section-badge,
+  .section-total,
+  .'income-col',
+  .'expense-col',
+  .section-arrow-btn,
+  .btn-remove-section,
+  .section-table,
+  .id-col,
+  .date-col,
+  .desc-col,
+  .summary-section-body,
+  .income-col,
+  .expense-col,
+  .rb-panel,
+  .panel-header,
+  .panel-title-text,
+  .panel-count,
+  .panel-close,
+  .panel-search,
+  .panel-tabs,
+  .['panel-tab',,
+  .panel-items,
+  .panel-item,
+  .panel-item-info,
+  .panel-item-desc,
+  .panel-item-meta,
+  .panel-item-amount,
+  .panel-add-btn-wrap {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 100% !important;
+    grid-template-columns: 1fr !important;
+  }
+}
