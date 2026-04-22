@@ -176,23 +176,28 @@
 }
 
 
-/* ═══ SESSION #38 v3: KPI cards vertical stacking ═══
- * Applied to Transactions, Payments, and any similar KPI row.
- * Discovered classes from actual views (not guessed):
- * TX: search-wrap | load-wrap | table-wrap | empty-row | 'row-urgent' | modal-header | form-grid
- * PM: search-wrap | table-wrap
- * RB: rb-layout | 'panel-open': | isPanelOpen | rb-sidebar | sidebar-title | sidebar-section-title | btn-add-section | sections-area | report-section | section.type | section-header | section-header-left | section-arrow | section-label | section-header-right | section-badge | section-total | 'income-col' | 'expense-col' | section-arrow-btn | btn-remove-section | section-table | id-col | date-col | desc-col | summary-section-body | income-col | expense-col | rb-panel | panel-header | panel-title-text | panel-count | panel-close | panel-search | panel-tabs | ['panel-tab', | panel-items | panel-item | panel-item-info | panel-item-desc | panel-item-meta | panel-item-amount | panel-add-btn-wrap
+/* ═══ SESSION #38 v4: STRUCTURAL VERTICAL STACK ═══
+ * Target: force any flex/grid row of cards to stack vertically on mobile.
+ * Does NOT depend on guessed class names. Uses structural selectors.
  */
 
 @media (max-width: 768px) {
-  /* Discovered container classes - force stack */
-  .search-wrap,
-  .load-wrap,
-  .table-wrap,
-  .empty-row,
-  .'row-urgent',
-  .modal-header,
-  .form-grid {
+
+  /* Any direct child div of .content that uses flex OR grid horizontally → force column */
+  .content > div,
+  .content > section,
+  .content > main {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Any flex container inside .content with multiple children → column direction */
+  .content [class*="row"],
+  .content [class*="grid"],
+  .content [class*="flex"],
+  .content [class*="strip"],
+  .content [class*="group"] {
     display: flex !important;
     flex-direction: column !important;
     flex-wrap: wrap !important;
@@ -202,22 +207,12 @@
     max-width: 100% !important;
   }
 
-  /* Discovered card classes - full width */
-  .kpi-bar,
-  .kpi-item,
-  .kpi-lbl,
-  .kpi-val,
-  .kpis.net,
-  .t.paymentStatus,
-  .status-badge,
-  .statusClass(t.paymentStatus),
-  .summary-cards,
-  .sum-card,
-  .sum-label,
-  .sum-amount,
-  .loading-state,
-  .empty-state,
-  .statusClass(p.status) {
+  /* Children of those containers → each goes full width */
+  .content [class*="row"] > *,
+  .content [class*="grid"] > *,
+  .content [class*="flex"] > *,
+  .content [class*="strip"] > *,
+  .content [class*="group"] > * {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
@@ -225,54 +220,62 @@
     box-sizing: border-box !important;
   }
 
-  /* Report Builder: force ALL discovered layout classes to stack */
-  .rb-layout,
-  .'panel-open':,
-  .isPanelOpen,
-  .rb-sidebar,
-  .sidebar-title,
-  .sidebar-section-title,
-  .btn-add-section,
-  .sections-area,
-  .report-section,
-  .section.type,
-  .section-header,
-  .section-header-left,
-  .section-arrow,
-  .section-label,
-  .section-header-right,
-  .section-badge,
-  .section-total,
-  .'income-col',
-  .'expense-col',
-  .section-arrow-btn,
-  .btn-remove-section,
-  .section-table,
-  .id-col,
-  .date-col,
-  .desc-col,
-  .summary-section-body,
-  .income-col,
-  .expense-col,
-  .rb-panel,
-  .panel-header,
-  .panel-title-text,
-  .panel-count,
-  .panel-close,
-  .panel-search,
-  .panel-tabs,
-  .['panel-tab',,
-  .panel-items,
-  .panel-item,
-  .panel-item-info,
-  .panel-item-desc,
-  .panel-item-meta,
-  .panel-item-amount,
-  .panel-add-btn-wrap {
-    display: block !important;
+  /* SPECIAL: KPI/stat/card/tile direct selectors regardless of parent */
+  [class*="kpi"],
+  [class*="stat-"],
+  [class*="stats-"],
+  [class*="tile"],
+  [class*="sum-"],
+  [class*="summary-"],
+  [class*="metric"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* REPORT BUILDER: the two-column layout */
+  /* Target any direct children of report-builder view that are siblings */
+  .report-builder > *,
+  [class*="builder"] > *,
+  [class*="rb-"] {
     width: 100% !important;
     max-width: 100% !important;
     flex: 1 1 100% !important;
+    display: block !important;
+  }
+
+  /* Any 2-column grid inside report-builder → single column */
+  .report-builder [style*="grid-template"],
+  [class*="builder"] [style*="grid-template"] {
     grid-template-columns: 1fr !important;
+  }
+
+  /* Exception: keep tables scrollable, not column-forced */
+  .content table,
+  .content [class*="table"] {
+    display: block !important;
+    overflow-x: auto !important;
+    flex-direction: initial !important;
+    white-space: nowrap;
+  }
+
+  /* Exception: navigation items in sidebar stay in column (already) but inputs/selects next to each other can stay inline */
+  .content .form-row,
+  .content [class*="form-row"] {
+    flex-direction: column !important;
+  }
+
+  /* Exception: toolbars with 2-3 buttons can wrap but keep inline when room */
+  .content [class*="toolbar"],
+  .content [class*="btn-group"] {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+  }
+  .content [class*="toolbar"] > *,
+  .content [class*="btn-group"] > * {
+    width: auto !important;
+    flex: 0 0 auto !important;
   }
 }
