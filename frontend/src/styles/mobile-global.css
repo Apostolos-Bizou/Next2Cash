@@ -1,141 +1,176 @@
 /* Global mobile responsive overrides
  * Targets viewport < 768px only. Desktop/tablet unaffected.
- * Added in Session #38 to fix overflow issues on Android phones.
+ * Session #38 - v2: viewport lock + targeted overflow fixes
+ * 
+ * Root cause (DevTools): MAIN.content (565px) overflowing 412px viewport
+ * Chain: .content -> .dashboard -> .dash-2col -> .chart-card -> TABLE.bktable
  */
 
 @media (max-width: 768px) {
-  /* Universal safety */
-  *, *::before, *::after {
-    box-sizing: border-box;
-    max-width: 100%;
+  /* ═══ LEVEL 1: HARD VIEWPORT LOCK ═══ */
+  /* Nothing escapes viewport width. Period. */
+  html, body, #app {
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    position: relative;
   }
 
-  /* Main content area breathing room */
+  .layout {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
+  .main {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
   .content {
+    max-width: 100vw !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
     padding: 12px !important;
+    box-sizing: border-box !important;
   }
 
-  /* ── Tables: horizontal scroll instead of overflow ── */
-  table {
-    display: block;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    white-space: nowrap;
-    max-width: 100%;
+  /* ═══ LEVEL 2: VIEW CONTAINERS ═══ */
+  .dashboard,
+  .dashboard-page,
+  .admin-page,
+  .new-entry-page,
+  .reports-page,
+  .report-builder {
+    max-width: 100% !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
   }
 
-  /* Wrap around tables for safe scroll */
-  .table-wrap, .tbl-wrap, .transactions-table, .karteles-table {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* ── Grids → single column ── */
+  /* ═══ LEVEL 3: GRIDS → single column ═══ */
+  .dash-4col,
+  .dash-3col,
+  .dash-2col,
+  .dash-2equal,
   .kpi-grid,
   .kpi-row,
   .form-row,
-  .form-grid,
-  .dash-4col,
-  .dash-2col,
-  .dash-2equal,
-  .dash-3col {
+  .form-grid {
     grid-template-columns: 1fr !important;
     gap: 10px !important;
+    max-width: 100% !important;
+    width: 100% !important;
   }
 
-  /* ── Flex rows wrap ── */
-  .filters-row,
-  .toolbar,
-  .action-row,
-  .kpi-strip,
-  .stats-row,
-  .header-row {
-    flex-wrap: wrap !important;
-    gap: 8px !important;
-  }
-
-  /* ── Cards full width ── */
+  /* ═══ LEVEL 4: CARDS ═══ */
+  .chart-card,
   .kpi-card,
   .kpi-item,
   .sum-card,
   .panel-card,
   .card {
+    max-width: 100% !important;
     width: 100% !important;
     min-width: 0 !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden;
+  }
+
+  .card-hdr, .panel-hdr {
+    max-width: 100% !important;
+    flex-wrap: wrap !important;
+    overflow: hidden;
+  }
+
+  /* ═══ LEVEL 5: TABLES GET HORIZONTAL SCROLL (swipe) ═══ */
+  /* The table itself scrolls, not the whole page */
+  .bktable,
+  .tx-table,
+  table {
+    display: block !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100% !important;
+    white-space: nowrap;
+  }
+
+  /* If tables are inside a wrapper, wrapper scrolls */
+  .table-wrap, .tbl-wrap,
+  .transactions-table, .karteles-table {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
     max-width: 100% !important;
   }
 
-  /* ── Numbers that must not break layout ── */
+  /* ═══ LEVEL 6: CHARTS ═══ */
+  canvas,
+  .chart-wrap,
+  .chart-container {
+    max-width: 100% !important;
+    height: auto !important;
+    box-sizing: border-box;
+  }
+
+  /* ═══ LEVEL 7: FLEX containers wrap ═══ */
+  .filters-row,
+  .toolbar,
+  .action-row,
+  .kpi-strip,
+  .stats-row,
+  .header-row,
+  .btn-group {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    max-width: 100% !important;
+  }
+
+  /* ═══ LEVEL 8: Big numbers won't break layout ═══ */
   .kpi-val,
   .sum-value,
   .big-number {
     font-size: 1.2rem !important;
-    word-break: break-all;
+    word-break: break-word;
     overflow-wrap: break-word;
   }
 
-  /* ── Search/filter inputs full width ── */
+  /* ═══ LEVEL 9: Inputs full width ═══ */
   .search-wrap,
   .filter-select,
-  .analysis-select {
-    width: 100% !important;
+  .analysis-select,
+  .form-input,
+  input,
+  select,
+  textarea {
     max-width: 100% !important;
     min-width: 0 !important;
+    box-sizing: border-box !important;
   }
 
-  /* ── Buttons wrap nicely ── */
-  .btn-group {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  /* ── Modals full screen on mobile ── */
+  /* ═══ LEVEL 10: Modals near-full-screen ═══ */
   .modal, .modal-card {
     width: 94vw !important;
     max-width: 94vw !important;
     margin: 10px auto !important;
   }
 
-  /* ── Admin & views with fixed max-widths ── */
-  .admin-page,
-  .new-entry-page,
-  .dashboard-page,
-  .reports-page {
-    padding: 12px !important;
-    max-width: 100% !important;
-  }
-
-  /* ── Descriptions that were nowrap+ellipsis cause layout issues ── */
-  .desc-col {
-    white-space: normal !important;
-    overflow: visible !important;
-    text-overflow: unset !important;
-  }
-
-  /* ── Report Builder specific: stack the two columns ── */
+  /* ═══ LEVEL 11: Report Builder side-by-side → stacked ═══ */
   .builder-layout,
-  .report-builder,
   .rb-columns {
     display: block !important;
   }
-  .rb-sidebar,
-  .rb-main,
-  .builder-sidebar,
-  .builder-main {
+  .rb-sidebar, .rb-main,
+  .builder-sidebar, .builder-main {
     width: 100% !important;
     max-width: 100% !important;
     margin-bottom: 12px;
   }
 
-  /* ── Charts container overflow protection ── */
-  .chart-wrap, canvas {
+  /* ═══ LEVEL 12: Description columns wrap ═══ */
+  .desc-col {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
     max-width: 100% !important;
-    height: auto !important;
-  }
-
-  /* ── Disable horizontal scroll on body ── */
-  body, html, #app {
-    overflow-x: hidden !important;
-    max-width: 100vw !important;
   }
 }
