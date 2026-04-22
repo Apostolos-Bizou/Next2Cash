@@ -1,27 +1,6 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": [
-      "/assets/*",
-      "/sw.js",
-      "/service-worker.js",
-      "/manifest.json",
-      "/manifest.webmanifest",
-      "/*.png",
-      "/*.ico",
-      "/*.svg",
-      "/*.webmanifest"
-    ]
-  },
-  "mimeTypes": {
-    ".js": "application/javascript",
-    ".json": "application/json",
-    ".webmanifest": "application/manifest+json"
-  },
-  "responseOverrides": {
-    "404": {
-      "rewrite": "/index.html",
-      "statusCode": 200
-    }
+    "exclude": ["/assets/*", "/favicon.ico"]
   }
 }

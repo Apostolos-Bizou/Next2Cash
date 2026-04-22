@@ -149,7 +149,7 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
   <div class="layout" :class="{ 'sidebar-collapsed': ui.sidebarCollapsed }">
     <aside class="sidebar">
       <div class="sidebar__brand">
-        <img src="/icon-192.png" class="sidebar__logo-img" alt="Next2Cash" />
+        <div class="sidebar__logo">A</div>
         <div class="sidebar__brand-text" v-if="!ui.sidebarCollapsed">
           <div class="sidebar__brand-title">Next2Cash</div>
           <div class="sidebar__brand-sub">{{ entities.find(e => e.key === selectedEntity)?.label || 'Next2Me' }}</div>
@@ -214,7 +214,7 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 .layout.sidebar-collapsed { grid-template-columns: var(--sidebar-width-collapsed) 1fr; }
 .sidebar { position: relative; background: #162B40; color: var(--text-primary); display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.04); overflow: hidden; height: 100vh; }
 .sidebar__brand { display: flex; align-items: center; gap: 12px; padding: 18px 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-.sidebar__logo-img { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 8px; object-fit: cover; display: block; }
+.sidebar__logo { flex: 0 0 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #4FC3A1, #2FA585); display: grid; place-items: center; font-weight: 700; color: #0f1e2e; font-size: 16px; }
 .sidebar__brand-title { font-weight: 700; font-size: 15px; color: #fff; }
 .sidebar__brand-sub { font-size: 11px; color: #8899aa; margin-top: 2px; }
 .entity-selector { padding: 10px 12px; position: relative; }

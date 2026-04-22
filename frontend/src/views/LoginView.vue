@@ -56,7 +56,7 @@ const login = async () => {
 <template>
   <div class="login-page">
     <div class="login-card">
-      <img src="/icon-192.png" class="login-logo-img" alt="Next2Cash" />
+      <div class="login-logo">N2</div>
       <h1 class="login-title">Next2Cash</h1>
       <p class="login-sub">Enterprise cash flow platform</p>
       <div class="login-form">
@@ -80,7 +80,7 @@ const login = async () => {
 <style scoped>
 .login-page { min-height: 100vh; background: #0f1e2e; display: flex; align-items: center; justify-content: center; }
 .login-card { background: #162B40; border-radius: 16px; padding: 48px 40px; width: 360px; text-align: center; border: 1px solid rgba(255,255,255,0.06); }
-.login-logo-img { width: 72px; height: 72px; border-radius: 14px; object-fit: cover; display: block; margin: 0 auto 16px; }
+.login-logo { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #4FC3A1, #2FA585); display: grid; place-items: center; font-weight: 700; color: #0f1e2e; font-size: 20px; margin: 0 auto 16px; }
 .login-title { color: #fff; font-size: 1.5rem; font-weight: 700; margin: 0 0 4px; }
 .login-sub { color: #8899aa; font-size: 0.85rem; margin: 0 0 32px; }
 .form-group { text-align: left; margin-bottom: 16px; }
