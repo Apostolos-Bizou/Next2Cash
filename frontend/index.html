@@ -9,25 +9,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/eruda@3.0.1/eruda.min.js"></script>
-    <script>
-      // Auto-initialize Eruda with error catching
-      try {
-        eruda.init();
-        // Log any errors that occur
-        window.addEventListener('error', function(e) {
-          console.error('[WINDOW ERROR]', e.message, 'at', e.filename, ':', e.lineno);
-        });
-        window.addEventListener('unhandledrejection', function(e) {
-          console.error('[UNHANDLED REJECTION]', e.reason);
-        });
-        console.log('[ERUDA] Initialized at', new Date().toISOString());
-        console.log('[ERUDA] URL:', window.location.href);
-        console.log('[ERUDA] UA:', navigator.userAgent);
-      } catch (err) {
-        document.body.innerHTML = '<pre style="color:red;padding:20px">ERUDA INIT FAILED: ' + err + '</pre>';
-      }
-    </script>
   </head>
   <body>
     <div id="app"></div>
