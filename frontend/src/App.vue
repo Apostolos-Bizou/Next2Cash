@@ -160,7 +160,7 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
       <div class="sidebar__brand">
         <div class="sidebar__logo">A</div>
         <div class="sidebar__brand-text" v-if="!ui.sidebarCollapsed">
-          <div class="sidebar__brand-title">CashControl</div>
+          <div class="sidebar__brand-title">Next2Cash</div>
           <div class="sidebar__brand-sub">{{ entities.find(e => e.key === selectedEntity)?.label || 'Next2Me' }}</div>
         </div>
       </div>
