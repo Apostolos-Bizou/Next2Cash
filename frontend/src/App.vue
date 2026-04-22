@@ -158,7 +158,14 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
     <div class="mobile-overlay" v-if="mobileMenuOpen" @click="closeMobileMenu"></div>
     <aside class="sidebar">
       <div class="sidebar__brand">
-        <div class="sidebar__logo">A</div>
+        <div class="sidebar__logo"><svg class="sidebar__logo-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+          <rect width="100" height="100" rx="18" fill="#162B40"/>
+          <ellipse cx="50" cy="42" rx="38" ry="14" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.9" transform="rotate(-25 50 42)"/>
+          <path d="M32 72 L45 22 Q50 8 55 22 L68 72 L60 72 L55 52 Q50 30 45 52 L40 72 Z" fill="#FFFFFF"/>
+          <rect x="40" y="54" width="20" height="5" rx="1" fill="#FFFFFF"/>
+          <path d="M22 48 Q36 32 50 24 Q64 16 78 18" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+          <path d="M74 14 L80 17 L74 22" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+        </svg></div>
         <div class="sidebar__brand-text" v-if="!ui.sidebarCollapsed">
           <div class="sidebar__brand-title">Next2Cash</div>
           <div class="sidebar__brand-sub">{{ entities.find(e => e.key === selectedEntity)?.label || 'Next2Me' }}</div>
@@ -230,7 +237,8 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 .layout.sidebar-collapsed { grid-template-columns: var(--sidebar-width-collapsed) 1fr; }
 .sidebar { position: relative; background: #162B40; color: var(--text-primary); display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.04); overflow: hidden; height: 100vh; }
 .sidebar__brand { display: flex; align-items: center; gap: 12px; padding: 18px 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-.sidebar__logo { flex: 0 0 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #4FC3A1, #2FA585); display: grid; place-items: center; font-weight: 700; color: #0f1e2e; font-size: 16px; }
+.sidebar__logo { flex: 0 0 36px; width: 36px; height: 36px; }
+.sidebar__logo-svg { width: 100%; height: 100%; display: block; border-radius: 8px; }
 .sidebar__brand-title { font-weight: 700; font-size: 15px; color: #fff; }
 .sidebar__brand-sub { font-size: 11px; color: #8899aa; margin-top: 2px; }
 .entity-selector { padding: 10px 12px; position: relative; }

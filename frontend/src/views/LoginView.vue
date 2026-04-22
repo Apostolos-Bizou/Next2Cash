@@ -56,7 +56,14 @@ const login = async () => {
 <template>
   <div class="login-page">
     <div class="login-card">
-      <div class="login-logo">N2</div>
+      <div class="login-logo"><svg class="login-logo-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <rect width="100" height="100" rx="18" fill="#162B40"/>
+        <ellipse cx="50" cy="42" rx="38" ry="14" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.9" transform="rotate(-25 50 42)"/>
+        <path d="M32 72 L45 22 Q50 8 55 22 L68 72 L60 72 L55 52 Q50 30 45 52 L40 72 Z" fill="#FFFFFF"/>
+        <rect x="40" y="54" width="20" height="5" rx="1" fill="#FFFFFF"/>
+        <path d="M22 48 Q36 32 50 24 Q64 16 78 18" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+        <path d="M74 14 L80 17 L74 22" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+      </svg></div>
       <h1 class="login-title">Next2Cash</h1>
       <p class="login-sub">Group Cash Control</p>
       <div class="login-form">
@@ -80,7 +87,8 @@ const login = async () => {
 <style scoped>
 .login-page { min-height: 100vh; background: #0f1e2e; display: flex; align-items: center; justify-content: center; }
 .login-card { background: #162B40; border-radius: 16px; padding: 48px 40px; width: 360px; text-align: center; border: 1px solid rgba(255,255,255,0.06); }
-.login-logo { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #4FC3A1, #2FA585); display: grid; place-items: center; font-weight: 700; color: #0f1e2e; font-size: 20px; margin: 0 auto 16px; }
+.login-logo { width: 56px; height: 56px; margin: 0 auto 16px; }
+.login-logo-svg { width: 100%; height: 100%; display: block; border-radius: 12px; }
 .login-title { color: #fff; font-size: 1.5rem; font-weight: 700; margin: 0 0 4px; }
 .login-sub { color: #8899aa; font-size: 0.85rem; margin: 0 0 32px; }
 .form-group { text-align: left; margin-bottom: 16px; }
