@@ -7,6 +7,22 @@ const userQuestion = ref('')
 const isLoading = ref(false)
 const chatHistory = ref([])
 
+// Filters (date range + entity scope)
+const dateRange = ref('ytd')
+const entityScope = ref('all')
+const selectedYear = ref(new Date().getFullYear())
+const customFrom = ref('')
+const customTo = ref('')
+
+// Years 2017 through current year (descending)
+import { computed } from 'vue'
+const availableYears = computed(() => {
+  const current = new Date().getFullYear()
+  const years = []
+  for (let y = current; y >= 2017; y--) years.push(y)
+  return years
+})
+
 const analysisTypes = [
   'Πλήρης Ανάλυση',
   'Executive Summary',
@@ -84,6 +100,16 @@ async function exportReport(historyId, format) {
   }
 }
 
+// Resolve dateRange value for backend (handles year_XXXX + custom)
+function resolveDateRange() {
+  if (dateRange.value === 'year_specific') return 'year_' + selectedYear.value
+  if (dateRange.value === 'custom') {
+    if (customFrom.value && customTo.value) return 'custom_' + customFrom.value + '_' + customTo.value
+    return 'ytd' // fallback if custom incomplete
+  }
+  return dateRange.value
+}
+
 const sendQuestion = async () => {
   if (!userQuestion.value.trim()) return
   const q = userQuestion.value.trim()
@@ -95,8 +121,8 @@ const sendQuestion = async () => {
     const res = await api.post('/api/ai/analyze', {
       question: q,
       analysisType: selectedAnalysis.value,
-      entityScope: 'all',
-      dateRange: 'ytd'
+      entityScope: entityScope.value,
+      dateRange: resolveDateRange()
     })
 
     if (res.data && res.data.success) {
@@ -167,7 +193,35 @@ const runAnalysis = () => {
               <option v-for="a in analysisTypes" :key="a">{{ a }}</option>
             </select>
           </div>
-          <button class="btn-run" @click="runAnalysis">⚡ Ανάλυση</button>
+          <div class="filter-wrap">
+                      <select v-model="entityScope" class="filter-select" title="Εταιρία">
+                        <option value="all">Όλες οι εταιρίες</option>
+                        <option value="next2me">Next2me</option>
+                        <option value="house">House</option>
+                      </select>
+                    </div>
+                    <div class="filter-wrap">
+                      <select v-model="dateRange" class="filter-select" title="Εύρος ημερομηνιών">
+                        <option value="last_30_days">Τελευταίες 30 μέρες</option>
+                        <option value="last_3_months">Τελευταίο τρίμηνο</option>
+                        <option value="last_12_months">Τελευταίο έτος</option>
+                        <option value="ytd">Τρέχον έτος (YTD)</option>
+                        <option value="year_specific">Συγκεκριμένο έτος...</option>
+                        <option value="all_data">Όλα τα δεδομένα</option>
+                        <option value="custom">Custom...</option>
+                      </select>
+                    </div>
+                    <div v-if="dateRange === 'year_specific'" class="filter-wrap">
+                      <select v-model="selectedYear" class="filter-select">
+                        <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
+                      </select>
+                    </div>
+                    <div v-if="dateRange === 'custom'" class="filter-custom">
+                      <input type="date" v-model="customFrom" class="filter-date" />
+                      <span class="filter-dash">→</span>
+                      <input type="date" v-model="customTo" class="filter-date" />
+                    </div>
+                    <button class="btn-run" @click="runAnalysis">⚡ Ανάλυση</button>
         </div>
       </div>
 
@@ -222,6 +276,7 @@ const runAnalysis = () => {
       </div>
 
       <!-- Input -->
+      <div v-if="dateRange === 'all_data'" class="cost-warning">⚠ Πλήρης ανάλυση 4822 εγγραφών — εκτιμώμενο κόστος ~€0.30-0.60/query</div>
       <div class="chat-input-area">
         <input
           v-model="userQuestion"
@@ -314,4 +369,16 @@ const runAnalysis = () => {
 .answer-actions { display: flex; gap: 10px; margin-top: 1em; }
 .btn-export { padding: 10px 18px; background: #1a2332; color: #fff; border: none; border-radius: 6px; font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
 .btn-export:hover { background: #2a3c52; }
+
+/* ─────────────────────────────────────── */
+/* Filter dropdowns (entity + date range)  */
+/* ─────────────────────────────────────── */
+.filter-wrap { position: relative; }
+.filter-select { appearance: none; background: #152538; border: 1px solid #2a4a6a; color: #c8d8e8; padding: 8px 28px 8px 12px; border-radius: 8px; font-size: 0.82rem; cursor: pointer; outline: none; min-width: 130px; }
+.filter-select:focus { border-color: #4FC3A1; }
+.filter-custom { display: flex; align-items: center; gap: 6px; }
+.filter-date { background: #152538; border: 1px solid #2a4a6a; color: #c8d8e8; padding: 7px 10px; border-radius: 8px; font-size: 0.82rem; outline: none; font-family: inherit; }
+.filter-date:focus { border-color: #4FC3A1; }
+.filter-dash { color: #8899aa; font-size: 0.9rem; }
+.cost-warning { background: rgba(255, 193, 7, 0.12); border: 1px solid rgba(255, 193, 7, 0.35); color: #ffd54f; padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; margin-top: 8px; }
 </style>
