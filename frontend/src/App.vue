@@ -91,6 +91,8 @@ function selectEntity(e) {
   window.dispatchEvent(new Event('entity-changed'))
 }
 const showEntityMenu = ref(false)
+const mobileMenuOpen = ref(false)
+const closeMobileMenu = () => { mobileMenuOpen.value = false }
 
 // Load entities from API (dynamic)
 onMounted(async () => {
@@ -152,7 +154,8 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 </script>
 
 <template>
-  <div class="layout" :class="{ 'sidebar-collapsed': ui.sidebarCollapsed }">
+  <div class="layout" :class="{ 'sidebar-collapsed': ui.sidebarCollapsed, 'mobile-menu-open': mobileMenuOpen }">
+    <div class="mobile-overlay" v-if="mobileMenuOpen" @click="closeMobileMenu"></div>
     <aside class="sidebar">
       <div class="sidebar__brand">
         <div class="sidebar__logo">A</div>
@@ -175,7 +178,7 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
       <nav class="sidebar__nav">
         <template v-for="section in filteredNavSections" :key="section.label">
           <div class="nav-section-label" v-if="!ui.sidebarCollapsed">{{ section.label }}</div>
-          <RouterLink v-for="item in section.items" :key="item.to" :to="item.to" class="nav-item" active-class="nav-item--active">
+          <RouterLink v-for="item in section.items" :key="item.to" :to="item.to" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
             <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path :d="item.icon" />
             </svg>
@@ -202,6 +205,13 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 
     <div class="main">
       <header class="topbar">
+        <button class="hamburger" @click="mobileMenuOpen = !mobileMenuOpen" aria-label="Menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
         <h1 class="topbar__title">{{ currentTitle }}</h1>
         <div class="topbar__user">
           <span class="topbar__user-name">{{ userDisplayName }}</span>
@@ -249,4 +259,21 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 .topbar__user-name { font-size: 13px; color: #8899aa; }
 .topbar__avatar { width: 32px; height: 32px; border-radius: 50%; background: #1e3448; color: #e0e6ed; display: grid; place-items: center; font-size: 13px; font-weight: 600; }
 .content { flex: 1; overflow: auto; background: #0d1e2e; }
+
+.hamburger { display: none; background: none; border: none; color: #e0e6ed; padding: 8px; cursor: pointer; margin-right: 12px; }
+.hamburger svg { width: 24px; height: 24px; }
+.mobile-overlay { display: none; }
+
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr; }
+  .layout.sidebar-collapsed { grid-template-columns: 1fr; }
+  .sidebar { position: fixed; top: 0; left: 0; width: 280px; height: 100vh; z-index: 1000; transform: translateX(-100%); transition: transform 220ms ease; }
+  .layout.mobile-menu-open .sidebar { transform: translateX(0); }
+  .sidebar__collapse { display: none; }
+  .hamburger { display: flex; align-items: center; justify-content: center; }
+  .mobile-overlay { display: block; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; }
+  .topbar { padding: 0 16px; }
+  .topbar__user-name { display: none; }
+}
+
 </style>
