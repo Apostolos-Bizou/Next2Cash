@@ -1,5 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#162B40"/>
-  <text x="32" y="42" font-family="Arial, sans-serif" font-size="32" font-weight="bold"
-        text-anchor="middle" fill="#4FC3A1">N2</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="18" fill="#162B40"/>
+  <ellipse cx="50" cy="42" rx="38" ry="14" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.9" transform="rotate(-25 50 42)"/>
+  <path d="M32 72 L45 22 Q50 8 55 22 L68 72 L60 72 L55 52 Q50 30 45 52 L40 72 Z" fill="#FFFFFF"/>
+  <rect x="40" y="54" width="20" height="5" rx="1" fill="#FFFFFF"/>
+  <path d="M22 48 Q36 32 50 24 Q64 16 78 18" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.9"/>
+  <path d="M74 14 L80 17 L74 22" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
 </svg>
