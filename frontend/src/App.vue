@@ -94,6 +94,9 @@ const showEntityMenu = ref(false)
 
 // Load entities from API (dynamic)
 onMounted(async () => {
+  // Only fetch entities if user is logged in (avoids 403 loop on login page)
+  if (!userStore.profile) return
+
   try {
     const res = await api.get('/api/config/entities')
     if (res.data.success && res.data.data && res.data.data.length > 0) {
@@ -102,11 +105,14 @@ onMounted(async () => {
   } catch (e) {
     // Silent fallback to hardcoded defaults
   }
+
+  // M.6: Auto-select entity for restricted users (ACCOUNTANT/VIEWER)
+  // Must run AFTER entities are loaded, and ONCE (not reactive)
+  if (filteredEntities.value.length === 1 && selectedEntity.value !== filteredEntities.value[0].key) {
+    selectEntity(filteredEntities.value[0])
+  }
 })
-// M.6: Auto-select entity for restricted users (ACCOUNTANT/VIEWER)
-if (filteredEntities.value.length === 1 && selectedEntity.value !== filteredEntities.value[0].key) {
-  selectEntity(filteredEntities.value[0])
-}
+// M.6 auto-select moved inside onMounted (was causing infinite loop)
 
 const navSections = [
   {
