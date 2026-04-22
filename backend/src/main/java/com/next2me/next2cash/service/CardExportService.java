@@ -240,7 +240,7 @@ public class CardExportService {
         // Row 0: Brand
         Row r0 = sheet.createRow(0);
         Cell c00 = r0.createCell(0);
-        c00.setCellValue("CashControl — Next2Me");
+        c00.setCellValue("Next2Cash — Next2me Group");
         c00.setCellStyle(brandStyle);
         sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 4));
 
@@ -505,7 +505,7 @@ public class CardExportService {
 
         // Left cell
         Paragraph brand = new Paragraph();
-        brand.add(new Chunk("CashControl", brandNameFont));
+        brand.add(new Chunk("Next2Cash", brandNameFont));
         brand.add(Chunk.NEWLINE);
         brand.add(new Chunk("NEXT2ME", brandSubFont));
         PdfPCell leftCell = new PdfPCell(brand);

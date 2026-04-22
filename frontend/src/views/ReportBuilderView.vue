@@ -346,7 +346,7 @@ const exportPDF = () => {
   </style></head><body>
   <div class="header">
     <div class="logo-area">
-      <div class="logo-text"><div class="logo-name">CashControl</div><div class="logo-sub">N e x t 2 M e</div></div>
+      <div class="logo-text"><div class="logo-name">Next2Cash</div><div class="logo-sub">N E X T 2 M E  G R O U P</div></div>
     </div>
     <div class="header-right"><div class="doc-title">ΚΑΡΤΕΛΑ ΠΡΟΜΗΘΕΥΤΗ</div><div class="doc-date">Εκτυπώθηκε: ${today}</div></div>
   </div>
@@ -359,7 +359,7 @@ const exportPDF = () => {
     <div class="sum-item" style="background:#f0faf4"><div class="sum-label" style="color:#27ae60">Ταμειακά Διαθέσιμα</div><div class="sum-value" style="color:${kpiCash>=0?'#27ae60':'#e74c3c'}">${kpiCash>=0?'+':'−'} ${fmtPdf(kpiCash)} €</div></div>
   </div>
   <table><thead><tr><th>ID</th><th>Ημ/νία</th><th>Περιγραφή</th><th>Κατηγορία</th><th>Μέθοδος</th><th style="text-align:right">Ποσό</th><th style="text-align:right">Πληρωμένο</th><th style="text-align:right">Υπόλοιπο</th><th>Ημ/νία Πληρωμής</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
-  <div class="footer"><span>CashControl · Next2Me Financial System</span><span>Σύνολο: ${allTxns.length} κινήσεις · ${today}</span></div>
+  <div class="footer"><span>Next2Cash · Next2me Group</span><span>Σύνολο: ${allTxns.length} κινήσεις · ${today}</span></div>
   </body></html>`
 
   const w = window.open('', '_blank', 'width=1100,height=800')
