@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'   // Session #40
 import api from '@/api'
 import MarkPaidModal from '@/components/MarkPaidModal.vue'
 import AttachmentsPopover from '@/components/AttachmentsPopover.vue'
@@ -331,7 +332,19 @@ const pageButtons = computed(() => {
   return btns
 })
 
-onMounted(loadTransactions)
+// Session #40 — parse URL query params for deep-linking from Dashboard reconciliation
+const route = useRoute()
+onMounted(() => {
+  const q = route.query || {}
+  // entityId: UUID -> reverse map to 'next2me' / 'house' / 'polaris' key
+  if (q.entityId) {
+    const key = Object.keys(ENTITIES).find(k => ENTITIES[k] === q.entityId)
+    if (key) selectedEntity.value = key
+  }
+  if (q.from) dateFrom.value = String(q.from)
+  if (q.to)   dateTo.value   = String(q.to)
+  loadTransactions()
+})
 </script>
 
 <template>
