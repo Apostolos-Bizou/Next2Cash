@@ -7,6 +7,7 @@ import {
   LineElement, PointElement, Filler
 } from 'chart.js'
 import api from '@/api'
+import { useRouter } from 'vue-router'   // Session #40
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale,
   ArcElement, LineElement, PointElement, Filler)
@@ -19,6 +20,7 @@ const ENTITIES = {
 }
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const entityId = computed(() => ENTITIES[selectedEntity.value])
+const router = useRouter()   // Session #40
 
 // ── Period ───────────────────────────────────────────────────────────
 const periodMode   = ref('year')
@@ -42,6 +44,7 @@ const obligations = ref([])
 const balanceTrend = ref([])
 const yearlyData   = ref([])
 const catBreakdown = ref([])
+const reconciliation = ref({})   // Session #40
 
 // ── Date range ───────────────────────────────────────────────────────
 function getDateRange() {
@@ -77,12 +80,13 @@ async function loadDashboard() {
     const { from, to } = getDateRange()
     const eid = entityId.value
 
-    const [dashRes, bankRes, trendRes, yearlyRes, catRes] = await Promise.all([
+    const [dashRes, bankRes, trendRes, yearlyRes, catRes, reconRes] = await Promise.all([
       api.get('/api/dashboard', { params: { entityId: eid, from, to } }),
       api.get('/api/bank-accounts', { params: { entityId: eid } }),
       api.get('/api/dashboard/balance-trend', { params: { entityId: eid, from: '2017-01-01', to } }),
       api.get('/api/dashboard/yearly', { params: { entityId: eid } }),
       api.get('/api/dashboard/category-breakdown', { params: { entityId: eid, from, to } }),
+      api.get('/api/dashboard/reconciliation', { params: { entityId: eid, from, to } }),   // Session #40
     ])
 
     if (dashRes.data.success) {
@@ -102,6 +106,9 @@ async function loadDashboard() {
     }
     if (catRes.data.success) {
       catBreakdown.value = catRes.data.data || []
+    }
+    if (reconRes.data.success) {
+      reconciliation.value = reconRes.data.data || {}
     }
 
     obligations.value = recent.value.filter(t =>
@@ -138,6 +145,12 @@ function payStatusClass(s) {
 function payStatusLabel(s) {
   return { paid:'Πληρωμένη', received:'Εισπράχθηκε', unpaid:'Απλήρωτη', urgent:'Εκκρεμής', partial:'Μερική' }[s] || s
 }
+function goToTransactions() {
+  // Session #40 — navigate to Transactions view filtered by current entity+period
+  const { from, to } = getDateRange()
+  router.push({ path: '/transactions', query: { entityId: entityId.value, from, to } })
+}
+
 function bankIcon(type) {
   return { checking:'fa-building-columns', savings:'fa-piggy-bank', revolut:'fa-mobile-screen', cash:'fa-money-bill-wave' }[type] || 'fa-wallet'
 }
@@ -427,30 +440,43 @@ onMounted(loadDashboard)
           </ul>
         </div>
 
-        <!-- Ισοσκελισμός -->
+        <!-- Ισοσκελισμός (Session #40 — bank vs paid-only book balance) -->
         <div class="panel-card">
           <div class="panel-hdr">
             <span class="ptitle acc"><i class="fas fa-balance-scale"></i> Ισοσκελισμός</span>
-            <span class="pbadge acc">{{ fmt(bankTotal) }}</span>
+            <span class="pbadge" :class="reconciliation.isMatch ? 'succ' : 'warn'">
+              <i class="fas" :class="reconciliation.isMatch ? 'fa-check' : 'fa-exclamation-triangle'"></i>
+              {{ reconciliation.isMatch ? 'Ταιριάζει' : fmt(reconciliation.diff) }}
+            </span>
           </div>
           <div class="recon-grid">
             <div class="recon-row">
               <span class="rc-lbl"><i class="fas fa-university"></i> Σύνολο Τραπεζών</span>
-              <span class="rc-val" style="font-weight:700">{{ fmt(bankTotal) }}</span>
+              <span class="rc-val" style="font-weight:700">{{ fmt(reconciliation.totalBanks) }}</span>
             </div>
             <div class="recon-div"></div>
             <div class="recon-row">
-              <span class="rc-lbl sm"><i class="fas fa-arrow-down"></i> Εισπράξεις περιόδου</span>
-              <span class="rc-val" style="color:var(--success);font-size:.85rem">{{ fmt(kpis.totalIncome) }}</span>
+              <span class="rc-lbl sm"><i class="fas fa-arrow-down"></i> Εισπραγμένα περιόδου</span>
+              <span class="rc-val" style="color:var(--success);font-size:.85rem">{{ fmt(reconciliation.paidIncome) }}</span>
             </div>
             <div class="recon-row">
-              <span class="rc-lbl sm"><i class="fas fa-arrow-up"></i> Πληρωμές περιόδου</span>
-              <span class="rc-val" style="color:var(--danger);font-size:.85rem">{{ fmt(kpis.totalExpense) }}</span>
+              <span class="rc-lbl sm"><i class="fas fa-arrow-up"></i> Πληρωμένα περιόδου</span>
+              <span class="rc-val" style="color:var(--danger);font-size:.85rem">{{ fmt(reconciliation.paidExpense) }}</span>
+            </div>
+            <div class="recon-row">
+              <span class="rc-lbl"><i class="fas fa-book"></i> Βιβλίο (πληρωμένα)</span>
+              <span class="rc-val" style="font-weight:700">{{ fmt(reconciliation.bookBalance) }}</span>
             </div>
             <div class="recon-div"></div>
             <div class="recon-row">
-              <span class="rc-lbl"><i class="fas fa-balance-scale"></i> Καθαρό περιόδου</span>
-              <span class="rc-val" :style="{color: Number(kpis.netBalance)>=0?'var(--success)':'var(--danger)'}">{{ fmt(kpis.netBalance) }}</span>
+              <span class="rc-lbl" style="font-weight:700"><i class="fas fa-exchange-alt"></i> Διαφορά</span>
+              <span class="rc-val" :style="{color: reconciliation.isMatch ? 'var(--success)' : 'var(--danger)', fontWeight: 800, fontSize: '1.05rem'}">{{ fmt(reconciliation.diff) }}</span>
+            </div>
+            <div v-if="!reconciliation.isMatch" class="recon-action" style="margin-top:8px;text-align:right">
+              <button class="btn btn-sm" style="background:var(--danger);color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:.85rem"
+                      @click="goToTransactions()">
+                <i class="fas fa-search"></i> Δες συναλλαγές →
+              </button>
             </div>
           </div>
         </div>
