@@ -713,8 +713,19 @@ async function updateBankBalance(bank) {
       entityId: adminEntityId.value
     })
     if (res.data.success) {
-      bank.currentBalance = newBal
-      bank._editBalance = newBal
+      // Sync full bank state from backend response (not just balance).
+      // Backend auto-stamps balanceDate with today when omitted, so we must
+      // refresh the displayed date here instead of keeping the stale value.
+      const saved = res.data.data
+      if (saved) {
+        bank.currentBalance = saved.currentBalance
+        bank.balanceDate = saved.balanceDate
+        bank._editBalance = saved.currentBalance
+      } else {
+        // Fallback if response shape differs
+        bank.currentBalance = newBal
+        bank._editBalance = newBal
+      }
     }
   } catch (e) {
     alert('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1: ' + (e.response?.data?.error || e.message))
