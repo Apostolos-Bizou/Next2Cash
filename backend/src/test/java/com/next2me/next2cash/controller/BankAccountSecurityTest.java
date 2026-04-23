@@ -220,4 +220,28 @@ class BankAccountSecurityTest extends BaseIntegrationTest {
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.success").value(false));
     }
+
+    @Test
+    @DisplayName("PUT: omitting balanceDate auto-stamps with today's date")
+    void put_omittingBalanceDate_autoStampsToday() throws Exception {
+        User admin = tdb.createAdmin("apostolos");
+        CompanyEntity house = tdb.createEntity("HOUSE", "House");
+        // Create bank with old balanceDate (e.g., 10 days ago)
+        BankAccount bank = createBank(house.getId(), "Piraeus", new BigDecimal("100.00"));
+        bank.setBalanceDate(LocalDate.now().minusDays(10));
+        bankAccountRepository.save(bank);
+
+        // Body without balanceDate
+        String body = "{\"currentBalance\":251.75}";
+
+        String today = LocalDate.now().toString();
+
+        mockMvc.perform(put("/api/bank-accounts/" + bank.getId())
+                .header("Authorization", tdb.bearerToken(admin))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.currentBalance").value(251.75))
+            .andExpect(jsonPath("$.data.balanceDate").value(today));
+    }
 }

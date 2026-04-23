@@ -11,6 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -112,8 +113,12 @@ public class BankAccountController {
 
             // Apply updates: only the fields the UI is allowed to change.
             b.setCurrentBalance(updates.getCurrentBalance());
+            // If no balanceDate provided, auto-stamp with today (balance was updated now).
+            // Explicit balanceDate is still respected (for backfill/correction scenarios).
             if (updates.getBalanceDate() != null) {
                 b.setBalanceDate(updates.getBalanceDate());
+            } else {
+                b.setBalanceDate(LocalDate.now());
             }
 
             BankAccount saved = bankAccountRepository.save(b);
