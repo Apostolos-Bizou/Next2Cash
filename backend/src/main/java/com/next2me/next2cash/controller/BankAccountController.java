@@ -3,6 +3,7 @@ package com.next2me.next2cash.controller;
 import com.next2me.next2cash.model.BankAccount;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.BankAccountRepository;
+import com.next2me.next2cash.service.AuditLogService;
 import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,11 @@ import java.util.*;
  *                (handled inside UserAccessService).
  *   - VIEWER   : read-only, strict entity filter (empty set if no assignments).
  *   - ACCOUNTANT: 403 (blocked at class level; ZIP export is their only endpoint).
+ *
+ * PUT endpoint (Session #39, April 2026):
+ *   - ADMIN + USER only (VIEWER excluded at method level).
+ *   - Updates currentBalance + balanceDate for manual bank reconciliation.
+ *   - Audit: BANK_BALANCE_UPDATE, logged per update.
  */
 @RestController
 @RequestMapping("/api/bank-accounts")
@@ -32,6 +38,7 @@ public class BankAccountController {
 
     private final BankAccountRepository bankAccountRepository;
     private final UserAccessService userAccessService;
+    private final AuditLogService auditLogService;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> getBankAccounts(
@@ -78,5 +85,51 @@ public class BankAccountController {
         response.put("summary", summary);
 
         return ResponseEntity.ok(response);
+    }
+
+    // PUT /api/bank-accounts/{id}
+    // Manual bank balance update (reconciliation). ADMIN + USER only.
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    public ResponseEntity<?> updateBankAccount(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable UUID id,
+            @RequestBody BankAccount updates) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+
+        return bankAccountRepository.findById(id).map(b -> {
+            // SECURITY GUARD: the existing bank account's entity must be accessible
+            userAccessService.assertCanAccessEntity(user, b.getEntityId());
+
+            // Business rule: updating a bank account without a balance is meaningless.
+            if (updates.getCurrentBalance() == null) {
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("success", false);
+                err.put("error", "currentBalance is required");
+                return ResponseEntity.badRequest().body((Object) err);
+            }
+
+            // Apply updates: only the fields the UI is allowed to change.
+            b.setCurrentBalance(updates.getCurrentBalance());
+            if (updates.getBalanceDate() != null) {
+                b.setBalanceDate(updates.getBalanceDate());
+            }
+
+            BankAccount saved = bankAccountRepository.save(b);
+
+            // Audit (same pattern as TransactionController: details=null).
+            auditLogService.log(
+                saved.getEntityId(),
+                user.getId(),
+                user.getUsername(),
+                "BANK_BALANCE_UPDATE",
+                "bank_accounts",
+                saved.getId().toString(),
+                null
+            );
+
+            return ResponseEntity.ok(Map.<String, Object>of("success", true, "data", saved));
+        }).orElse(ResponseEntity.notFound().build());
     }
 }
