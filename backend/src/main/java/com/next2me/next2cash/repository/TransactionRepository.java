@@ -45,6 +45,23 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
                                            @Param("from") LocalDate from,
                                            @Param("to") LocalDate to);
 
+    // Session #40 — Reconciliation (paid-only book balance)
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
+           "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND t.type = 'income' AND t.paymentStatus IN ('paid', 'received') " +
+           "AND t.docDate BETWEEN :from AND :to")
+    BigDecimal sumPaidIncomeByEntityAndPeriod(@Param("entityId") UUID entityId,
+                                              @Param("from") LocalDate from,
+                                              @Param("to") LocalDate to);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
+           "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND t.type = 'expense' AND t.paymentStatus = 'paid' " +
+           "AND t.docDate BETWEEN :from AND :to")
+    BigDecimal sumPaidExpenseByEntityAndPeriod(@Param("entityId") UUID entityId,
+                                               @Param("from") LocalDate from,
+                                               @Param("to") LocalDate to);
+
     @Query("SELECT COALESCE(SUM(t.amountRemaining), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.paymentStatus = 'urgent'")
