@@ -10,6 +10,9 @@ const router = useRouter()
 const ui = useUiStore()
 const userStore = useUserStore()
 
+// Hide sidebar + topbar on public routes (e.g. /login)
+const isAuthLayout = computed(() => route.meta && route.meta.public === true)
+
 // M.6: Parse allowed sections from user profile
 const userAllowedSections = computed(() => {
   const user = userStore.profile
@@ -154,9 +157,9 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 </script>
 
 <template>
-  <div class="layout" :class="{ 'sidebar-collapsed': ui.sidebarCollapsed, 'mobile-menu-open': mobileMenuOpen }">
+  <div class="layout" :class="{ 'sidebar-collapsed': ui.sidebarCollapsed, 'mobile-menu-open': mobileMenuOpen, 'layout--auth': isAuthLayout }">
     <div class="mobile-overlay" v-if="mobileMenuOpen" @click="closeMobileMenu"></div>
-    <aside class="sidebar">
+    <aside class="sidebar" v-if="!isAuthLayout">
       <div class="sidebar__brand">
         <div class="sidebar__logo"><svg class="sidebar__logo-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
           <rect width="100" height="100" rx="18" fill="#162B40"/>
@@ -211,7 +214,7 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
     </aside>
 
     <div class="main">
-      <header class="topbar">
+      <header class="topbar" v-if="!isAuthLayout">
         <button class="hamburger" @click="mobileMenuOpen = !mobileMenuOpen" aria-label="Menu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="3" y1="6" x2="21" y2="6"/>
@@ -234,6 +237,8 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 
 <style scoped>
 .layout { display: grid; grid-template-columns: var(--sidebar-width) 1fr; height: 100vh; overflow: hidden; transition: grid-template-columns 180ms ease; }
+.layout.layout--auth { grid-template-columns: 1fr; }
+.layout.layout--auth .main { height: 100vh; }
 .layout.sidebar-collapsed { grid-template-columns: var(--sidebar-width-collapsed) 1fr; }
 .sidebar { position: relative; background: #162B40; color: var(--text-primary); display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.04); overflow: hidden; height: 100vh; }
 .sidebar__brand { display: flex; align-items: center; gap: 12px; padding: 18px 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
