@@ -436,9 +436,9 @@ onUnmounted(() => {
           <thead>
             <tr>
               <th>ID</th><th>ΗΜ/ΝΙΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th>
-              <th>ΚΑΤΗΓΟΡΙΑ</th><th>ΜΕΘΟΔΟΣ</th>
-              <th class="num">ΠΟΣΟ</th><th class="num">ΠΛΗΡΩΜΕΝΟ</th>
-              <th class="num">ΥΠΟΛΟΙΠΟ</th><th>STATUS</th>
+              <th class="hide-sm">ΚΑΤΗΓΟΡΙΑ</th><th class="hide-sm">ΜΕΘΟΔΟΣ</th>
+              <th class="num">ΠΟΣΟ</th><th class="num hide-sm">ΠΛΗΡΩΜΕΝΟ</th>
+              <th class="num">ΥΠΟΛΟΙΠΟ</th><th class="hide-sm">STATUS</th>
               <th>ΕΝΕΡΓΕΙΕΣ</th>
             </tr>
           </thead>
@@ -447,12 +447,12 @@ onUnmounted(() => {
               <td class="id-col">#{{ o.entityNumber }}</td>
               <td>{{ fmtDate(o.docDate) }}</td>
               <td class="desc-col">{{ o.description }}</td>
-              <td><span class="cat-badge">{{ o.category }}</span></td>
-              <td>{{ o.paymentMethod }}</td>
+              <td class="hide-sm"><span class="cat-badge">{{ o.category }}</span></td>
+              <td class="hide-sm">{{ o.paymentMethod }}</td>
               <td class="num red">{{ fmt(o.amount) }}</td>
-              <td class="num">{{ fmt(o.paid) }}</td>
+              <td class="num hide-sm">{{ fmt(o.paid) }}</td>
               <td class="num red">{{ fmt(o.remaining) }}</td>
-              <td><span class="badge" :class="statusClass(o.status)">{{ statusLabel(o.status) }}</span></td>
+              <td class="hide-sm"><span class="badge" :class="statusClass(o.status)">{{ statusLabel(o.status) }}</span></td>
               <td class="actions">
                 <button
                   v-if="canModify && (o.status === 'unpaid' || o.status === 'urgent')"
@@ -649,23 +649,26 @@ onUnmounted(() => {
 }
 .btn-attach-ob:hover { border-color: #4A9EFF; color: #4A9EFF; }
 
-/* ───── Mobile responsive: keep table rows, hide less important cols ───── */
+/* ───── Mobile responsive ───── */
 @media (max-width: 768px) {
   .obligations-page { padding: 12px; }
   .kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
   .kpi-card { padding: 10px 12px; }
   .kpi-amount { font-size: 0.85rem; }
   .kpi-label { font-size: 0.6rem; }
-  .data-table { min-width: 700px; }
-  .desc-col { max-width: 160px; }
+  .hide-sm { display: none !important; }
+  .data-table { font-size: 0.78rem; }
+  .data-table th, .data-table td { padding: 7px 8px; }
+  .desc-col { max-width: 140px; }
   .filters-bar { gap: 6px; }
-  .search-wrap { min-width: 160px; }
+  .search-wrap { min-width: 140px; }
+  .btn-mark-paid { font-size: 0.72rem; padding: 4px 8px; }
 }
 
 @media (max-width: 480px) {
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-  .data-table { min-width: 600px; font-size: 0.78rem; }
-  .data-table th, .data-table td { padding: 7px 8px; }
-  .desc-col { max-width: 120px; }
+  .data-table { font-size: 0.75rem; }
+  .data-table th, .data-table td { padding: 6px 6px; }
+  .desc-col { max-width: 100px; }
 }
 </style>
