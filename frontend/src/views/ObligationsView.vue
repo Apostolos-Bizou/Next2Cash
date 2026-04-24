@@ -117,6 +117,47 @@ function openMarkPaid(o) {
   payConfirm.value = { show: true, item: o, saving: false }
 }
 
+// Session 43B ? toggle urgent flag (unpaid <-> urgent)
+async function toggleUrgent(o) {
+  if (!canModify.value) return
+  if (o.status !== 'unpaid' && o.status !== 'urgent') {
+    showToast('error', 'Μόνο απλήρωτες μπορούν να σημανθούν ως εκκρεμείς')
+    return
+  }
+  const newStatus = o.status === 'urgent' ? 'unpaid' : 'urgent'
+  const prevStatus = o.status
+  o.status = newStatus
+  const raw = o._raw
+  if (raw) raw.paymentStatus = newStatus
+  try {
+    const payload = {
+      docDate: raw.docDate,
+      description: raw.description,
+      amount: raw.amount,
+      type: raw.type,
+      category: raw.category,
+      account: raw.account,
+      paymentMethod: raw.paymentMethod,
+      paymentStatus: newStatus,
+      paymentDate: raw.paymentDate || null,
+      amountPaid: raw.amountPaid || 0
+    }
+    const res = await api.put('/api/transactions/' + o.id, payload)
+    if (!res.data || res.data.success === false) {
+      o.status = prevStatus
+      if (raw) raw.paymentStatus = prevStatus
+      showToast('error', (res.data && res.data.error) || 'Αποτυχία αλλαγής')
+      return
+    }
+    showToast('success', newStatus === 'urgent' ? 'Σημάνθηκε ως Εκκρεμής' : 'Επαναφορά σε Απλήρωτη')
+  } catch (e) {
+    o.status = prevStatus
+    if (raw) raw.paymentStatus = prevStatus
+    console.error('toggleUrgent error:', e)
+    showToast('error', e.response?.data?.error || 'Σφάλμα σύνδεσης')
+  }
+}
+
 function closeMarkPaid() {
   if (payConfirm.value.saving) return
   payConfirm.value.show = false
@@ -414,7 +455,7 @@ onUnmounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="o in filteredObligations" :key="o.id">
+            <tr v-for="o in filteredObligations" :key="o.id" :class="o.status === 'urgent' ? 'row-urgent' : ''">
               <td class="id-col">#{{ o.entityNumber }}</td>
               <td>{{ fmtDate(o.docDate) }}</td>
               <td class="desc-col">{{ o.description }}</td>
@@ -425,6 +466,14 @@ onUnmounted(() => {
               <td class="num red">{{ fmt(o.remaining) }}</td>
               <td><span class="badge" :class="statusClass(o.status)">{{ statusLabel(o.status) }}</span></td>
               <td class="actions">
+                <button
+                  v-if="canModify && (o.status === 'unpaid' || o.status === 'urgent')"
+                  class="btn-bolt"
+                  :class="{ 'is-urgent': o.status === 'urgent' }"
+                  @click="toggleUrgent(o)"
+                  :title="o.status === 'urgent' ? 'Αναίρεση Εκκρεμούς' : 'Σήμανση ως Εκκρεμής'">
+                  ⚡
+                </button>
                 <button
                   v-if="canModify && o.status !== 'paid'"
                   class="btn-mark-paid"
@@ -582,6 +631,12 @@ onUnmounted(() => {
 .pl-20 { padding-left: 24px !important; color: #8899aa; }
 .total-row { background: #1a2f45; }
 .actions { white-space: nowrap; }
+.row-urgent { border-left: 3px solid #ff6400 !important; background: rgba(255,100,0,0.04); }
+.row-urgent:hover { background: rgba(255,100,0,0.08) !important; }
+.btn-bolt { background: rgba(255,100,0,0.1); border: 1px solid rgba(255,100,0,0.35); color: #ff6400; padding: 5px 10px; border-radius: 5px; font-size: 0.95rem; cursor: pointer; margin-right: 4px; transition: all 0.15s; line-height: 1; }
+.btn-bolt:hover { background: rgba(255,100,0,0.25); }
+.btn-bolt.is-urgent { background: rgba(255,100,0,0.3); border-color: #ff6400; animation: urgentPulse 2s ease-in-out infinite; }
+@keyframes urgentPulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.7 } }
 .btn-mark-paid { background: #4FC3A1; border: none; color: #0d1f2d; padding: 5px 12px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn-mark-paid:hover { background: #5fd4b3; }
 .paid-indicator { color: #4FC3A1; font-size: 0.78rem; font-weight: 600; }
