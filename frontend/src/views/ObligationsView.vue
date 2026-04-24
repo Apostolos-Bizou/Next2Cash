@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '@/api'
+import MarkPaidModal from '@/components/MarkPaidModal.vue'
 
 const ENTITIES = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
@@ -67,8 +68,8 @@ function showToast(type, message) {
   toastTimer = setTimeout(() => { toast.value.show = false }, 3500)
 }
 
-// ───── Mark Paid confirm state ─────
-const payConfirm = ref({ show: false, item: null, saving: false })
+// ───── Mark Paid state ─────
+const markPaidState = ref({ visible: false, transaction: null })
 
 async function loadObligations() {
   loading.value = true
@@ -114,7 +115,23 @@ async function loadObligations() {
 function openMarkPaid(o) {
   if (!canModify.value) return
   if (o.status === 'paid') { showToast('error', 'Η υποχρέωση είναι ήδη πληρωμένη'); return }
-  payConfirm.value = { show: true, item: o, saving: false }
+  // Build flat transaction shape expected by MarkPaidModal,
+  // merging _raw (server fields) with the enriched wrapper fields.
+  const raw = o._raw || {}
+  const txn = {
+    id:              o.id,
+    entityId:        ENTITIES[entityKey.value],
+    entityNumber:    o.entityNumber,
+    amount:          Number(raw.amount ?? o.amount) || 0,
+    amountPaid:      Number(raw.amountPaid ?? 0) || 0,
+    amountRemaining: Number(raw.amountRemaining ?? ((raw.amount ?? o.amount) - (raw.amountPaid ?? 0))) || 0,
+    type:            raw.type || 'expense',
+    description:     raw.description || o.description || '',
+    counterparty:    raw.counterparty || '',
+    paymentMethod:   raw.paymentMethod || o.paymentMethod || 'Τράπεζα',
+    category:        raw.category || ''
+  }
+  markPaidState.value = { visible: true, transaction: txn }
 }
 
 // Session 43B ? toggle urgent flag (unpaid <-> urgent)
@@ -159,42 +176,13 @@ async function toggleUrgent(o) {
 }
 
 function closeMarkPaid() {
-  if (payConfirm.value.saving) return
-  payConfirm.value.show = false
+  markPaidState.value = { visible: false, transaction: null }
 }
 
-async function confirmMarkPaid() {
-  const item = payConfirm.value.item
-  if (!item) return
-  payConfirm.value.saving = true
-  try {
-    const today = new Date().toISOString().slice(0, 10)
-    const payload = {
-      docDate: item._raw.docDate,
-      description: item._raw.description,
-      amount: item._raw.amount,
-      type: item._raw.type,
-      category: item._raw.category,
-      account: item._raw.account,
-      paymentMethod: item._raw.paymentMethod,
-      paymentStatus: 'paid',
-      paymentDate: today,
-      amountPaid: item._raw.amount
-    }
-    const res = await api.put('/api/transactions/' + item.id, payload)
-    if (res.data && res.data.success !== false) {
-      showToast('success', 'Η υποχρέωση εξοφλήθηκε')
-      payConfirm.value.show = false
-      await loadObligations()
-    } else {
-      showToast('error', (res.data && res.data.error) || 'Αποτυχία εξόφλησης')
-    }
-  } catch (e) {
-    console.error('markPaid error:', e)
-    showToast('error', e.response?.data?.error || 'Σφάλμα εξόφλησης')
-  } finally {
-    payConfirm.value.saving = false
-  }
+async function onMarkPaidSaved() {
+  closeMarkPaid()
+  showToast('success', 'Η πληρωμή καταχωρήθηκε')
+  await loadObligations()
 }
 
 
@@ -538,34 +526,13 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- ═══════ MARK PAID CONFIRM ═══════ -->
-    <div v-if="payConfirm.show" class="modal-backdrop" @click.self="closeMarkPaid">
-      <div class="modal modal-sm">
-        <div class="modal-header">
-          <h3>Επιβεβαίωση Εξόφλησης</h3>
-        </div>
-        <div class="modal-body">
-          <p class="confirm-msg">
-            Σίγουρα θέλεις να μαρκάρεις την υποχρέωση
-            <strong>#{{ payConfirm.item?.entityNumber }}</strong> ως εξοφλημένη;
-          </p>
-          <p class="confirm-detail" v-if="payConfirm.item">
-            {{ payConfirm.item.description }}<br>
-            Ποσό: <strong>{{ fmt(payConfirm.item.amount) }}</strong> · Μέθοδος: {{ payConfirm.item.paymentMethod || '—' }}
-          </p>
-          <p class="confirm-info">Ημερομηνία πληρωμής: <strong>σήμερα</strong></p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="closeMarkPaid" :disabled="payConfirm.saving">
-            Ακύρωση
-          </button>
-          <button class="btn-success" @click="confirmMarkPaid" :disabled="payConfirm.saving">
-            <span v-if="payConfirm.saving"><span class="spinner-sm"></span> Αποθήκευση...</span>
-            <span v-else>✓ Εξόφληση</span>
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- Mark Paid modal (replaces old inline confirm) -->
+    <MarkPaidModal
+      :visible="markPaidState.visible"
+      :transaction="markPaidState.transaction"
+      @close="closeMarkPaid"
+      @saved="onMarkPaidSaved"
+    />
 
   </div>
 
