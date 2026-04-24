@@ -657,9 +657,12 @@ onUnmounted(() => {
   .kpi-amount { font-size: 0.85rem; }
   .kpi-label { font-size: 0.6rem; }
   .hide-sm { display: none !important; }
-  .data-table { font-size: 0.78rem; }
-  .data-table th, .data-table td { padding: 7px 8px; }
-  .desc-col { max-width: 140px; }
+  .data-table { display: table !important; font-size: 0.78rem; }
+  .data-table thead { display: table-header-group !important; }
+  .data-table tbody { display: table-row-group !important; }
+  .data-table tr { display: table-row !important; }
+  .data-table th, .data-table td { display: table-cell !important; padding: 7px 8px; }
+  .desc-col { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .filters-bar { gap: 6px; }
   .search-wrap { min-width: 140px; }
   .btn-mark-paid { font-size: 0.72rem; padding: 4px 8px; }
