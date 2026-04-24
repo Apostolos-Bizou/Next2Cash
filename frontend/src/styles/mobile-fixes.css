@@ -1,36 +1,43 @@
 /* Mobile-specific fixes for views not covered correctly by mobile-global.css
  * Loaded AFTER mobile-global.css - overrides its over-aggressive selectors.
- * Session #42 - Phase 1: TransactionsView mobile card layout
+ * Session #42 - Row-style tables (matches PaymentsView UX pattern)
  *
  * Philosophy:
- * - Desktop (min-width 769px) is 100% unchanged
- * - Targets specific view containers only
- * - Neutralizes problematic .content [class*="row"] selector for tables
+ * - Tables stay as TABLES on mobile (rows, not cards)
+ * - Horizontal scroll via .table-wrap { overflow-x: auto }
+ * - Compact padding + smaller font to fit more columns
+ * - Description column wraps instead of ellipsis-ing
+ * - Desktop (>=769px) is 100% unchanged
  */
 
 @media (max-width: 768px) {
 
-  /* === PHASE 1: TRANSACTIONS VIEW === */
-
-  /* Step 1: Neutralize mobile-global.css aggressive rules that hit <tr> elements.
-     The parent selector ".content [class*=row]" was breaking table rows. */
+  /* === COMMON: Neutralize mobile-global.css aggressive rules on table rows.
+         Without this, <tr> elements get flex-direction:column (stacking cells). */
   .txn-page .data-table tr,
   .txn-page .data-table thead,
-  .txn-page .data-table tbody {
+  .txn-page .data-table tbody,
+  .karteles-page .data-table tr,
+  .karteles-page .data-table thead,
+  .karteles-page .data-table tbody,
+  .plirome-page .data-table tr,
+  .plirome-page .data-table thead,
+  .plirome-page .data-table tbody {
     display: revert !important;
     flex-direction: revert !important;
     flex-wrap: revert !important;
     grid-template-columns: revert !important;
   }
 
-  /* Step 2: Page container - full width, tight padding */
+  /* === TRANSACTIONS VIEW === */
+
   .txn-page {
     padding: 0 8px 16px !important;
     max-width: 100vw !important;
     overflow-x: hidden !important;
   }
 
-  /* Step 3: KPI bar - single column stack */
+  /* KPI bar - single column stack */
   .txn-page .kpi-bar {
     flex-direction: column !important;
     gap: 8px !important;
@@ -42,7 +49,7 @@
     padding: 10px 14px !important;
   }
 
-  /* Step 4: Filters bar - stack fields vertically, full-width */
+  /* Filters bar - stack vertically */
   .txn-page .filters-bar {
     flex-direction: column !important;
     align-items: stretch !important;
@@ -59,156 +66,33 @@
     flex: 1 1 auto !important;
   }
 
-  /* Step 5: Transform the table into card-style layout.
-     We hide <thead>, turn each <tr> into a card, and each <td> into a row
-     with a label injected via ::before. */
+  /* Table stays as TABLE, scrolls horizontally */
   .txn-page .table-wrap {
-    overflow-x: visible !important;
-    background: transparent !important;
-    border: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-  }
-
-  .txn-page .data-table {
-    display: block !important;
-    width: 100% !important;
-    border-collapse: separate !important;
-    border-spacing: 0 !important;
-    white-space: normal !important;
-  }
-
-  /* Hide the header row entirely on mobile */
-  .txn-page .data-table thead {
-    display: none !important;
-  }
-
-  .txn-page .data-table tbody {
-    display: block !important;
-    width: 100% !important;
-  }
-
-  /* Each row becomes a card */
-  .txn-page .data-table tbody tr {
-    display: block !important;
-    width: 100% !important;
-    margin: 0 0 10px 0 !important;
-    padding: 10px 12px !important;
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-lg, 10px) !important;
-    box-sizing: border-box !important;
-  }
-
-  /* Urgent row indicator - keep the orange left stripe */
-  .txn-page .data-table tbody tr.row-urgent {
-    border-left: 3px solid #ff6400 !important;
-    background: rgba(255,100,0,.04) !important;
-  }
-
-  /* Empty state row - no card styling */
-  .txn-page .data-table tbody tr.empty-row {
-    background: transparent !important;
-    border: none !important;
-    padding: 30px 10px !important;
-    text-align: center !important;
-  }
-
-  /* Each cell becomes a labeled row inside the card */
-  .txn-page .data-table tbody tr td {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    gap: 10px !important;
-    padding: 6px 0 !important;
-    border: none !important;
-    text-align: right !important;
-    font-size: .9rem !important;
-    min-height: 0 !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
     max-width: 100% !important;
+  }
+  .txn-page .data-table {
+    width: auto !important;
+    min-width: 100% !important;
+    font-size: 0.78rem !important;
+    white-space: nowrap !important;
+  }
+  .txn-page .data-table th,
+  .txn-page .data-table td {
+    padding: 6px 8px !important;
+    white-space: nowrap !important;
+  }
+  /* Description column wraps on mobile (matches PaymentsView look) */
+  .txn-page .data-table td.desc-col {
+    max-width: 160px !important;
     white-space: normal !important;
     word-wrap: break-word !important;
   }
-
-  /* The label (injected via ::before using data-label attribute if present,
-     otherwise we rely on column-based labels via nth-child) */
-  .txn-page .data-table tbody tr td::before {
-    content: attr(data-label);
-    font-weight: 600;
-    font-size: .72rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: .5px;
-    flex: 0 0 auto;
-    text-align: left;
-    max-width: 50%;
-  }
-
-  /* Fallback: nth-child labels for each <td> position.
-     This works even without data-label attributes on the <td>. */
-  .txn-page .data-table tbody tr td:nth-of-type(1)::before { content: "ID"; }
-  .txn-page .data-table tbody tr td:nth-of-type(2)::before { content: "Ημερομηνία"; }
-  .txn-page .data-table tbody tr td:nth-of-type(3)::before { content: "Περιγραφή"; }
-  .txn-page .data-table tbody tr td:nth-of-type(4)::before { content: "Κατηγορία"; }
-  .txn-page .data-table tbody tr td:nth-of-type(5)::before { content: "Λογαριασμός"; }
-  .txn-page .data-table tbody tr td:nth-of-type(6)::before { content: "Μέθοδος"; }
-  .txn-page .data-table tbody tr td:nth-of-type(7)::before { content: "Είσπραξη"; }
-  .txn-page .data-table tbody tr td:nth-of-type(8)::before { content: "Πληρωμή"; }
-  .txn-page .data-table tbody tr td:nth-of-type(9)::before { content: "Κατάσταση"; }
-  .txn-page .data-table tbody tr td:nth-of-type(10)::before { content: "Ενέργειες"; }
-
-  /* Hide empty "—" cells' labels to reduce noise (optional polish) */
-  .txn-page .data-table tbody tr td.id-col {
-    font-weight: 700;
-    color: var(--text-primary) !important;
-    font-size: 1rem !important;
-    padding-top: 4px !important;
-    padding-bottom: 8px !important;
-    border-bottom: 1px solid var(--border) !important;
-    margin-bottom: 4px !important;
-  }
-  .txn-page .data-table tbody tr td.id-col::before {
-    content: "";
-    display: none;
-  }
-
-  /* Description cell - allow wrapping, show full text */
-  .txn-page .data-table tbody tr td.desc-col {
-    max-width: 100% !important;
-    white-space: normal !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    text-align: left !important;
-  }
-  .txn-page .data-table tbody tr td.desc-col::before {
-    max-width: 100% !important;
-    text-align: left !important;
-  }
-
-  /* Actions cell - buttons wrap nicely */
-  .txn-page .data-table tbody tr td.actions {
-    flex-wrap: wrap !important;
-    justify-content: flex-start !important;
-    gap: 6px !important;
-    padding-top: 8px !important;
-    border-top: 1px solid var(--border) !important;
-    margin-top: 6px !important;
-  }
-  .txn-page .data-table tbody tr td.actions::before {
-    flex: 1 1 100% !important;
-    max-width: 100% !important;
-    margin-bottom: 4px !important;
-  }
-
-  /* Mark-paid button - full text visible */
-  .txn-page .btn-action.btn-mark-paid-sm {
-    padding: 6px 12px !important;
-    font-size: .82rem !important;
-  }
-
-  /* Pagination controls - wrap */
+  /* Pagination wraps */
   .txn-page .pagination {
     justify-content: center !important;
+    flex-wrap: wrap !important;
   }
   .txn-page .pag-info {
     flex: 1 1 100% !important;
@@ -216,23 +100,16 @@
     margin-left: 0 !important;
     margin-top: 6px !important;
   }
-}
-/* === PHASE 2: KARTELES VIEW ===
- * Desktop layout: .karteles-layout has grid-template-columns: 280px 1fr
- * On mobile we flip to single column: sidebar on top, main below.
- * No template changes needed.
- */
 
-@media (max-width: 768px) {
+  /* === KARTELES VIEW === */
 
-  /* Container full width */
   .karteles-page {
     padding: 0 8px 16px !important;
     max-width: 100vw !important;
     overflow-x: hidden !important;
   }
 
-  /* Flip 2-column grid to stacked layout */
+  /* Flip 2-column grid (280px + 1fr) to stacked */
   .karteles-layout {
     display: block !important;
     grid-template-columns: 1fr !important;
@@ -241,7 +118,7 @@
     max-width: 100% !important;
   }
 
-  /* Sidebar becomes a compact top panel */
+  /* Sidebar becomes compact top panel with horizontal-chip karteles */
   .karteles-sidebar {
     width: 100% !important;
     max-width: 100% !important;
@@ -249,32 +126,14 @@
     padding: 8px !important;
     margin-bottom: 10px !important;
     max-height: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: visible !important;
   }
-
-  /* Sidebar header - tight spacing */
   .karteles-sidebar .sidebar-header {
     padding: 6px 8px !important;
     margin-bottom: 6px !important;
   }
-
-  /* Kartela items flow horizontally to save vertical space.
-     If there are many, user can horizontally scroll the sidebar. */
-  .karteles-sidebar {
-    display: flex !important;
-    flex-direction: column !important;
-  }
-
-  /* Container of kartela items - horizontal scroll strip */
-  .karteles-sidebar .sidebar-header ~ .kartela-item:first-of-type {
-    /* first kartela-item after header - flag that we're entering horizontal zone */
-  }
-
-  /* Make kartela items display as chips side-by-side with horizontal scroll */
-  .karteles-sidebar {
-    overflow: visible !important;
-  }
-
-  /* Wrap kartela items visually into a scrolling row */
   .karteles-sidebar .kartela-item {
     display: inline-flex !important;
     width: auto !important;
@@ -287,7 +146,7 @@
     flex-shrink: 0 !important;
   }
 
-  /* Main content area - full width */
+  /* Main content area */
   .karteles-main {
     width: 100% !important;
     max-width: 100% !important;
@@ -295,7 +154,7 @@
     overflow-x: hidden !important;
   }
 
-  /* Kartela header (title + actions) - stack if needed */
+  /* Header (title + actions) */
   .kartela-header {
     flex-wrap: wrap !important;
     gap: 8px !important;
@@ -310,7 +169,7 @@
     gap: 6px !important;
   }
 
-  /* Search + filters bar */
+  /* Filters bar */
   .karteles-page .filters-bar {
     flex-direction: column !important;
     align-items: stretch !important;
@@ -332,7 +191,7 @@
     gap: 8px !important;
   }
 
-  /* View chips - horizontal scroll if many */
+  /* View chips horizontal scroll */
   .karteles-page .view-chips {
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
@@ -343,120 +202,74 @@
     flex-shrink: 0 !important;
   }
 
-  /* === TABLE -> CARD layout (same pattern as TransactionsView) === */
+  /* Table stays as TABLE, scrolls horizontally */
   .karteles-page .table-wrap {
-    overflow-x: visible !important;
-    background: transparent !important;
-    border: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-  }
-
-  .karteles-page .data-table {
-    display: block !important;
-    width: 100% !important;
-    border-collapse: separate !important;
-    border-spacing: 0 !important;
-    white-space: normal !important;
-  }
-
-  .karteles-page .data-table thead {
-    display: none !important;
-  }
-
-  .karteles-page .data-table tbody {
-    display: block !important;
-    width: 100% !important;
-  }
-
-  .karteles-page .data-table tbody tr {
-    display: block !important;
-    width: 100% !important;
-    margin: 0 0 10px 0 !important;
-    padding: 10px 12px !important;
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-lg, 10px) !important;
-    box-sizing: border-box !important;
-  }
-
-  .karteles-page .data-table tbody tr td {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    gap: 10px !important;
-    padding: 6px 0 !important;
-    border: none !important;
-    text-align: right !important;
-    font-size: .9rem !important;
-    min-height: 0 !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
     max-width: 100% !important;
+  }
+  .karteles-page .data-table {
+    width: auto !important;
+    min-width: 100% !important;
+    font-size: 0.78rem !important;
+    white-space: nowrap !important;
+  }
+  .karteles-page .data-table th,
+  .karteles-page .data-table td {
+    padding: 6px 8px !important;
+    white-space: nowrap !important;
+  }
+  .karteles-page .data-table td.desc-col {
+    max-width: 160px !important;
     white-space: normal !important;
     word-wrap: break-word !important;
   }
 
-  /* Column labels via ::before (karteles table structure) */
-  .karteles-page .data-table tbody tr td::before {
-    content: attr(data-label);
-    font-weight: 600;
-    font-size: .72rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: .5px;
-    flex: 0 0 auto;
-    text-align: left;
-    max-width: 50%;
-  }
+  /* === PAYMENTS VIEW (compact adjustments - same pattern) === */
 
-  /* Fallback nth-child labels for karteles columns */
-  .karteles-page .data-table tbody tr td:nth-of-type(1)::before { content: "ID"; }
-  .karteles-page .data-table tbody tr td:nth-of-type(2)::before { content: "Ημερομηνία"; }
-  .karteles-page .data-table tbody tr td:nth-of-type(3)::before { content: "Περιγραφή"; }
-  .karteles-page .data-table tbody tr td:nth-of-type(4)::before { content: "Κατηγορία"; }
-  .karteles-page .data-table tbody tr td:nth-of-type(5)::before { content: "Ποσό"; }
-  .karteles-page .data-table tbody tr td:nth-of-type(6)::before { content: "Κατάσταση"; }
-  .karteles-page .data-table tbody tr td:nth-of-type(7)::before { content: "Ενέργειες"; }
-
-  /* ID column styled as card header */
-  .karteles-page .data-table tbody tr td.id-col {
-    font-weight: 700 !important;
-    color: var(--text-primary) !important;
-    font-size: 1rem !important;
-    padding-top: 4px !important;
-    padding-bottom: 8px !important;
-    border-bottom: 1px solid var(--border) !important;
-    margin-bottom: 4px !important;
+  .plirome-page {
+    padding: 0 8px 16px !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
   }
-  .karteles-page .data-table tbody tr td.id-col::before {
-    content: "";
-    display: none;
+  .plirome-page .summary-cards {
+    flex-direction: column !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
   }
-
-  /* Description - allow wrapping */
-  .karteles-page .data-table tbody tr td.desc-col {
-    max-width: 100% !important;
-    white-space: normal !important;
+  .plirome-page .sum-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 10px 14px !important;
+  }
+  .plirome-page .filters-bar {
     flex-direction: column !important;
     align-items: stretch !important;
-    text-align: left !important;
+    gap: 8px !important;
   }
-  .karteles-page .data-table tbody tr td.desc-col::before {
+  .plirome-page .filters-bar > * {
+    width: 100% !important;
+    min-width: 0 !important;
     max-width: 100% !important;
-    text-align: left !important;
   }
-
-  /* Actions column - wrap buttons */
-  .karteles-page .data-table tbody tr td.actions-col {
-    flex-wrap: wrap !important;
-    justify-content: flex-start !important;
-    gap: 6px !important;
-    padding-top: 8px !important;
-    border-top: 1px solid var(--border) !important;
-    margin-top: 6px !important;
+  .plirome-page .table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
-  .karteles-page .data-table tbody tr td.actions-col::before {
-    flex: 1 1 100% !important;
-    max-width: 100% !important;
-    margin-bottom: 4px !important;
+  .plirome-page .data-table {
+    width: auto !important;
+    min-width: 100% !important;
+    font-size: 0.78rem !important;
+    white-space: nowrap !important;
+  }
+  .plirome-page .data-table th,
+  .plirome-page .data-table td {
+    padding: 6px 8px !important;
+    white-space: nowrap !important;
+  }
+  .plirome-page .data-table td.desc-col {
+    max-width: 160px !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
   }
 }
