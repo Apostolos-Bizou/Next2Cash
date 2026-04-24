@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import './assets/main.css'
 import './styles/mobile-global.css'
+import './styles/mobile-fixes.css'
 
 const app = createApp(App)
 
