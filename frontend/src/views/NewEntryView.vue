@@ -146,6 +146,8 @@ async function save() {
       description:   description.value,
       docStatus:     docStatus.value,
       paymentStatus: isPending.value ? (isUrgent.value ? 'urgent' : 'unpaid') : 'paid',
+      amountPaid:    isPending.value ? 0 : Number(amount.value),
+      amountRemaining: isPending.value ? Number(amount.value) : 0,
       recordStatus:  'active',
     }
 
