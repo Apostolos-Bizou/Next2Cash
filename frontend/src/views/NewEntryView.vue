@@ -166,7 +166,7 @@ async function save() {
           formData.append('file', file)
           formData.append('entityId', entityId.value)
           formData.append('transactionId', newId)
-          formData.append('fileName', fileName)
+          formData.append('customFileName', fileName)
           await api.post('/api/documents/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
           successMsg.value = '✅ Καταχωρήθηκε + αρχείο! ID: #' + newId
         } catch (fe) {
