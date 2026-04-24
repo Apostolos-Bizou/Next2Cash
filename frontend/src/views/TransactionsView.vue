@@ -454,7 +454,7 @@ onMounted(() => {
           </tr>
           <tr v-for="t in filteredTransactions" :key="t.id"
               :class="t.paymentStatus === 'urgent' ? 'row-urgent' : ''">
-            <td class="id-col">#{{ t.id }}</td>
+            <td class="id-col">#{{ t.entityNumber ?? t.id }}</td>
             <td class="date-col">{{ fmtDate(t.docDate) }}</td>
             <td class="desc-col" :title="t.description">{{ (t.description || '—').substring(0,40) }}</td>
             <td><span class="cat-badge">{{ t.category || '—' }}</span></td>
@@ -501,7 +501,7 @@ onMounted(() => {
     <div v-if="editModal.show" class="modal-backdrop" @click.self="closeEdit">
       <div class="modal">
         <div class="modal-header">
-          <h3>Επεξεργασία Κίνησης #{{ editModal.data.id }}</h3>
+          <h3>Επεξεργασία Κίνησης #{{ editModal.data.entityNumber ?? editModal.data.id }}</h3>
           <button class="modal-close" @click="closeEdit" :disabled="editModal.saving">×</button>
         </div>
         <div class="modal-body">
@@ -573,7 +573,7 @@ onMounted(() => {
         <div class="modal-body">
           <p class="confirm-msg">
             Σίγουρα θέλεις να διαγράψεις την κίνηση
-            <strong>#{{ deleteConfirm.item?.id }}</strong>;
+            <strong>#{{ deleteConfirm.item?.entityNumber ?? deleteConfirm.item?.id }}</strong>;
           </p>
           <p class="confirm-detail" v-if="deleteConfirm.item">
             {{ deleteConfirm.item.description }} — <strong>{{ fmt(deleteConfirm.item.amount) }}</strong>
