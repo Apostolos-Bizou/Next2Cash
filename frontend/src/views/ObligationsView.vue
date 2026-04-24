@@ -648,4 +648,24 @@ onUnmounted(() => {
   margin-left: 6px;
 }
 .btn-attach-ob:hover { border-color: #4A9EFF; color: #4A9EFF; }
+
+/* ───── Mobile responsive: keep table rows, hide less important cols ───── */
+@media (max-width: 768px) {
+  .obligations-page { padding: 12px; }
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+  .kpi-card { padding: 10px 12px; }
+  .kpi-amount { font-size: 0.85rem; }
+  .kpi-label { font-size: 0.6rem; }
+  .data-table { min-width: 700px; }
+  .desc-col { max-width: 160px; }
+  .filters-bar { gap: 6px; }
+  .search-wrap { min-width: 160px; }
+}
+
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .data-table { min-width: 600px; font-size: 0.78rem; }
+  .data-table th, .data-table td { padding: 7px 8px; }
+  .desc-col { max-width: 120px; }
+}
 </style>
