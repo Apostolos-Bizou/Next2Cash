@@ -34,6 +34,47 @@ const paymentMethods = [
   'Τράπεζα', 'Μετρητά', 'Κάρτα', 'Επιταγή', 'PayPal', 'Άλλο'
 ]
 
+// --- File upload state ---
+const selectedFiles = ref([])
+const fileInputRef  = ref(null)
+const MAX_BYTES = 10 * 1024 * 1024
+const ACCEPT = '.pdf,.jpg,.jpeg,.png'
+
+function onBrowseFiles() { fileInputRef.value && fileInputRef.value.click() }
+
+function onFileSelect(e) {
+  const files = Array.from(e.target.files || [])
+  addFiles(files)
+  e.target.value = ''
+}
+
+function onFileDrop(e) {
+  e.preventDefault()
+  if (saving.value) return
+  addFiles(Array.from(e.dataTransfer.files || []))
+}
+
+function addFiles(files) {
+  for (const f of files) {
+    const ext = (f.name || '').toLowerCase().split('.').pop()
+    if (!['pdf','jpg','jpeg','png'].includes(ext)) continue
+    if (f.size > MAX_BYTES) continue
+    if (selectedFiles.value.length >= 4) break
+    selectedFiles.value.push(f)
+  }
+}
+
+function removeFile(idx) {
+  if (saving.value) return
+  selectedFiles.value.splice(idx, 1)
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B'
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB'
+  return (n/1024/1024).toFixed(1) + ' MB'
+}
+
 // --- Derived values from parent transaction ----------------------
 const totalAmount = computed(() => Number(props.transaction?.amount) || 0)
 const alreadyPaid = computed(() => Number(props.transaction?.amountPaid) || 0)
@@ -82,6 +123,7 @@ watch(() => [props.visible, props.transaction], () => {
   // Carry over parent's payment method as suggestion
   paymentMethod.value = props.transaction.paymentMethod || 'Τράπεζα'
   notes.value = ''
+  selectedFiles.value = []
 }, { immediate: true })
 
 // --- Formatters ---------------------------------------------------
@@ -133,6 +175,18 @@ async function onSubmit() {
     }
     const res = await api.post('/api/payments', payload)
     if (res.data && res.data.success) {
+      // Upload files if any selected
+      if (selectedFiles.value.length > 0) {
+        for (const f of selectedFiles.value) {
+          try {
+            const form = new FormData()
+            form.append('file', f)
+            await api.post('/api/documents/upload?transactionId=' + props.transaction.id, form)
+          } catch (fe) {
+            console.warn('File upload failed:', fe)
+          }
+        }
+      }
       emit('saved', {
         payment:     res.data.payment,
         transaction: res.data.transaction
@@ -237,6 +291,38 @@ async function onSubmit() {
             rows="2"
             placeholder="π.χ. αριθμός εντολής, reference..."
             class="mp-input mp-textarea"></textarea>
+        </div>
+
+        <!-- File upload area -->
+        <div class="mp-field">
+          <label>Αποδεικτικό Πληρωμής</label>
+          <div
+            class="mp-dropzone"
+            :class="{ disabled: saving }"
+            @click="onBrowseFiles"
+            @drop.prevent="onFileDrop"
+            @dragover.prevent>
+            <div class="mp-dz-icon">☁</div>
+            <div class="mp-dz-text">Πατήστε ή σύρετε αρχεία</div>
+            <div class="mp-dz-sub">PDF, JPG, PNG — max 4 αρχεία, 10 MB ανά αρχείο</div>
+            <input
+              ref="fileInputRef"
+              type="file"
+              :accept="ACCEPT"
+              multiple
+              style="display:none"
+              @change="onFileSelect" />
+          </div>
+          <div v-if="selectedFiles.length" class="mp-filelist">
+            <div v-for="(f, i) in selectedFiles" :key="i" class="mp-fileitem">
+              <span class="mp-file-icon" :class="f.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'img'">
+                {{ f.name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'IMG' }}
+              </span>
+              <span class="mp-file-name">{{ f.name }}</span>
+              <span class="mp-file-size">{{ fmtBytes(f.size) }}</span>
+              <button class="mp-file-remove" :disabled="saving" @click="removeFile(i)">×</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -440,4 +526,38 @@ async function onSubmit() {
 .mp-btn-confirm:disabled, .mp-btn-cancel:disabled {
   opacity: 0.5; cursor: not-allowed;
 }
+/* Upload area */
+.mp-dropzone {
+  border: 2px dashed #3a4a5e; border-radius: 8px;
+  padding: 18px 14px; text-align: center; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.mp-dropzone:hover:not(.disabled) { border-color: #4A9EFF; background: rgba(74,158,255,0.05); }
+.mp-dropzone.disabled { opacity: 0.5; cursor: not-allowed; }
+.mp-dz-icon { font-size: 1.5rem; color: #6c7a8a; margin-bottom: 4px; }
+.mp-dz-text { font-size: 0.88rem; color: #e0e6ed; }
+.mp-dz-sub { font-size: 0.72rem; color: #6c7a8a; margin-top: 3px; }
+.mp-filelist { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.mp-fileitem {
+  display: flex; align-items: center; gap: 8px;
+  background: #0f1724; border: 1px solid #2c3e50; border-radius: 6px;
+  padding: 7px 10px; font-size: 0.82rem;
+}
+.mp-file-icon {
+  font-size: 0.65rem; font-weight: 700; color: #fff;
+  padding: 3px 6px; border-radius: 3px; letter-spacing: 0.5px;
+}
+.mp-file-icon.pdf { background: #E74C3C; }
+.mp-file-icon.img { background: #3498DB; }
+.mp-file-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: #e0e6ed;
+}
+.mp-file-size { color: #6c7a8a; font-size: 0.75rem; flex-shrink: 0; }
+.mp-file-remove {
+  background: transparent; border: none; color: #6c7a8a;
+  font-size: 1.2rem; cursor: pointer; padding: 0 4px;
+}
+.mp-file-remove:hover:not(:disabled) { color: #FF6B6B; }
+.mp-file-remove:disabled { opacity: 0.4; }
 </style>
