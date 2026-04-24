@@ -68,6 +68,10 @@ function onMarkPaidSaved() { closeMarkPaid(); loadTransactions() }
 function canMarkPaid(t) {
   return t.recordSource !== 'PAYMENT' && (Number(t.amountRemaining) || 0) > 0.01
 }
+function isUnpaid(t) {
+  const s = t.paymentStatus || ''
+  return s === 'unpaid' || s === 'urgent' || s === 'partially_paid' || s === 'overdue'
+}
 
 // Attachments state
 const attachmentsState = ref({ visible: false, transaction: null })
@@ -457,7 +461,7 @@ onMounted(() => {
             <td class="sub-col">{{ t.account || t.subcategory || '—' }}</td>
             <td class="method-col">{{ t.paymentMethod || '—' }}</td>
             <td class="ra green mono">{{ t.type === 'income'  ? fmt(t.amount) : '—' }}</td>
-            <td class="ra red   mono">{{ t.type === 'expense' ? fmt(t.amount) : '—' }}</td>
+            <td class="ra mono" :class="t.type === 'expense' && isUnpaid(t) ? 'red' : 'white'">{{ t.type === 'expense' ? fmt(t.amount) : '—' }}</td>
             <td><span class="status-badge" :class="statusClass(t.paymentStatus)">{{ statusLabel(t.paymentStatus) }}</span></td>
             <td class="actions">
               <button
@@ -639,6 +643,7 @@ onMounted(() => {
 .mono { font-family:var(--font-mono); font-weight:600; }
 .green { color:var(--success); }
 .red   { color:var(--danger); }
+.white { color:var(--text-primary, #e2e8f0); }
 .cat-badge { background:var(--bg-input); border:1px solid var(--border); padding:2px 8px; border-radius:var(--radius-sm); font-size:.75rem; white-space:nowrap; }
 .status-badge { padding:2px 8px; border-radius:10px; font-size:.72rem; font-weight:600; white-space:nowrap; }
 .badge-paid    { background:var(--success-bg); color:var(--success); }
