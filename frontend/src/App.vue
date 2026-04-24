@@ -229,7 +229,11 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
         </div>
       </header>
       <main class="content">
-        <RouterView />
+        <RouterView v-slot="{ Component }">
+          <KeepAlive>
+            <component :is="Component" />
+          </KeepAlive>
+        </RouterView>
       </main>
     </div>
   </div>
