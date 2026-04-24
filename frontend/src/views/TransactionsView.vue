@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'   // Session #40
 import api from '@/api'
 import MarkPaidModal from '@/components/MarkPaidModal.vue'
@@ -338,6 +338,12 @@ const pageButtons = computed(() => {
 
 // Session #40 — parse URL query params for deep-linking from Dashboard reconciliation
 const route = useRoute()
+function onEntityChanged() {
+  selectedEntity.value = localStorage.getItem('n2c_entity') || 'next2me'
+  page.value = 0
+  loadTransactions()
+}
+
 onMounted(() => {
   const q = route.query || {}
   // entityId: UUID -> reverse map to 'next2me' / 'house' / 'polaris' key
@@ -348,6 +354,10 @@ onMounted(() => {
   if (q.from) dateFrom.value = String(q.from)
   if (q.to)   dateTo.value   = String(q.to)
   loadTransactions()
+  window.addEventListener('entity-changed', onEntityChanged)
+})
+onUnmounted(() => {
+  window.removeEventListener('entity-changed', onEntityChanged)
 })
 </script>
 

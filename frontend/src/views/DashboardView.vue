@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Bar, Doughnut, Line } from 'vue-chartjs'
 import {
   Chart as ChartJS, Title, Tooltip, Legend,
@@ -337,7 +337,18 @@ const trendOpts = {
   }
 }
 
-onMounted(loadDashboard)
+function onEntityChanged() {
+  selectedEntity.value = localStorage.getItem('n2c_entity') || 'next2me'
+  loadDashboard()
+}
+
+onMounted(() => {
+  loadDashboard()
+  window.addEventListener('entity-changed', onEntityChanged)
+})
+onUnmounted(() => {
+  window.removeEventListener('entity-changed', onEntityChanged)
+})
 </script>
 
 <template>
