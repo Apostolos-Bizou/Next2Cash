@@ -159,6 +159,55 @@ function bankIcon(type) {
 const cashAvailable = computed(() => bankTotal.value - (Number(kpis.value.urgentTotal) || 0))
 const totalUnpaid   = computed(() => Number(kpis.value.unpaidTotal) || 0)
 
+  // Session #43 — Paid-only cash flow
+  const cashFlowNet = computed(() =>
+    (Number(reconciliation.value.paidIncome) || 0) -
+    (Number(reconciliation.value.paidExpense) || 0)
+  )
+  const forecastNet = computed(() => Number(kpis.value.netBalance) || 0)
+
+  // Session #43 — Cash flow analysis
+  const cashFlowAnalysis = computed(() => {
+    const inc = Number(reconciliation.value.paidIncome) || 0
+    const exp = Number(reconciliation.value.paidExpense) || 0
+    const net = cashFlowNet.value
+    if (net > 0) return `Από τα ${fmt(inc)} που εισπράχθηκαν αφαιρέθηκαν ${fmt(exp)} σε πληρωμές. Έμεινε καθαρό υπόλοιπο ${fmt(net)} από τις πραγματικές κινήσεις. 💡 Διατηρήστε αυτή τη ροή για ομαλή λειτουργία.`
+    if (net < 0) return `Πληρώθηκαν περισσότερα (${fmt(exp)}) από όσα εισπράχθηκαν (${fmt(inc)}). Προέκυψε έλλειμμα ${fmt(Math.abs(net))} από τις πραγματικές κινήσεις. ⚠️ Ελέγξτε τις δαπάνες ή επιταχύνετε τις εισπράξεις.`
+    return `Εισπράξεις και πληρωμές ισοσκελίζονται σε ${fmt(inc)}. Καμία καθαρή κίνηση στην περίοδο. 💡 Παρακολουθήστε αν αυτή η σταθερότητα συνεχιστεί.`
+  })
+
+  // Session #43 — Forecast analysis
+  const forecastAnalysis = computed(() => {
+    const unpaid = Number(kpis.value.unpaidTotal) || 0
+    const urgent = Number(kpis.value.urgentTotal) || 0
+    const net = forecastNet.value
+    if (net > 0) return `Αν εισπραχθούν τα αναμενόμενα και πληρωθούν οι ${fmt(unpaid)} σε υποχρεώσεις, θα προκύψει πλεόνασμα ${fmt(net)}. Η οικονομική θέση παραμένει υγιής. 💡 Καλή στιγμή για στρατηγικές επενδύσεις.`
+    if (net < 0) {
+      const um = urgent > 0 ? ` με ${fmt(urgent)} επείγουσες` : ''
+      return `Με τα τρέχοντα δεδομένα, αν πληρωθούν όλες οι ${fmt(unpaid)} υποχρεώσεις${um}, θα προκύψει έλλειμμα ${fmt(Math.abs(net))}. Η περίοδος κλείνει αρνητικά. ⚠️ Απαιτείται είτε επιπλέον εισπράξεις είτε αναδιάταξη πληρωμών.`
+    }
+    return `Έσοδα και υποχρεώσεις ισοσκελίζονται ακριβώς. Δεν υπάρχει περιθώριο για απρόοπτα. 💡 Ασφαλέστερο να δημιουργηθεί αποθεματικό.`
+  })
+
+  // Session #43 — Cash position scenarios
+  const cashAfterUrgent = computed(() => bankTotal.value - (Number(kpis.value.urgentTotal) || 0))
+  const cashAfterAll    = computed(() => bankTotal.value - (Number(kpis.value.unpaidTotal) || 0))
+  const cashShortfall   = computed(() => {
+    const a = cashAfterAll.value
+    return a < 0 ? Math.abs(a) : 0
+  })
+  const cashScenarioAnalysis = computed(() => {
+    const bank = bankTotal.value
+    const unpaid = Number(kpis.value.unpaidTotal) || 0
+    const sf = cashShortfall.value
+    if (sf > 0) return `Με ${fmt(bank)} στο ταμείο και ${fmt(unpaid)} σε συνολικές υποχρεώσεις, λείπουν ${fmt(sf)} για να καλυφθούν όλα. ⚠️ Απαιτείται είσπραξη ή αναδιάταξη πληρωμών.`
+    if (unpaid > 0) {
+      const surplus = bank - unpaid
+      return `Με ${fmt(bank)} στο ταμείο μπορούν να καλυφθούν οι ${fmt(unpaid)} σε υποχρεώσεις και να μείνουν ${fmt(surplus)} αποθεματικό. 💡 Η ταμειακή θέση είναι υγιής.`
+    }
+    return `Δεν υπάρχουν εκκρεμείς υποχρεώσεις. Διαθέσιμο ταμείο ${fmt(bank)}. 💡 Καλή στιγμή για στρατηγικό σχεδιασμό.`
+  })
+
 const periodLabel = computed(() => {
   const map = {
     month: `${selectedMonth.value} ${selectedYear.value}`,
@@ -492,98 +541,110 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Ταμειακά Διαθέσιμα -->
+        <!-- Ταμειακά Διαθέσιμα — 3 Σενάρια (Session #43) -->
         <div class="panel-card">
           <div class="panel-hdr">
             <span class="ptitle succ"><i class="fas fa-coins"></i> Ταμειακά Διαθέσιμα</span>
           </div>
           <div class="cash-hero">
-            <div class="cash-tot" :style="{color: cashAvailable>=0?'var(--success)':'#ff6400'}">{{ fmt(cashAvailable) }}</div>
-            <div class="cash-lbl">Τράπεζες μείον Εκκρεμείς</div>
+            <div class="cash-tot" :style="{color: bankTotal>=0?'var(--success)':'var(--danger)'}">{{ fmt(bankTotal) }}</div>
+            <div class="cash-lbl">Ταμείο σήμερα</div>
           </div>
           <div class="cash-bk">
             <div class="cash-row">
               <div class="cr-ico" style="background:var(--accent-glow);color:var(--accent)"><i class="fas fa-university"></i></div>
-              <span class="cr-lbl">Τράπεζες</span>
+              <span class="cr-lbl">1️⃣ Σήμερα (ταμείο)</span>
               <span class="cr-val">{{ fmt(bankTotal) }}</span>
             </div>
-            <div class="cash-row urg" v-if="Number(kpis.urgentTotal)>0">
+            <div class="cash-row" v-if="Number(kpis.urgentTotal)>0">
               <div class="cr-ico" style="background:rgba(255,100,0,.15);color:#ff6400"><i class="fas fa-bolt"></i></div>
-              <span class="cr-lbl" style="color:#ff6400;font-weight:700">⚡ Εκκρεμείς</span>
+              <span class="cr-lbl">2️⃣ Μετά τις επείγουσες</span>
+              <span class="cr-val" :style="{color:cashAfterUrgent>=0?'var(--success)':'var(--danger)'}">{{ fmt(cashAfterUrgent) }}</span>
+            </div>
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-clock"></i></div>
+              <span class="cr-lbl">3️⃣ Μετά από όλα</span>
+              <span class="cr-val" :style="{color:cashAfterAll>=0?'var(--success)':'var(--danger)',fontWeight:'700'}">{{ fmt(cashAfterAll) }}</span>
+            </div>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <div class="cash-row avail" v-if="cashShortfall>0" style="background:rgba(239,68,68,.08)">
+              <div class="cr-ico" style="background:var(--danger-bg);color:var(--danger)"><i class="fas fa-hand-holding-usd"></i></div>
+              <span class="cr-lbl" style="font-weight:700;color:var(--danger)">💸 Λείπουν</span>
+              <span class="cr-val" style="color:var(--danger);font-weight:800;font-size:1.05rem">{{ fmt(cashShortfall) }}</span>
+            </div>
+            <div class="cash-row avail" v-else style="background:rgba(16,185,129,.08)">
+              <div class="cr-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-check"></i></div>
+              <span class="cr-lbl" style="font-weight:700;color:var(--success)">✅ Επαρκή</span>
+              <span class="cr-val" style="color:var(--success);font-weight:800;font-size:1.05rem">{{ fmt(cashAfterAll) }}</span>
+            </div>
+          </div>
+          <div class="cash-analysis">{{ cashScenarioAnalysis }}</div>
+        </div>
+      </div>
+
+      <!-- ═══ KPI PANELS — Hybrid (Session #43) ════════════════════════════ -->
+      <div class="dash-2equal mb">
+
+        <!-- Panel 1: Ταμειακή Κίνηση (paid-only) -->
+        <div class="panel-card">
+          <div class="panel-hdr">
+            <span class="ptitle succ"><i class="fas fa-coins"></i> Ταμειακή Κίνηση Περιόδου</span>
+          </div>
+          <div class="cash-hero">
+            <div class="cash-tot" :style="{color: cashFlowNet>=0?'var(--success)':'#ff6400'}">{{ fmt(cashFlowNet) }}</div>
+            <div class="cash-lbl">Καθαρή Ροή · πραγματικά πληρωμένα</div>
+          </div>
+          <div class="cash-analysis">{{ cashFlowAnalysis }}</div>
+          <div class="cash-bk">
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-arrow-down"></i></div>
+              <span class="cr-lbl">Εισπράχθηκαν</span>
+              <span class="cr-val" style="color:var(--success)">{{ fmt(reconciliation.paidIncome) }}</span>
+            </div>
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--danger-bg);color:var(--danger)"><i class="fas fa-arrow-up"></i></div>
+              <span class="cr-lbl">Πληρώθηκαν</span>
+              <span class="cr-val" style="color:var(--danger)">-{{ fmt(reconciliation.paidExpense) }}</span>
+            </div>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <div class="cash-row avail" :style="{background: cashFlowNet>=0?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'}">
+              <div class="cr-ico" :style="{background:cashFlowNet>=0?'var(--success-bg)':'var(--danger-bg)',color:cashFlowNet>=0?'var(--success)':'var(--danger)'}"><i class="fas fa-balance-scale"></i></div>
+              <span class="cr-lbl" style="font-weight:700">Καθαρή Ροή</span>
+              <span class="cr-val" :style="{color:cashFlowNet>=0?'var(--success)':'var(--danger)',fontWeight:'800',fontSize:'1.05rem'}">{{ fmt(cashFlowNet) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 2: Πρόβλεψη -->
+        <div class="panel-card">
+          <div class="panel-hdr">
+            <span class="ptitle warn"><i class="fas fa-clock"></i> Πρόβλεψη & Υποχρεώσεις</span>
+          </div>
+          <div class="cash-hero">
+            <div class="cash-tot" :style="{color: forecastNet>=0?'var(--success)':'var(--danger)'}">{{ fmt(forecastNet) }}</div>
+            <div class="cash-lbl">Καθαρή Πρόβλεψη · αν όλα κλείσουν</div>
+          </div>
+          <div class="cash-analysis">{{ forecastAnalysis }}</div>
+          <div class="cash-bk">
+            <div class="cash-row" v-if="Number(kpis.urgentTotal)>0">
+              <div class="cr-ico" style="background:rgba(255,100,0,.15);color:#ff6400"><i class="fas fa-bolt"></i></div>
+              <span class="cr-lbl" style="color:#ff6400;font-weight:700">⚡ Επείγουσες</span>
               <span class="cr-val" style="color:#ff6400;font-weight:800">-{{ fmt(kpis.urgentTotal) }}</span>
             </div>
             <div class="cash-row">
               <div class="cr-ico" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-clock"></i></div>
               <span class="cr-lbl">Σύνολο Υποχρεώσεων</span>
-              <span class="cr-val" style="color:var(--danger)">-{{ fmt(totalUnpaid) }}</span>
+              <span class="cr-val" style="color:var(--danger)">-{{ fmt(kpis.unpaidTotal) }}</span>
             </div>
             <div style="height:1px;background:var(--border);margin:4px 0"></div>
-            <div class="cash-row avail" :style="{background: cashAvailable>=0?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'}">
-              <div class="cr-ico" :style="{background:cashAvailable>=0?'var(--success-bg)':'var(--danger-bg)',color:cashAvailable>=0?'var(--success)':'var(--danger)'}"><i class="fas fa-coins"></i></div>
-              <span class="cr-lbl" style="font-weight:700">Καθαρά Διαθέσιμα</span>
-              <span class="cr-val" :style="{color:cashAvailable>=0?'var(--success)':'var(--danger)',fontWeight:'800',fontSize:'1.05rem'}">{{ fmt(cashAvailable) }}</span>
+            <div class="cash-row avail" :style="{background: forecastNet>=0?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'}">
+              <div class="cr-ico" :style="{background:forecastNet>=0?'var(--success-bg)':'var(--danger-bg)',color:forecastNet>=0?'var(--success)':'var(--danger)'}"><i class="fas fa-chart-line"></i></div>
+              <span class="cr-lbl" style="font-weight:700">Καθαρή Πρόβλεψη</span>
+              <span class="cr-val" :style="{color:forecastNet>=0?'var(--success)':'var(--danger)',fontWeight:'800',fontSize:'1.05rem'}">{{ fmt(forecastNet) }}</span>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- ═══ KPI CARDS ═════════════════════════════════════════════ -->
-      <div class="kpi-grid">
-        <div class="kpi-card">
-          <div class="kpi-hdr">
-            <div class="kpi-ico" style="background:var(--accent-glow);color:var(--accent)"><i class="fas fa-wallet"></i></div>
-            <span class="kpi-chg down" v-if="Number(kpis.netBalance)<0">Αρνητικό</span>
-          </div>
-          <div class="kpi-lbl">Τρέχον Υπόλοιπο</div>
-          <div class="kpi-val" :style="{color:Number(kpis.netBalance)>=0?'var(--text-primary)':'var(--danger)'}">{{ fmt(kpis.netBalance) }}</div>
-          <div class="kpi-sub">Εισπράξεις − Πληρωμές</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-hdr"><div class="kpi-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-arrow-down"></i></div></div>
-          <div class="kpi-lbl">Εισπράξεις</div>
-          <div class="kpi-val" style="color:var(--success)">{{ fmt(kpis.totalIncome) }}</div>
-          <div class="kpi-sub">περίοδος</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-hdr"><div class="kpi-ico" style="background:var(--danger-bg);color:var(--danger)"><i class="fas fa-arrow-up"></i></div></div>
-          <div class="kpi-lbl">Πληρωμές</div>
-          <div class="kpi-val" style="color:var(--danger)">{{ fmt(kpis.totalExpense) }}</div>
-          <div class="kpi-sub">περίοδος</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-hdr">
-            <div class="kpi-ico" :style="{background:Number(kpis.netBalance)>=0?'var(--success-bg)':'var(--danger-bg)',color:Number(kpis.netBalance)>=0?'var(--success)':'var(--danger)'}"><i class="fas fa-balance-scale"></i></div>
-          </div>
-          <div class="kpi-lbl">Καθαρό</div>
-          <div class="kpi-val" :style="{color:Number(kpis.netBalance)>=0?'var(--success)':'var(--danger)'}">{{ fmt(kpis.netBalance) }}</div>
-          <div class="kpi-sub">Εισπράξεις − Πληρωμές</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-hdr"><div class="kpi-ico" style="background:rgba(255,100,0,.12);color:#ff6400"><i class="fas fa-bolt"></i></div></div>
-          <div class="kpi-lbl">⚡ Εκκρεμείς</div>
-          <div class="kpi-val" style="color:#ff6400">{{ fmt(kpis.urgentTotal) }}</div>
-          <div class="kpi-sub">απλήρωτες</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-hdr"><div class="kpi-ico" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-clock"></i></div></div>
-          <div class="kpi-lbl">Σύνολο Υποχρεώσεων</div>
-          <div class="kpi-val" style="color:var(--warning)">{{ fmt(kpis.unpaidTotal) }}</div>
-          <div class="kpi-sub">unpaid + urgent</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-hdr"><div class="kpi-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-university"></i></div></div>
-          <div class="kpi-lbl">Τράπεζες</div>
-          <div class="kpi-val" style="color:var(--success)">{{ fmt(bankTotal) }}</div>
-          <div class="kpi-sub">{{ banks.length }} λογαριασμοί</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-hdr">
-            <div class="kpi-ico" :style="{background:cashAvailable>=0?'var(--success-bg)':'var(--danger-bg)',color:cashAvailable>=0?'var(--success)':'#ff6400'}"><i class="fas fa-coins"></i></div>
-          </div>
-          <div class="kpi-lbl">Ταμειακά Διαθέσιμα</div>
-          <div class="kpi-val" :style="{color:cashAvailable>=0?'var(--success)':'#ff6400'}">{{ fmt(cashAvailable) }}</div>
-          <div class="kpi-sub">Τράπεζες − Εκκρεμείς</div>
-        </div>
       </div>
 
       <!-- ═══ CHARTS ROW 1: Bar (full) ══════════════════════════════ -->
@@ -812,6 +873,18 @@ onUnmounted(() => {
 .bamt { font-family:var(--font-mono); font-size:.95rem; font-weight:600; }
 .bdt { font-size:.7rem; color:var(--text-muted); }
 
+/* Cash Analysis (Session #43) */
+.cash-analysis {
+  margin: 4px 16px 12px;
+  padding: 10px 12px;
+  background: rgba(99, 102, 241, 0.06);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  font-style: italic;
+}
 /* Reconciliation */
 .recon-grid { display:flex; flex-direction:column; gap:6px; }
 .recon-row { display:flex; align-items:center; justify-content:space-between; padding:6px 2px; }

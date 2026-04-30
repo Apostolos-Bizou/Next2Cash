@@ -1,0 +1,268 @@
+// patches/combined-v5.cjs
+// Combined: v3 (analyses) + v4 (scenarios panel) atomic patch
+// Starting from v2 state (panels exist, no analyses, old Ταμειακά Διαθέσιμα)
+
+const fs = require('fs');
+const path = require('path');
+
+const FILE = path.join(__dirname, '..', 'frontend', 'src', 'views', 'DashboardView.vue');
+
+console.log('📄 Reading:', FILE);
+const original = fs.readFileSync(FILE, 'utf8');
+const originalSize = original.length;
+console.log(`   Original: ${originalSize} bytes`);
+
+if (originalSize !== 43417) {
+  console.error(`❌ Expected 46791 bytes (v2 state), got ${originalSize}. Aborting — wrong starting state.`);
+  process.exit(1);
+}
+
+// =====================================================
+// PATCH A: Add all computed properties (v3 + v4)
+// =====================================================
+const oldComp = `const forecastNet = computed(() => Number(kpis.value.netBalance) || 0)`;
+const newComp = `const forecastNet = computed(() => Number(kpis.value.netBalance) || 0)
+
+  // Session #43 — Cash flow analysis (paid-only)
+  const cashFlowAnalysis = computed(() => {
+    const inc = Number(reconciliation.value.paidIncome) || 0
+    const exp = Number(reconciliation.value.paidExpense) || 0
+    const net = cashFlowNet.value
+    if (net > 0) return \`Από τα \${fmt(inc)} που εισπράχθηκαν αφαιρέθηκαν \${fmt(exp)} σε πληρωμές. Έμεινε καθαρό υπόλοιπο \${fmt(net)} από τις πραγματικές κινήσεις. 💡 Διατηρήστε αυτή τη ροή για ομαλή λειτουργία.\`
+    if (net < 0) return \`Πληρώθηκαν περισσότερα (\${fmt(exp)}) από όσα εισπράχθηκαν (\${fmt(inc)}). Προέκυψε έλλειμμα \${fmt(Math.abs(net))} από τις πραγματικές κινήσεις. ⚠️ Ελέγξτε τις δαπάνες ή επιταχύνετε τις εισπράξεις.\`
+    return \`Εισπράξεις και πληρωμές ισοσκελίζονται σε \${fmt(inc)}. Καμία καθαρή κίνηση στην περίοδο. 💡 Παρακολουθήστε αν αυτή η σταθερότητα συνεχιστεί.\`
+  })
+
+  // Session #43 — Forecast analysis
+  const forecastAnalysis = computed(() => {
+    const unpaid = Number(kpis.value.unpaidTotal) || 0
+    const urgent = Number(kpis.value.urgentTotal) || 0
+    const net = forecastNet.value
+    if (net > 0) return \`Αν εισπραχθούν τα αναμενόμενα και πληρωθούν οι \${fmt(unpaid)} σε υποχρεώσεις, θα προκύψει πλεόνασμα \${fmt(net)}. Η οικονομική θέση παραμένει υγιής. 💡 Καλή στιγμή για στρατηγικές επενδύσεις.\`
+    if (net < 0) {
+      const um = urgent > 0 ? \` με \${fmt(urgent)} επείγουσες\` : ''
+      return \`Με τα τρέχοντα δεδομένα, αν πληρωθούν όλες οι \${fmt(unpaid)} υποχρεώσεις\${um}, θα προκύψει έλλειμμα \${fmt(Math.abs(net))}. Η περίοδος κλείνει αρνητικά. ⚠️ Απαιτείται είτε επιπλέον εισπράξεις είτε αναδιάταξη πληρωμών.\`
+    }
+    return \`Έσοδα και υποχρεώσεις ισοσκελίζονται ακριβώς. Δεν υπάρχει περιθώριο για απρόοπτα. 💡 Ασφαλέστερο να δημιουργηθεί αποθεματικό.\`
+  })
+
+  // Session #43 — Cash position scenarios (3-step)
+  const cashAfterUrgent = computed(() => bankTotal.value - (Number(kpis.value.urgentTotal) || 0))
+  const cashAfterAll    = computed(() => bankTotal.value - (Number(kpis.value.unpaidTotal) || 0))
+  const cashShortfall   = computed(() => {
+    const a = cashAfterAll.value
+    return a < 0 ? Math.abs(a) : 0
+  })
+  const cashScenarioAnalysis = computed(() => {
+    const bank = bankTotal.value
+    const unpaid = Number(kpis.value.unpaidTotal) || 0
+    const sf = cashShortfall.value
+    if (sf > 0) return \`Με \${fmt(bank)} στο ταμείο και \${fmt(unpaid)} σε συνολικές υποχρεώσεις, λείπουν \${fmt(sf)} για να καλυφθούν όλα. ⚠️ Απαιτείται είσπραξη ή αναδιάταξη πληρωμών.\`
+    if (unpaid > 0) {
+      const surplus = bank - unpaid
+      return \`Με \${fmt(bank)} στο ταμείο μπορούν να καλυφθούν οι \${fmt(unpaid)} σε υποχρεώσεις και να μείνουν \${fmt(surplus)} αποθεματικό. 💡 Η ταμειακή θέση είναι υγιής.\`
+    }
+    return \`Δεν υπάρχουν εκκρεμείς υποχρεώσεις. Διαθέσιμο ταμείο \${fmt(bank)}. 💡 Καλή στιγμή για στρατηγικό σχεδιασμό.\`
+  })`;
+
+if (!original.includes(oldComp)) {
+  console.error('❌ forecastNet computed not found.');
+  process.exit(1);
+}
+let patched = original.replace(oldComp, newComp);
+console.log('✅ A: All computed properties added (analyses + scenarios)');
+
+// =====================================================
+// PATCH B: Replace "Ταμειακά Διαθέσιμα" panel
+// =====================================================
+const oldTamPanel = `<!-- Ταμειακά Διαθέσιμα -->
+        <div class="panel-card">
+          <div class="panel-hdr">
+            <span class="ptitle succ"><i class="fas fa-coins"></i> Ταμειακά Διαθέσιμα</span>
+          </div>
+          <div class="cash-hero">
+            <div class="cash-tot" :style="{color: cashAvailable>=0?'var(--success)':'#ff6400'}">{{ fmt(cashAvailable) }}</div>
+            <div class="cash-lbl">Τράπεζες μείον Εκκρεμείς</div>
+          </div>
+          <div class="cash-bk">
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--accent-glow);color:var(--accent)"><i class="fas fa-university"></i></div>
+              <span class="cr-lbl">Τράπεζες</span>
+              <span class="cr-val">{{ fmt(bankTotal) }}</span>
+            </div>
+            <div class="cash-row urg" v-if="Number(kpis.urgentTotal)>0">
+              <div class="cr-ico" style="background:rgba(255,100,0,.15);color:#ff6400"><i class="fas fa-bolt"></i></div>
+              <span class="cr-lbl" style="color:#ff6400;font-weight:700">⚡ Εκκρεμείς</span>
+              <span class="cr-val" style="color:#ff6400;font-weight:800">-{{ fmt(kpis.urgentTotal) }}</span>
+            </div>
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-clock"></i></div>
+              <span class="cr-lbl">Σύνολο Υποχρεώσεων</span>
+              <span class="cr-val" style="color:var(--danger)">-{{ fmt(totalUnpaid) }}</span>
+            </div>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <div class="cash-row avail" :style="{background: cashAvailable>=0?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'}">
+              <div class="cr-ico" :style="{background:cashAvailable>=0?'var(--success-bg)':'var(--danger-bg)',color:cashAvailable>=0?'var(--success)':'var(--danger)'}"><i class="fas fa-coins"></i></div>
+              <span class="cr-lbl" style="font-weight:700">Καθαρά Διαθέσιμα</span>
+              <span class="cr-val" :style="{color:cashAvailable>=0?'var(--success)':'var(--danger)',fontWeight:'800',fontSize:'1.05rem'}">{{ fmt(cashAvailable) }}</span>
+            </div>
+          </div>
+        </div>`;
+
+const newTamPanel = `<!-- Ταμειακά Διαθέσιμα — 3 Σενάρια (Session #43) -->
+        <div class="panel-card">
+          <div class="panel-hdr">
+            <span class="ptitle succ"><i class="fas fa-coins"></i> Ταμειακά Διαθέσιμα</span>
+          </div>
+          <div class="cash-hero">
+            <div class="cash-tot" :style="{color: bankTotal>=0?'var(--success)':'var(--danger)'}">{{ fmt(bankTotal) }}</div>
+            <div class="cash-lbl">Ταμείο σήμερα</div>
+          </div>
+          <div class="cash-bk">
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--accent-glow);color:var(--accent)"><i class="fas fa-university"></i></div>
+              <span class="cr-lbl">1️⃣ Σήμερα (ταμείο)</span>
+              <span class="cr-val">{{ fmt(bankTotal) }}</span>
+            </div>
+            <div class="cash-row" v-if="Number(kpis.urgentTotal)>0">
+              <div class="cr-ico" style="background:rgba(255,100,0,.15);color:#ff6400"><i class="fas fa-bolt"></i></div>
+              <span class="cr-lbl">2️⃣ Μετά τις επείγουσες</span>
+              <span class="cr-val" :style="{color:cashAfterUrgent>=0?'var(--success)':'var(--danger)'}">{{ fmt(cashAfterUrgent) }}</span>
+            </div>
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--warning-bg);color:var(--warning)"><i class="fas fa-clock"></i></div>
+              <span class="cr-lbl">3️⃣ Μετά από όλα</span>
+              <span class="cr-val" :style="{color:cashAfterAll>=0?'var(--success)':'var(--danger)',fontWeight:'700'}">{{ fmt(cashAfterAll) }}</span>
+            </div>
+            <div style="height:1px;background:var(--border);margin:4px 0"></div>
+            <div class="cash-row avail" v-if="cashShortfall>0" style="background:rgba(239,68,68,.08)">
+              <div class="cr-ico" style="background:var(--danger-bg);color:var(--danger)"><i class="fas fa-hand-holding-usd"></i></div>
+              <span class="cr-lbl" style="font-weight:700;color:var(--danger)">💸 Λείπουν</span>
+              <span class="cr-val" style="color:var(--danger);font-weight:800;font-size:1.05rem">{{ fmt(cashShortfall) }}</span>
+            </div>
+            <div class="cash-row avail" v-else style="background:rgba(16,185,129,.08)">
+              <div class="cr-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-check"></i></div>
+              <span class="cr-lbl" style="font-weight:700;color:var(--success)">✅ Επαρκή</span>
+              <span class="cr-val" style="color:var(--success);font-weight:800;font-size:1.05rem">{{ fmt(cashAfterAll) }}</span>
+            </div>
+          </div>
+          <div class="cash-analysis">{{ cashScenarioAnalysis }}</div>
+        </div>`;
+
+if (!patched.includes(oldTamPanel)) {
+  console.error('❌ Old Ταμειακά Διαθέσιμα panel not found.');
+  process.exit(1);
+}
+patched = patched.replace(oldTamPanel, newTamPanel);
+console.log('✅ B: Ταμειακά Διαθέσιμα panel replaced (3 scenarios)');
+
+// =====================================================
+// PATCH C: Add analysis to Panel 1 (Ταμειακή Κίνηση)
+// =====================================================
+const oldP1 = `<div class="cash-lbl">Καθαρή Ροή · πραγματικά πληρωμένα</div>
+          </div>
+          <div class="cash-bk">
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-arrow-down"></i></div>
+              <span class="cr-lbl">Εισπράχθηκαν</span>`;
+
+const newP1 = `<div class="cash-lbl">Καθαρή Ροή · πραγματικά πληρωμένα</div>
+          </div>
+          <div class="cash-analysis">{{ cashFlowAnalysis }}</div>
+          <div class="cash-bk">
+            <div class="cash-row">
+              <div class="cr-ico" style="background:var(--success-bg);color:var(--success)"><i class="fas fa-arrow-down"></i></div>
+              <span class="cr-lbl">Εισπράχθηκαν</span>`;
+
+if (!patched.includes(oldP1)) {
+  console.error('❌ Panel 1 anchor not found.');
+  process.exit(1);
+}
+patched = patched.replace(oldP1, newP1);
+console.log('✅ C: Panel 1 analysis added');
+
+// =====================================================
+// PATCH D: Add analysis to Panel 2 (Πρόβλεψη)
+// =====================================================
+const oldP2 = `<div class="cash-lbl">Καθαρή Πρόβλεψη · αν όλα κλείσουν</div>
+          </div>
+          <div class="cash-bk">
+            <div class="cash-row" v-if="Number(kpis.urgentTotal)>0">`;
+
+const newP2 = `<div class="cash-lbl">Καθαρή Πρόβλεψη · αν όλα κλείσουν</div>
+          </div>
+          <div class="cash-analysis">{{ forecastAnalysis }}</div>
+          <div class="cash-bk">
+            <div class="cash-row" v-if="Number(kpis.urgentTotal)>0">`;
+
+if (!patched.includes(oldP2)) {
+  console.error('❌ Panel 2 anchor not found.');
+  process.exit(1);
+}
+patched = patched.replace(oldP2, newP2);
+console.log('✅ D: Panel 2 analysis added');
+
+// =====================================================
+// PATCH E: Add CSS for .cash-analysis
+// =====================================================
+const oldCss = `/* Reconciliation */`;
+const newCss = `/* Cash Analysis (Session #43) */
+.cash-analysis {
+  margin: 4px 16px 12px;
+  padding: 10px 12px;
+  background: rgba(99, 102, 241, 0.06);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+/* Reconciliation */`;
+
+if (!patched.includes(oldCss)) {
+  console.error('❌ CSS anchor not found.');
+  process.exit(1);
+}
+patched = patched.replace(oldCss, newCss);
+console.log('✅ E: CSS added');
+
+// =====================================================
+// Sanity checks
+// =====================================================
+const newSize = patched.length;
+console.log(`\n📊 Size: ${originalSize} → ${newSize} (+${newSize - originalSize})`);
+
+const checks = {
+  'cashFlowAnalysis': /const cashFlowAnalysis = computed/.test(patched),
+  'forecastAnalysis': /const forecastAnalysis = computed/.test(patched),
+  'cashAfterUrgent': /const cashAfterUrgent\s+= computed/.test(patched),
+  'cashAfterAll': /const cashAfterAll\s+= computed/.test(patched),
+  'cashShortfall': /const cashShortfall\s+= computed/.test(patched),
+  'cashScenarioAnalysis': /const cashScenarioAnalysis = computed/.test(patched),
+  'Ταμείο σήμερα': /Ταμείο σήμερα/.test(patched),
+  '1️⃣ Σήμερα': /1️⃣ Σήμερα/.test(patched),
+  '2️⃣ Μετά': /2️⃣ Μετά/.test(patched),
+  '3️⃣ Μετά': /3️⃣ Μετά/.test(patched),
+  '💸 Λείπουν': /💸 Λείπουν/.test(patched),
+  'No old "Καθαρά Διαθέσιμα"': !/Καθαρά Διαθέσιμα/.test(patched),
+  'No "Τράπεζες μείον"': !/Τράπεζες μείον/.test(patched),
+  '3 cash-analysis divs': (patched.match(/<div class="cash-analysis">/g) || []).length === 3,
+  'CSS rule': /\.cash-analysis \{/.test(patched),
+};
+
+console.log('\n🔍 Checks:');
+let pass = true;
+for (const [k, v] of Object.entries(checks)) {
+  console.log(`   ${v ? '✅' : '❌'} ${k}`);
+  if (!v) pass = false;
+}
+
+if (!pass) {
+  console.error('\n❌ FAIL — not writing.');
+  process.exit(1);
+}
+
+fs.writeFileSync(FILE, patched, 'utf8');
+console.log(`\n✅ Written ${newSize} bytes`);
+console.log('🎉 Combined patch v5 complete.');
