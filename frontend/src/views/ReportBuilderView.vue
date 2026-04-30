@@ -352,11 +352,12 @@ const exportPDF = () => {
   </div>
   <div class="supplier-section"><div class="supplier-label">Προμηθευτής / Αντισυμβαλλόμενος</div><div class="supplier-name">${title}</div></div>
   <div class="summary">
+    <div class="sum-item"><div class="sum-label">Κινήσεις</div><div class="sum-value" style="color:#162B40">${allTxns.length}<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${expData.length} έξοδα / ${incData.length} έσοδα</div></div></div>
+    <div class="sum-item"><div class="sum-label">Πληρωμές</div><div class="sum-value" style="color:#e74c3c">${fmtPdf(totalExp)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${expData.length} κινήσεις</div></div></div>
+    <div class="sum-item"><div class="sum-label">Πληρωμένο</div><div class="sum-value" style="color:#27ae60">${fmtPdf(expPaidAmt)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${expPaid.length} κινήσεις</div></div></div>
     <div class="sum-item"><div class="sum-label">Εισπράξεις</div><div class="sum-value" style="color:#27ae60">${fmtPdf(totalInc)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${incData.length} κινήσεις</div></div></div>
-    <div class="sum-item"><div class="sum-label">Εξοφλημένες</div><div class="sum-value" style="color:#2E75B6">${fmtPdf(expPaidAmt)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${expPaid.length} κινήσεις</div></div></div>
-    <div class="sum-item"><div class="sum-label">Υπόλοιπο</div><div class="sum-value" style="color:${kpiBalance>=0?'#27ae60':'#e74c3c'}">${kpiBalance>=0?'+':'−'} ${fmtPdf(kpiBalance)} €</div></div>
-    <div class="sum-item"><div class="sum-label">Εκκρεμότητες</div><div class="sum-value" style="color:${expUnpaidAmt>0?'#ff6400':'#27ae60'}">${fmtPdf(expUnpaidAmt)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${expUnpaid.length} κινήσεις</div></div></div>
-    <div class="sum-item" style="background:#f0faf4"><div class="sum-label" style="color:#27ae60">Ταμειακά Διαθέσιμα</div><div class="sum-value" style="color:${kpiCash>=0?'#27ae60':'#e74c3c'}">${kpiCash>=0?'+':'−'} ${fmtPdf(kpiCash)} €</div></div>
+    <div class="sum-item"><div class="sum-label">Υπόλοιπο</div><div class="sum-value" style="color:${expUnpaidAmt>0?'#e74c3c':'#27ae60'}">${fmtPdf(expUnpaidAmt)} €<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${expUnpaid.length} απλήρωτες</div></div></div>
+    <div class="sum-item"><div class="sum-label">Απλήρωτες</div><div class="sum-value" style="color:${expUnpaid.length>0?'#ff6400':'#27ae60'}">${expUnpaid.length}<div style="font-size:9px;font-weight:400;color:#888;margin-top:2px">${fmtPdf(expUnpaidAmt)} €</div></div></div>
   </div>
   <table><thead><tr><th>ID</th><th>Ημ/νία</th><th>Περιγραφή</th><th>Κατηγορία</th><th>Μέθοδος</th><th style="text-align:right">Ποσό</th><th style="text-align:right">Πληρωμένο</th><th style="text-align:right">Υπόλοιπο</th><th>Ημ/νία Πληρωμής</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
   <div class="footer"><span>CashControl · Next2Me Financial System</span><span>Σύνολο: ${allTxns.length} κινήσεις · ${today}</span></div>
