@@ -309,7 +309,7 @@ const exportPDF = () => {
       <td style="text-align:right;white-space:nowrap;font-family:monospace">${fmtPdf(t.amount)} €</td>
       <td style="text-align:right;white-space:nowrap;font-family:monospace;color:#27ae60">${paid > 0 ? fmtPdf(paid) + ' €' : '—'}</td>
       <td style="text-align:right;white-space:nowrap;font-family:monospace;color:${rem > 0 ? '#e74c3c' : '#27ae60'}">${fmtPdf(rem)} €</td>
-      <td style="white-space:nowrap;font-size:9px">${dispDate(t.paymentDate) || '—'}</td>
+      <td style="white-space:nowrap;font-size:9px">${(t.paymentStatus === 'paid' || t.paymentStatus === 'received') ? dispDate(t.paymentDate) : '—'}</td>
       <td><span style="background:${sc}22;color:${sc};border:1px solid ${sc}44;padding:2px 8px;border-radius:10px;font-size:8px;font-weight:700;white-space:nowrap">${sl}</span></td>
     </tr>`
   }).join('')
