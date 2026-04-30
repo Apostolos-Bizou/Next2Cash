@@ -370,48 +370,112 @@ const exportPDF = () => {
 
 const exportExcel = () => alert('Export Excel — θα συνδεθεί στη φάση 2')
 
-/* ── Download section files ── */
+/* ── Download section files (client-side ZIP via JSZip CDN) ── */
+let _jsZipPromise = null
+const _loadJSZip = () => {
+  if (_jsZipPromise) return _jsZipPromise
+  _jsZipPromise = new Promise((resolve, reject) => {
+    if (window.JSZip) return resolve(window.JSZip)
+    const s = document.createElement('script')
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
+    s.onload = () => resolve(window.JSZip)
+    s.onerror = () => reject(new Error('JSZip CDN load failed'))
+    document.head.appendChild(s)
+  })
+  return _jsZipPromise
+}
+
 const downloadSectionFiles = async (section) => {
+  if (!section || !section.items || section.items.length === 0) {
+    alert('Δεν υπάρχουν κινήσεις σε αυτό το section.')
+    return
+  }
+
   const txnIds = section.items.map(i => i.id).filter(id => id > 0)
-  if (txnIds.length === 0) { alert('No files to download'); return }
+  if (txnIds.length === 0) {
+    alert('Δεν βρέθηκαν IDs συναλλαγών.')
+    return
+  }
 
-  const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
-  const entityId = ENTITY_MAP[entityKey]
-
-  // Collect all blob file IDs from transactions
-  const blobIds = []
-  for (const item of section.items) {
-    if (item.blobFileIds) {
-      item.blobFileIds.split(',').forEach(id => { if (id.trim()) blobIds.push(id.trim()) })
+  // Step 1: gather all SAS URLs from /by-transaction/{id}
+  const allFiles = []
+  for (const id of txnIds) {
+    try {
+      const res = await api.get('/api/documents/by-transaction/' + id)
+      const files = res.data?.data || []
+      files.forEach(f => {
+        if (f.downloadUrl && f.fileName) {
+          allFiles.push({ url: f.downloadUrl, name: f.fileName, txnId: id })
+        }
+      })
+    } catch (err) {
+      console.warn('[downloadSectionFiles] tx#' + id + ' failed:', err)
     }
   }
 
-  if (blobIds.length === 0) {
-    // Try fetching documents for each transaction
-    let found = 0
-    for (const id of txnIds) {
-      try {
-        const res = await api.get('/api/documents/by-transaction/' + id, { params: { entityId } })
-        const docs = res.data?.data || res.data || []
-        if (Array.isArray(docs)) {
-          for (const doc of docs) {
-            if (doc.blobPath || doc.id) {
-              found++
-              // Download each document
-              const downloadUrl = '/api/documents/' + doc.id + '/download?entityId=' + entityId
-              const link = document.createElement('a')
-              link.href = api.defaults.baseURL + downloadUrl
-              link.setAttribute('download', doc.fileName || 'document')
-              link.setAttribute('target', '_blank')
-              document.body.appendChild(link)
-              link.click()
-              document.body.removeChild(link)
-            }
-          }
-        }
-      } catch (err) { console.warn('Download failed for txn', id, err) }
+  if (allFiles.length === 0) {
+    alert('Δεν βρέθηκαν αρχεία για τις κινήσεις του section.')
+    return
+  }
+
+  // Step 2: load JSZip + fetch all blobs in parallel
+  let JSZip
+  try {
+    JSZip = await _loadJSZip()
+  } catch (err) {
+    alert('Αποτυχία φόρτωσης JSZip. Δοκιμάστε ξανά.')
+    return
+  }
+
+  const zip = new JSZip()
+  const usedNames = new Map()
+
+  const fetchPromises = allFiles.map(async (f) => {
+    try {
+      const r = await fetch(f.url)
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      const blob = await r.blob()
+      let name = f.name
+      const count = usedNames.get(name) || 0
+      if (count > 0) {
+        const dot = name.lastIndexOf('.')
+        const base = dot > 0 ? name.substring(0, dot) : name
+        const ext = dot > 0 ? name.substring(dot) : ''
+        name = base + '_' + f.txnId + ext
+      }
+      usedNames.set(f.name, count + 1)
+      zip.file(name, blob)
+      return true
+    } catch (err) {
+      console.warn('[downloadSectionFiles] fetch failed for ' + f.name + ':', err)
+      return false
     }
-    if (found === 0) alert('No attached files found')
+  })
+
+  const results = await Promise.all(fetchPromises)
+  const successCount = results.filter(Boolean).length
+
+  if (successCount === 0) {
+    alert('Αποτυχία λήψης αρχείων από το Azure Blob Storage.')
+    return
+  }
+
+  const zipBlob = await zip.generateAsync({ type: 'blob' })
+  const sectionLabel = (section.label || 'section').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)
+  const today = new Date().toISOString().split('T')[0]
+  const zipName = 'Report_' + sectionLabel + '_' + today + '.zip'
+
+  const url = URL.createObjectURL(zipBlob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = zipName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  if (successCount < allFiles.length) {
+    console.warn('[downloadSectionFiles] ' + successCount + '/' + allFiles.length + ' files included')
   }
 }
 
