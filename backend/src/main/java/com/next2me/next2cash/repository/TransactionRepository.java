@@ -31,6 +31,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     Page<Transaction> findByEntityIdAndRecordStatusAndDocDateBetweenOrderByDocDateDesc(
         UUID entityId, String recordStatus, LocalDate from, LocalDate to, Pageable pageable);
 
+    /**
+     * Session #46 — Non-paginated date-range query for /api/cashflow.
+     * Returns all matching transactions as a List (no Pageable needed
+     * because CashFlowService merges with payments in-memory).
+     */
+    List<Transaction> findByEntityIdAndRecordStatusAndDocDateBetween(
+        UUID entityId, String recordStatus, LocalDate from, LocalDate to);
+
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.type = 'income' AND t.docDate BETWEEN :from AND :to")
@@ -169,15 +177,15 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     @Query("SELECT MAX(t.entityNumber) FROM Transaction t WHERE t.entityId = :entityId")
     Integer findMaxEntityNumberByEntityId(@Param("entityId") UUID entityId);
 
-    // Phase H (Karteles) β€” all active transactions for entity, ordered by counterparty (for grouping in service layer)
+    // Phase H (Karteles) — all active transactions for entity, ordered by counterparty (for grouping in service layer)
     List<Transaction> findByEntityIdAndRecordStatusOrderByCounterpartyAscDocDateDesc(
         UUID entityId, String recordStatus);
 
-    // Phase H v2 β€” all active transactions for entity, ordered by date DESC (for card rule engine).
+    // Phase H v2 — all active transactions for entity, ordered by date DESC (for card rule engine).
     List<Transaction> findByEntityIdAndRecordStatusOrderByDocDateDesc(
         UUID entityId, String recordStatus);
 
-    // Phase H (Karteles) β€” all active transactions of a specific counterparty, for detail view
+    // Phase H (Karteles) — all active transactions of a specific counterparty, for detail view
     List<Transaction> findByEntityIdAndCounterpartyAndRecordStatusOrderByDocDateDesc(
         UUID entityId, String counterparty, String recordStatus);
 }

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,6 +17,8 @@ import java.util.UUID;
  * filtered in Java alongside transactions via CardService's rule engine.
  * Rule matching happens on the parent transaction, not on the payment itself,
  * so we only need a simple "find all for entity" query here.
+ *
+ * Session #46 — added findByEntityIdAndPaymentDateBetween for /api/cashflow.
  */
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Integer> {
@@ -44,4 +47,12 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
            "WHERE p.entityId = :entityId AND p.transactionId IS NULL " +
            "ORDER BY p.paymentDate DESC, p.id DESC")
     List<Payment> findOrphansByEntityId(@Param("entityId") UUID entityId);
+
+    /**
+     * Session #46 — All payments for an entity within a payment-date range.
+     * Used by CashFlowService to merge payment events with transaction events
+     * for the /api/cashflow endpoint.
+     */
+    List<Payment> findByEntityIdAndPaymentDateBetween(
+        UUID entityId, LocalDate from, LocalDate to);
 }
