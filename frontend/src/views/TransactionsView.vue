@@ -80,31 +80,55 @@ function closeAttachments() { attachmentsState.value = { visible: false, transac
 function hasAttachments(t) { return !!t.blobFileIds && String(t.blobFileIds).trim() !== "" }
 
 async function loadTransactions() {
-  loading.value = true
-  error.value   = null
-  try {
-    const params = { entityId: entityId.value, page: page.value, perPage: perPage.value }
-    // Option 2 behavior: when search is active, backend ignores date/type/status filters
-    // and searches the ENTIRE history across 8 fields.
-    // Multi-word search: send first word to backend for pre-filtering,
-    // then universalMatch filters client-side with ALL words
-    const searchWords = (searchQuery.value || '').trim().split(/\s+/).filter(Boolean)
-    if (searchWords.length > 0) {
-      params.search = searchWords[0]
-      params.perPage = 200  // fetch more results for client-side filtering
-    } else {
-      if (dateFrom.value)       params.from   = dateFrom.value
-      if (dateTo.value)         params.to     = dateTo.value
-      if (selectedType.value)   params.type   = selectedType.value
-      if (selectedStatus.value) params.status = selectedStatus.value
-    }
-    const res = await api.get('/api/transactions', { params })
-    if (res.data.success) {
-      transactions.value = res.data.data  || []
-      total.value        = res.data.total || 0
-      pages.value        = res.data.pages || 0
-    }
-  } catch (e) {
+      loading.value = true
+      error.value   = null
+      try {
+        const searchWords = (searchQuery.value || '').trim().split(/\s+/).filter(Boolean)
+        const isSearch = searchWords.length > 0
+
+        // Cashflow mode: BOTH dates set, no search, no type/status filters.
+        const isCashflowMode = !isSearch
+                            && dateFrom.value
+                            && dateTo.value
+                            && !selectedType.value
+                            && !selectedStatus.value
+
+        if (isCashflowMode) {
+          try {
+            const cfParams = {
+              entityId: entityId.value,
+              from: dateFrom.value,
+              to: dateTo.value
+            }
+            const cfRes = await api.get('/api/cashflow', { params: cfParams })
+            const events = (cfRes.data && cfRes.data.events) || []
+            transactions.value = events.map(mapCashflowEventToRow)
+            total.value = events.length
+            pages.value = 0
+            return
+          } catch (cfErr) {
+            console.warn('cashflow endpoint failed, falling back to /api/transactions', cfErr)
+          }
+        }
+
+        // Standard mode: /api/transactions
+        const params = { entityId: entityId.value, page: page.value, perPage: perPage.value }
+        if (isSearch) {
+          params.search = searchWords[0]
+          params.perPage = 200
+        } else {
+          if (dateFrom.value)       params.from   = dateFrom.value
+          if (dateTo.value)         params.to     = dateTo.value
+          if (selectedType.value)   params.type   = selectedType.value
+          if (selectedStatus.value) params.status = selectedStatus.value
+        }
+        const res = await api.get('/api/transactions', { params })
+        if (res.data.success) {
+          transactions.value = res.data.data  || []
+          total.value        = res.data.total || 0
+          pages.value        = res.data.pages || 0
+        }
+      } catch (e) {
     error.value = 'Σφάλμα φόρτωσης'
     console.error(e)
   } finally {
@@ -112,7 +136,29 @@ async function loadTransactions() {
   }
 }
 
-function applyFilters() { page.value = 0; loadTransactions() }
+function mapCashflowEventToRow(ev) {
+      const isPayment = ev.eventType === 'payment'
+      const inflow = Number(ev.inflow || 0)
+      return {
+        id: isPayment ? 'pay-' + ev.paymentId : ev.transactionId,
+        entityNumber: ev.transactionId,
+        docDate: ev.date,
+        description: ev.description,
+        category: ev.category,
+        account: ev.account,
+        subcategory: ev.subcategory,
+        paymentMethod: ev.paymentMethod,
+        amount: ev.amount,
+        type: inflow > 0 ? 'income' : 'expense',
+        paymentStatus: isPayment ? 'paid' : (ev.paymentStatus || 'unpaid'),
+        blobFileIds: ev.blobFileIds,
+        _isPaymentRow: isPayment,
+        _paymentId: isPayment ? ev.paymentId : null,
+        _txnRef: ev.transactionId
+      }
+    }
+
+    function applyFilters() { page.value = 0; loadTransactions() }
 function goToPage(p)    { page.value = p; loadTransactions() }
 function resetFilters() {
   dateFrom.value = ''; dateTo.value = ''
@@ -306,7 +352,8 @@ function clearSearch() {
 }
 
 const kpis = computed(() => {
-  const txns = transactions.value
+  // Exclude payment rows from KPI totals (avoid double-counting)
+  const txns = transactions.value.filter(t => !t._isPaymentRow)
   const income  = txns.filter(t => t.type === 'income').reduce((s,t) => s + Number(t.amount||0), 0)
   const expense = txns.filter(t => t.type === 'expense').reduce((s,t) => s + Number(t.amount||0), 0)
   const unpaid  = txns.filter(t => t.paymentStatus === 'unpaid' || t.paymentStatus === 'urgent').length
@@ -463,7 +510,7 @@ onUnmounted(() => {
             </td>
           </tr>
           <tr v-for="t in filteredTransactions" :key="t.id"
-              :class="t.paymentStatus === 'urgent' ? 'row-urgent' : ''">
+              :class="[t.paymentStatus === 'urgent' ? 'row-urgent' : '', t._isPaymentRow ? 'row-payment' : '']">
             <td class="id-col">#{{ t.entityNumber ?? t.id }}</td>
             <td class="date-col">{{ fmtDate(t.docDate) }}</td>
             <td class="desc-col" :title="t.description">{{ (t.description || '—').substring(0,40) }}</td>
@@ -475,7 +522,7 @@ onUnmounted(() => {
             <td><span class="status-badge" :class="statusClass(t.paymentStatus)">{{ statusLabel(t.paymentStatus) }}</span></td>
             <td class="actions">
               <button
-                v-if="canMarkPaid(t)"
+                v-if="canMarkPaid(t) && !t._isPaymentRow"
                 class="btn-action btn-mark-paid-sm"
                 @click="openMarkPaid(t)">
                 ✓ Εξόφληση
@@ -486,10 +533,10 @@ onUnmounted(() => {
                 :style="hasAttachments(t) ? {} : { opacity: 0.45 }">
                 📎
               </button>
-              <button v-if="canModify" class="icon-btn" title="Επεξεργασία" @click="openEdit(t)">
+              <button v-if="canModify && !t._isPaymentRow" class="icon-btn" title="Επεξεργασία" @click="openEdit(t)">
                 <i class="fas fa-edit"></i>
               </button>
-              <button v-if="canModify" class="icon-btn icon-danger" title="Διαγραφή" @click="openDelete(t)">
+              <button v-if="canModify && !t._isPaymentRow" class="icon-btn icon-danger" title="Διαγραφή" @click="openDelete(t)">
                 <i class="fas fa-trash"></i>
               </button>
             </td>
@@ -724,4 +771,15 @@ onUnmounted(() => {
 .btn-mark-paid-sm:hover { background: #4FC3A1; color: #0d1f2d; }
 .btn-attach-sm { color: #9aa5b1; font-size: 0.85rem; }
 .btn-attach-sm:hover { border-color: #4A9EFF; color: #4A9EFF; }
+
+/* Cashflow payment rows: subtle visual distinction */
+.row-payment {
+  background: rgba(59, 130, 246, 0.04);
+  border-left: 2px solid rgba(59, 130, 246, 0.4);
+}
+.row-payment td.id-col::before {
+  content: "» ";
+  opacity: 0.6;
+}
+
 </style>

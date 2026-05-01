@@ -66,10 +66,14 @@ public class CashFlowService {
         }
 
         // 2. Payment events
-        // Quick lookup of parent docDate by txn id (used for same-day dedup)
-        Map<Integer, LocalDate> txnDocDates = txns.stream()
+        // Quick lookup of parent transaction by id (used for same-day dedup
+        // AND for sourcing the canonical description). Payment.description in
+        // legacy data is often noise (auto-generated, sometimes corrupted from
+        // Google Sheets imports), so we always prefer the transaction's
+        // description as the single source of truth.
+        Map<Integer, Transaction> txnById = txns.stream()
             .collect(Collectors.toMap(
-                Transaction::getId, Transaction::getDocDate, (a, b) -> a));
+                Transaction::getId, t -> t, (a, b) -> a));
 
         List<Payment> payments = paymentRepository
             .findByEntityIdAndPaymentDateBetween(entityId, from, to);
@@ -82,22 +86,21 @@ public class CashFlowService {
             }
 
             Integer txnId = p.getTransactionId();
-            LocalDate parentDocDate = (txnId == null) ? null : txnDocDates.get(txnId);
+            Transaction parent = (txnId == null) ? null : txnById.get(txnId);
 
             // If parent not in current window, fetch it (may live outside [from,to])
-            if (parentDocDate == null && txnId != null) {
-                Transaction parent = transactionRepository.findById(txnId).orElse(null);
-                if (parent != null) {
-                    parentDocDate = parent.getDocDate();
-                }
+            if (parent == null && txnId != null) {
+                parent = transactionRepository.findById(txnId).orElse(null);
             }
+
+            LocalDate parentDocDate = (parent == null) ? null : parent.getDocDate();
 
             // De-dup: skip payment if it's same date as parent doc
             if (parentDocDate != null && parentDocDate.equals(p.getPaymentDate())) {
                 continue;
             }
 
-            events.add(buildPaymentEvent(p, txnId));
+            events.add(buildPaymentEvent(p, txnId, parent));
         }
 
         // 3. Sort: date DESC, then eventId DESC for stable ordering
@@ -137,13 +140,16 @@ public class CashFlowService {
             .build();
     }
 
-    private CashFlowEvent buildPaymentEvent(Payment p, Integer txnId) {
+    private CashFlowEvent buildPaymentEvent(Payment p, Integer txnId, Transaction parent) {
         boolean isIncome = "incoming".equalsIgnoreCase(p.getPaymentType());
         BigDecimal amt = p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO;
 
-        // Description format: "Payment for #N" + (optional) " - {original description}"
-        // Built from constants and DB-loaded description; no surrogate pairs.
-        String origDesc = p.getDescription();
+        // Description format: "Payment for #N" + (optional) " - {transaction description}"
+        // We pull from the parent transaction (single source of truth).
+        // Payment.description is intentionally ignored: in legacy data it is
+        // often redundant ("Payment for #N" repeated) or contains corrupted
+        // bytes from old Google Sheets imports.
+        String origDesc = (parent == null) ? null : parent.getDescription();
         StringBuilder sb = new StringBuilder();
         sb.append(PAYMENT_PREFIX).append(txnId);
         if (origDesc != null && !origDesc.isEmpty()) {

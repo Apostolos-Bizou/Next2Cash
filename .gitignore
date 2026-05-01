@@ -197,3 +197,7 @@ gcp-service-account*.json
 # Session diagnostic outputs - never commit
 session48-diag/
 *-diag/
+
+# Local dev overrides (rotated DB password, never commit)
+application-local.properties
+
