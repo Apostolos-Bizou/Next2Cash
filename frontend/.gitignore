@@ -28,7 +28,3 @@ coverage
 # Vite timestamp files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-
-# Local environment overrides
-.env.development
-.env.local

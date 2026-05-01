@@ -98,49 +98,11 @@ async function loadTransactions() {
       if (selectedType.value)   params.type   = selectedType.value
       if (selectedStatus.value) params.status = selectedStatus.value
     }
-    // Session #47: dispatch to /api/cashflow when date range is set (no search active)
-    const useCashflow = !!(dateFrom.value && dateTo.value) && !(searchQuery.value || '').trim()
-    if (useCashflow) {
-      const cfParams = { entityId: entityId.value, from: dateFrom.value, to: dateTo.value }
-      if (selectedType.value)   cfParams.type   = selectedType.value
-      if (selectedStatus.value) cfParams.status = selectedStatus.value
-      const res = await api.get('/api/cashflow', { params: cfParams })
-      if (res.data.success) {
-        const events = res.data.data || []
-        transactions.value = events.map(e => ({
-          // Critical: id = parent transactionId for both transaction & payment rows
-          // so that AttachmentsPopover (which calls /api/documents/by-transaction/{id})
-          // resolves attachments correctly even on payment rows.
-          id: e.eventType === 'payment' ? e.linkedTransactionId : e.transactionId,
-          _eventKey: e.eventId,
-          entityNumber: e.entityNumber,
-          docDate: e.date,
-          description: e.description,
-          amount: e.amount,
-          type: e.type,
-          paymentStatus: e.paymentStatus,
-          category: e.category,
-          subcategory: e.subcategory,
-          account: e.account,
-          paymentMethod: e.paymentMethod,
-          paymentDate: e.eventType === 'payment' ? e.date : null,
-          blobFileIds: e.blobFileIds,
-          _isPaymentRow: e.eventType === 'payment',
-          _linkedTransactionId: e.linkedTransactionId,
-          // recordSource='PAYMENT' makes existing canMarkPaid() return false,
-          // so the Mark-Paid button auto-hides for payment rows.
-          recordSource: e.eventType === 'payment' ? 'PAYMENT' : null
-        }))
-        total.value = res.data.total || events.length
-        pages.value = 1   // /api/cashflow has no pagination
-      }
-    } else {
-      const res = await api.get('/api/transactions', { params })
-      if (res.data.success) {
-        transactions.value = res.data.data  || []
-        total.value        = res.data.total || 0
-        pages.value        = res.data.pages || 0
-      }
+    const res = await api.get('/api/transactions', { params })
+    if (res.data.success) {
+      transactions.value = res.data.data  || []
+      total.value        = res.data.total || 0
+      pages.value        = res.data.pages || 0
     }
   } catch (e) {
     error.value = 'Σφάλμα φόρτωσης'
@@ -344,8 +306,7 @@ function clearSearch() {
 }
 
 const kpis = computed(() => {
-  // Exclude payment rows from KPI calculations (avoids double-counting in cashflow mode)
-  const txns = transactions.value.filter(t => !t._isPaymentRow)
+  const txns = transactions.value
   const income  = txns.filter(t => t.type === 'income').reduce((s,t) => s + Number(t.amount||0), 0)
   const expense = txns.filter(t => t.type === 'expense').reduce((s,t) => s + Number(t.amount||0), 0)
   const unpaid  = txns.filter(t => t.paymentStatus === 'unpaid' || t.paymentStatus === 'urgent').length
@@ -501,7 +462,7 @@ onUnmounted(() => {
               {{ searchQuery ? 'Δεν βρέθηκαν αποτελέσματα για "' + searchQuery + '"' : 'Δεν βρέθηκαν κινήσεις' }}
             </td>
           </tr>
-          <tr v-for="t in filteredTransactions" :key="t._eventKey || t.id"
+          <tr v-for="t in filteredTransactions" :key="t.id"
               :class="t.paymentStatus === 'urgent' ? 'row-urgent' : ''">
             <td class="id-col">#{{ t.entityNumber ?? t.id }}</td>
             <td class="date-col">{{ fmtDate(t.docDate) }}</td>
@@ -525,10 +486,10 @@ onUnmounted(() => {
                 :style="hasAttachments(t) ? {} : { opacity: 0.45 }">
                 📎
               </button>
-              <button v-if="canModify && !t._isPaymentRow" class="icon-btn" title="Επεξεργασία" @click="openEdit(t)">
+              <button v-if="canModify" class="icon-btn" title="Επεξεργασία" @click="openEdit(t)">
                 <i class="fas fa-edit"></i>
               </button>
-              <button v-if="canModify && !t._isPaymentRow" class="icon-btn icon-danger" title="Διαγραφή" @click="openDelete(t)">
+              <button v-if="canModify" class="icon-btn icon-danger" title="Διαγραφή" @click="openDelete(t)">
                 <i class="fas fa-trash"></i>
               </button>
             </td>
