@@ -194,3 +194,6 @@ backend/credentials/
 credentials/
 *.json.key
 gcp-service-account*.json
+# Session diagnostic outputs - never commit
+session48-diag/
+*-diag/
