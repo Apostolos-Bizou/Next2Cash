@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -44,4 +45,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
            "WHERE p.entityId = :entityId AND p.transactionId IS NULL " +
            "ORDER BY p.paymentDate DESC, p.id DESC")
     List<Payment> findOrphansByEntityId(@Param("entityId") UUID entityId);
+
+    /**
+     * All payments for an entity within a paymentDate window.
+     * Used by /api/cashflow.
+     */
+    List<Payment> findByEntityIdAndPaymentDateBetween(
+        UUID entityId, LocalDate from, LocalDate to);
 }

@@ -180,4 +180,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     // Phase H (Karteles) β€” all active transactions of a specific counterparty, for detail view
     List<Transaction> findByEntityIdAndCounterpartyAndRecordStatusOrderByDocDateDesc(
         UUID entityId, String counterparty, String recordStatus);
+
+    /**
+     * All transactions for an entity with given recordStatus and docDate within
+     * [from, to]. Used by /api/cashflow (CashFlowService).
+     */
+    List<Transaction> findByEntityIdAndRecordStatusAndDocDateBetween(
+        UUID entityId, String recordStatus, LocalDate from, LocalDate to);
 }
