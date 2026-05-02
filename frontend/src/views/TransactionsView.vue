@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'   // Session #40
 import api from '@/api'
 import MarkPaidModal from '@/components/MarkPaidModal.vue'
@@ -35,6 +35,52 @@ const error   = ref(null)
 const transactions = ref([])
 const searchQuery = ref('')
 let searchDebounceTimer = null
+
+// --- Phase 4 / Step 4.2: Bank accounts for edit modal dropdown -----
+// Loaded on mount + when entityId changes. Generic methods are kept
+// as a secondary group so non-bank cases (cash, card, etc.) remain
+// selectable. Legacy values fall back as a leading option if missing.
+const editBankAccounts = ref([])
+const GENERIC_PAYMENT_METHODS = [
+  'Τράπεζα', 'Μετρητά', 'Κάρτα', 'Επιταγή', 'PayPal', 'Άλλο'
+]
+
+async function loadEditBankAccounts() {
+  const eid = entityId.value
+  if (!eid) { editBankAccounts.value = []; return }
+  try {
+    const res = await api.get('/api/bank-accounts', { params: { entityId: eid } })
+    if (res && res.data && res.data.success) {
+      editBankAccounts.value = res.data.accounts || []
+    } else {
+      editBankAccounts.value = []
+    }
+  } catch (e) {
+    console.error('[TransactionsView] loadEditBankAccounts error:', e)
+    editBankAccounts.value = []
+  }
+}
+
+const availableEditPaymentMethods = computed(() => {
+  const result = []
+  for (const b of editBankAccounts.value) {
+    if (!b || !b.accountLabel) continue
+    if (b.accountLabel === 'Ανεκχώρητο') continue
+    if (b.isActive === false) continue
+    if (!result.includes(b.accountLabel)) result.push(b.accountLabel)
+  }
+  for (const m of GENERIC_PAYMENT_METHODS) {
+    if (!result.includes(m)) result.push(m)
+  }
+  // Legacy fallback: keep current value visible if missing from both groups
+  const cur = editModal.value && editModal.value.data && editModal.value.data.paymentMethod
+  if (cur && !result.includes(cur)) result.unshift(cur)
+  return result
+})
+
+// Reload when the user switches entity
+watch(entityId, () => { loadEditBankAccounts() })
+
 
 // ───── Toast notifications ─────
 const toast = ref({ show: false, type: 'success', message: '' })
@@ -414,6 +460,7 @@ function onEntityChanged() {
 }
 
 onMounted(() => {
+  loadEditBankAccounts()
   const q = route.query || {}
   // entityId: UUID -> reverse map to 'next2me' / 'house' / 'polaris' key
   if (q.entityId) {
@@ -614,7 +661,10 @@ onUnmounted(() => {
             </div>
             <div class="form-field">
               <label>Μέθοδος Πληρωμής</label>
-              <input v-model="editModal.data.paymentMethod" type="text" class="f-input" />
+              <select v-model="editModal.data.paymentMethod" class="f-input">
+                <option value="">—</option>
+                <option v-for="m in availableEditPaymentMethods" :key="m" :value="m">{{ m }}</option>
+              </select>
             </div>
             <div class="form-field">
               <label>Status</label>
