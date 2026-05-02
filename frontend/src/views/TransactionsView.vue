@@ -112,6 +112,10 @@ function openMarkPaid(t) {
 function closeMarkPaid() { markPaidState.value = { visible: false, transaction: null } }
 function onMarkPaidSaved() { closeMarkPaid(); loadTransactions() }
 function canMarkPaid(t) {
+  // Defensive: if the row is already paid/received, never show the button,
+  // even if amountRemaining is stale (e.g. legacy imports where the
+  // recompute trigger didn't fire and amountRemaining wasn't zeroed).
+  if (t.paymentStatus === 'paid' || t.paymentStatus === 'received') return false
   return t.recordSource !== 'PAYMENT' && (Number(t.amountRemaining) || 0) > 0.01
 }
 function isUnpaid(t) {
@@ -164,21 +168,18 @@ async function loadTransactions() {
         }
 
         // Standard mode: /api/transactions
-        const params = { entityId: entityId.value, page: page.value, perPage: perPage.value }
-        if (isSearch) {
-          params.search = searchWords[0]
-          params.perPage = 200
-        } else {
-          if (dateFrom.value)       params.from   = dateFrom.value
-          if (dateTo.value)         params.to     = dateTo.value
-          if (selectedType.value)   params.type   = selectedType.value
-          if (selectedStatus.value) params.status = selectedStatus.value
-        }
+        // Fetch ALL transactions for the entity in one shot (perPage=10000)
+        // so virtual payment rows can be injected at their true paymentDate
+        // and displayed alongside the canonical invoice rows in chronological
+        // order - matching legacy CashControl behaviour. All filtering,
+        // searching, and pagination is then handled client-side via the
+        // filteredTransactions and paginatedTransactions computeds.
+        const params = { entityId: entityId.value, page: 0, perPage: 10000 }
         const res = await api.get('/api/transactions', { params })
         if (res.data.success) {
-          transactions.value = res.data.data  || []
-          total.value        = res.data.total || 0
-          pages.value        = res.data.pages || 0
+          transactions.value = injectVirtualPaymentRows(res.data.data || [])
+          // total and pages are now derived client-side from the augmented
+          // and filtered list (see paginatedTransactions computed below).
         }
       } catch (e) {
     error.value = 'Σφάλμα φόρτωσης'
@@ -226,12 +227,72 @@ function stripPaymentPrefix(desc) {
       }
     }
 
-    function applyFilters() { page.value = 0; loadTransactions() }
-function goToPage(p)    { page.value = p; loadTransactions() }
+
+    // ------------------------------------------------------------------
+    // injectVirtualPaymentRows(rows)
+    // ------------------------------------------------------------------
+    // Legacy CashControl behaviour: when a paid transaction has a
+    // paymentDate that differs from its docDate, the Transactions list
+    // shows TWO rows - the canonical invoice row at docDate, plus a
+    // "virtual" payment row at paymentDate. This restores that view so
+    // the user can see WHEN money actually moved, not only when the
+    // invoice was filed.
+    //
+    // Backend stays canonical (one row per transaction). Cashflow report
+    // and BankBalance recompute read raw transactions and are NOT
+    // affected by this client-side augmentation.
+    //
+    // Virtual rows are flagged with _isPaymentRow:true so:
+    //   - kpis computed already excludes them (no double-counting)
+    //   - template applies 'row-payment' CSS class
+    //   - Mark-Paid / Edit / Delete buttons are auto-hidden
+    //
+    // After injection, list is re-sorted by docDate DESC so virtual
+    // rows land in their correct chronological slot.
+    // ------------------------------------------------------------------
+    function injectVirtualPaymentRows(rows) {
+      if (!Array.isArray(rows) || rows.length === 0) return rows || []
+      const out = []
+      for (const r of rows) {
+        out.push(r)
+        const hasSplit = r.paymentDate
+                        && r.docDate
+                        && r.paymentDate !== r.docDate
+                        && r.paymentStatus === 'paid'
+        if (!hasSplit) continue
+        const cleanDesc = stripPaymentPrefix(r.description || '')
+        const idLabel   = r.entityNumber != null ? r.entityNumber : r.id
+        const virtualRow = {
+          ...r,
+          id:            'pay-' + r.id,
+          docDate:       r.paymentDate,
+          description:   '\ud83d\udcb3 \u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ae #' + idLabel + ' \u2014 ' + cleanDesc,
+          _isPaymentRow: true,
+          _txnRef:       r.id,
+          _paymentId:    null
+        }
+        out.push(virtualRow)
+      }
+      // Re-sort by docDate DESC (most recent first), stable on equal dates.
+      out.sort((a, b) => {
+        const da = a.docDate || ''
+        const db = b.docDate || ''
+        if (da < db) return  1
+        if (da > db) return -1
+        return 0
+      })
+      return out
+    }
+
+    // Filter / pagination handlers are now pure client-side state changes.
+// No backend round-trip - the paginatedTransactions computed reacts
+// automatically to filter and page changes.
+function applyFilters() { page.value = 0 }
+function goToPage(p)    { page.value = p }
 function resetFilters() {
   dateFrom.value = ''; dateTo.value = ''
   selectedType.value = ''; selectedStatus.value = ''
-  page.value = 0; loadTransactions()
+  page.value = 0
 }
 
 // ───── EDIT ─────
@@ -394,29 +455,55 @@ function universalMatch(t, searchRaw) {
   })
 }
 
-// Client-side universal search: backend pre-filters by first word,
-// then universalMatch applies ALL words across ALL fields + amount + date.
+// Client-side filtering: applies date range, type, status, AND search
+// across the full augmented dataset (canonical + virtual payment rows).
+// Everything is in-memory so this is instant - no backend round-trip.
 const filteredTransactions = computed(() => {
+  let list = transactions.value
+  // Date range filter (against docDate, which for virtual rows = paymentDate)
+  if (dateFrom.value) {
+    list = list.filter(t => t.docDate && t.docDate >= dateFrom.value)
+  }
+  if (dateTo.value) {
+    list = list.filter(t => t.docDate && t.docDate <= dateTo.value)
+  }
+  // Type filter (income / expense)
+  if (selectedType.value) {
+    list = list.filter(t => t.type === selectedType.value)
+  }
+  // Status filter (paid / unpaid / urgent / etc.)
+  if (selectedStatus.value) {
+    list = list.filter(t => t.paymentStatus === selectedStatus.value)
+  }
+  // Search filter (universal match across all fields)
   const q = (searchQuery.value || '').trim()
-  if (!q) return transactions.value
-  return transactions.value.filter(t => universalMatch(t, q))
+  if (q) {
+    list = list.filter(t => universalMatch(t, q))
+  }
+  return list
 })
 
-// Debounced search: wait 400ms after user stops typing before hitting the API.
-// Prevents hammering the backend on every keystroke.
+// Client-side pagination over the filtered list. Updates total + pages
+// reactively whenever the filtered list changes (filter, search, etc.).
+const paginatedTransactions = computed(() => {
+  const list = filteredTransactions.value
+  total.value = list.length
+  pages.value = Math.max(1, Math.ceil(list.length / perPage.value))
+  // Clamp page in case current page index is now out of range after filter.
+  if (page.value >= pages.value) page.value = 0
+  const start = page.value * perPage.value
+  return list.slice(start, start + perPage.value)
+})
+
+// Search is now fully client-side via filteredTransactions computed.
+// No debounce needed - filtering 4752 rows in memory is instant.
 function onSearchInput() {
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
-  searchDebounceTimer = setTimeout(() => {
-    page.value = 0   // reset to first page when search changes
-    loadTransactions()
-  }, 400)
+  page.value = 0   // reset to first page when search changes
 }
 
 function clearSearch() {
   searchQuery.value = ''
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
   page.value = 0
-  loadTransactions()
 }
 
 const kpis = computed(() => {
@@ -578,7 +665,7 @@ onUnmounted(() => {
               {{ searchQuery ? 'Δεν βρέθηκαν αποτελέσματα για "' + searchQuery + '"' : 'Δεν βρέθηκαν κινήσεις' }}
             </td>
           </tr>
-          <tr v-for="t in filteredTransactions" :key="t.id"
+          <tr v-for="t in paginatedTransactions" :key="t.id"
               :class="[t.paymentStatus === 'urgent' ? 'row-urgent' : '', t._isPaymentRow ? 'row-payment' : '']">
             <td class="id-col">#{{ t.entityNumber ?? t.id }}</td>
             <td class="date-col">{{ fmtDate(t.docDate) }}</td>
