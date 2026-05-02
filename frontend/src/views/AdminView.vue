@@ -588,6 +588,7 @@ const newSubcatValue = ref('')
 // Banks state
 const banksLoading = ref(false)
 const adminBanks = ref([])
+const banksRecomputing = ref(false)
 
 async function loadAdminConfig() {
   configLoading.value = true
@@ -670,6 +671,29 @@ async function loadBankAccounts() {
     console.error('loadBankAccounts error:', e)
   } finally {
     banksLoading.value = false
+  }
+}
+
+async function recomputeAllBanks() {
+  if (!confirm('Σίγουρα θες να επανυπολογίσεις όλους τους τραπεζικούς λογαριασμούς;')) return
+  banksRecomputing.value = true
+  try {
+    const res = await api.post('/api/bank-accounts/recompute-all', null, {
+      params: { entityId: adminEntityId.value }
+    })
+    if (res.data && res.data.success) {
+      const count = (typeof res.data.count === 'number')
+        ? res.data.count
+        : ((res.data.accounts && res.data.accounts.length) || 0)
+      alert('Επανυπολογίστηκαν ' + count + ' λογαριασμοί')
+      await loadBankAccounts()
+    } else {
+      alert('Σφάλμα: ' + ((res.data && res.data.error) || 'unknown'))
+    }
+  } catch (e) {
+    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+  } finally {
+    banksRecomputing.value = false
   }
 }
 
@@ -1076,6 +1100,9 @@ onMounted(async () => {
           <h2>🏦 Τραπεζικοί Λογαριασμοί</h2>
           <div style="display:flex;align-items:center;gap:12px">
             <span class="help-text">Ενημερώστε υπόλοιπα χειροκίνητα</span>
+            <button class="btn btn-secondary btn-sm" @click="recomputeAllBanks" :disabled="banksRecomputing">
+              {{ banksRecomputing ? 'Επανυπολογισμός...' : 'Επανυπολογισμός όλων' }}
+            </button>
             <button class="btn btn-secondary btn-sm" @click="loadBankAccounts" :disabled="banksLoading">
               {{ banksLoading ? '...' : 'Ανανέωση' }}
             </button>
