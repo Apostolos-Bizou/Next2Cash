@@ -5,8 +5,11 @@ import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.security.JwtUtil;
 import com.next2me.next2cash.service.AuditLogService;
+import com.next2me.next2cash.service.BankBalanceService;
 import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -28,6 +31,9 @@ public class TransactionController {
     private final JwtUtil jwtUtil;
     private final UserAccessService userAccessService;
     private final AuditLogService auditLogService;
+    private final BankBalanceService bankBalanceService;
+
+    private static final Logger log = LoggerFactory.getLogger(TransactionController.class);
 
     // GET /api/transactions?entityId=X&page=0&perPage=25&type=expense&status=unpaid
     //
@@ -146,6 +152,18 @@ public class TransactionController {
 
         Transaction saved = transactionRepository.save(transaction);
         auditLogService.log(saved.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_CREATE", "transactions", saved.getId().toString(), "{\"type\":\"" + saved.getType() + "\",\"amount\":" + saved.getAmount() + "}");
+
+        // Auto-recompute bank balance for the affected payment method (Phase 3, Step 3.1).
+        // Skipped when paymentMethod is null (e.g. unpaid obligations without a chosen account).
+        // Failures here MUST NOT block the save; manual recompute button exists as a safety net.
+        if (saved.getPaymentMethod() != null && !saved.getPaymentMethod().isBlank()) {
+            try {
+                bankBalanceService.recomputeForPaymentMethod(saved.getEntityId(), saved.getPaymentMethod());
+            } catch (Exception ex) {
+                log.warn("Auto-recompute failed for entity={} paymentMethod={} after CREATE txn id={}: {}",
+                        saved.getEntityId(), saved.getPaymentMethod(), saved.getId(), ex.getMessage());
+            }
+        }
 
         return ResponseEntity.ok(Map.of(
             "success", true,
