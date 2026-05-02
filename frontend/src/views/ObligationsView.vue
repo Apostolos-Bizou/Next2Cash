@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '@/api'
 import MarkPaidModal from '@/components/MarkPaidModal.vue'
+import AttachmentsPopover from '@/components/AttachmentsPopover.vue'
 
 const ENTITIES = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
