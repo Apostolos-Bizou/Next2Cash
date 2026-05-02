@@ -120,6 +120,18 @@ public class BankAccountController {
             if (updates.getFxRateToEur() != null) {
                 b.setFxRateToEur(updates.getFxRateToEur());
             }
+            // Phase 5 Step 5.5: descriptive metadata (settings panel).
+            // accountLabel is intentionally NOT updatable here -- changing it would
+            // orphan transactions that reference it via paymentMethod.
+            if (updates.getBankName() != null) {
+                b.setBankName(updates.getBankName());
+            }
+            if (updates.getAccountType() != null) {
+                b.setAccountType(updates.getAccountType());
+            }
+            if (updates.getIsActive() != null) {
+                b.setIsActive(updates.getIsActive());
+            }
             // If no balanceDate provided, auto-stamp with today (balance was updated now).
             // Explicit balanceDate is still respected (for backfill/correction scenarios).
             if (updates.getBalanceDate() != null) {

@@ -590,6 +590,8 @@ const banksLoading = ref(false)
 const adminBanks = ref([])
 const banksRecomputing = ref(false)
 const fxRateSaving = ref({})
+const expandedBanks = ref({})
+const settingsSaving = ref({})
 
 async function loadAdminConfig() {
   configLoading.value = true
@@ -792,6 +794,90 @@ function eurEquivalent(bank) {
   const rate = Number(bank.fxRateToEur)
   if (!isFinite(bal) || !isFinite(rate) || rate <= 0) return null
   return bal * rate
+}
+
+function toggleBankSettings(bank) {
+  const id = bank.id
+  if (expandedBanks.value[id]) {
+    // Collapsing: discard any pending edits.
+    delete expandedBanks.value[id]
+    bank._editForm = null
+    return
+  }
+  // Expanding: snapshot current values into edit form.
+  bank._editForm = {
+    bankName: bank.bankName || '',
+    accountType: bank.accountType || 'checking',
+    isActive: bank.isActive !== false,
+    openingBalance: bank.openingBalance != null ? Number(bank.openingBalance) : 0,
+    openingDate: bank.openingDate || ''
+  }
+  expandedBanks.value[id] = true
+}
+
+function cancelBankSettings(bank) {
+  delete expandedBanks.value[bank.id]
+  bank._editForm = null
+}
+
+async function saveBankSettings(bank) {
+  const f = bank._editForm
+  if (!f) return
+  // Detect what actually changed (so we only call necessary endpoints).
+  const metaChanged =
+    f.bankName !== (bank.bankName || '') ||
+    f.accountType !== (bank.accountType || 'checking') ||
+    f.isActive !== (bank.isActive !== false)
+  const isVirtual = bank.isVirtual === true
+  const openingChanged = !isVirtual && (
+    Number(f.openingBalance) !== Number(bank.openingBalance || 0) ||
+    (f.openingDate || '') !== (bank.openingDate || '')
+  )
+  if (!metaChanged && !openingChanged) {
+    cancelBankSettings(bank)
+    return
+  }
+  settingsSaving.value[bank.id] = true
+  try {
+    if (metaChanged) {
+      // Use the same PUT endpoint as fxRate -- currentBalance must be
+      // sent unchanged to satisfy the backend's required-field guard.
+      const res = await api.put('/api/bank-accounts/' + bank.id, {
+        currentBalance: bank.currentBalance,
+        bankName: f.bankName,
+        accountType: f.accountType,
+        isActive: f.isActive,
+        entityId: adminEntityId.value
+      })
+      if (res.data && res.data.success && res.data.data) {
+        const saved = res.data.data
+        bank.bankName = saved.bankName
+        bank.accountType = saved.accountType
+        bank.isActive = saved.isActive
+      }
+    }
+    if (openingChanged) {
+      const res = await api.put('/api/bank-accounts/' + bank.id + '/opening', {
+        openingBalance: Number(f.openingBalance),
+        openingDate: f.openingDate || null
+      })
+      if (res.data && res.data.success && res.data.data) {
+        // /opening auto-recomputes; sync everything from the response.
+        const saved = res.data.data
+        bank.openingBalance = saved.openingBalance
+        bank.openingDate = saved.openingDate
+        bank.currentBalance = saved.currentBalance
+        bank.lastRecomputedAt = saved.lastRecomputedAt
+        bank._editBalance = saved.currentBalance
+      }
+    }
+    // Success -- close panel.
+    cancelBankSettings(bank)
+  } catch (e) {
+    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+  } finally {
+    settingsSaving.value[bank.id] = false
+  }
 }
 
 function formatBankDate(d) {
@@ -1192,6 +1278,58 @@ onMounted(async () => {
               <button class="btn-balance-save" title="Αποθήκευση υπολοίπου" @click="updateBankBalance(b)">
                 <i class="fas fa-check"></i>
               </button>
+              <button class="btn-balance-save" :title="'Ρυθμίσεις'" @click="toggleBankSettings(b)" style="margin-left:8px;background:transparent">
+                <i class="fas" :class="expandedBanks[b.id] ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+              </button>
+            </div>
+            <div v-if="expandedBanks[b.id]" class="bank-settings-panel" style="grid-column:1/-1;border-top:1px solid #2c3e50;margin-top:8px;padding-top:12px">
+              <div style="font-weight:600;color:#9aa5b1;margin-bottom:8px">
+                <i class="fas fa-cog"></i> Ρυθμίσεις
+              </div>
+              <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center;max-width:600px">
+                <label style="color:#9aa5b1;font-size:0.85rem">Ετικέτα:</label>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <input type="text" :value="b.accountLabel" disabled class="input" style="flex:1;opacity:0.6" />
+                  <span style="font-size:0.72rem;color:#9aa5b1">(δεν αλλάζει - προστασία ακεραιότητας δεδομένων)</span>
+                </div>
+                <label style="color:#9aa5b1;font-size:0.85rem">Τράπεζα:</label>
+                <input type="text" v-model="b._editForm.bankName" class="input" />
+                <label style="color:#9aa5b1;font-size:0.85rem">Τύπος:</label>
+                <select v-model="b._editForm.accountType" class="input">
+                  <option value="checking">Τρεχούμενος</option>
+                  <option value="savings">Ταμιευτηρίου</option>
+                  <option value="cash">Μετρητά</option>
+                  <option value="virtual">Virtual</option>
+                </select>
+                <label style="color:#9aa5b1;font-size:0.85rem">Ενεργός:</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <input type="checkbox" v-model="b._editForm.isActive" />
+                  <span style="font-size:0.85rem">{{ b._editForm.isActive ? 'on' : 'off' }}</span>
+                </label>
+                <template v-if="b.isVirtual !== true">
+                  <div style="grid-column:1/-1;margin-top:12px;padding-top:8px;border-top:1px dashed #2c3e50">
+                    <span style="font-weight:600;color:#9aa5b1">
+                      <i class="fas fa-anchor"></i> Σημείο Εκκίνησης
+                    </span>
+                    <span style="font-size:0.72rem;color:#9aa5b1;margin-left:8px">(anchor για auto-recompute)</span>
+                  </div>
+                  <label style="color:#9aa5b1;font-size:0.85rem">Αρχικό Υπόλοιπο:</label>
+                  <input type="number" step="0.01" v-model.number="b._editForm.openingBalance" class="input" />
+                  <label style="color:#9aa5b1;font-size:0.85rem">Ημ/νία Εκκίνησης:</label>
+                  <input type="date" v-model="b._editForm.openingDate" class="input" />
+                </template>
+                <template v-else>
+                  <div style="grid-column:1/-1;margin-top:12px;padding-top:8px;border-top:1px dashed #2c3e50;font-size:0.78rem;color:#9aa5b1;font-style:italic">
+                    Σύστημα-managed (χωρίς anchor)
+                  </div>
+                </template>
+                <div style="grid-column:1/-1;margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+                  <button class="btn btn-secondary btn-sm" @click="cancelBankSettings(b)" :disabled="!!settingsSaving[b.id]">Ακύρωση</button>
+                  <button class="btn btn-primary btn-sm" @click="saveBankSettings(b)" :disabled="!!settingsSaving[b.id]">
+                    {{ settingsSaving[b.id] ? '...' : 'Αποθήκευση' }}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
