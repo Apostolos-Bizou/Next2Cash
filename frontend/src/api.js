@@ -19,11 +19,14 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Handle 401 globally - redirect to login
+// Handle 401 globally - redirect to login.
+// Note: 403 (Forbidden) is intentionally NOT a logout trigger - it means
+// the request was authenticated but the user lacks permission for that
+// specific resource. Components handle 403 locally with friendly messages.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    if (error.response?.status === 401) {
       localStorage.removeItem('n2c_token')
       localStorage.removeItem('n2c_user')
       window.location.href = '/login'

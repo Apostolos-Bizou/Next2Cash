@@ -75,7 +75,13 @@ function isUnpaid(t) {
 
 // Attachments state
 const attachmentsState = ref({ visible: false, transaction: null })
-function openAttachments(t) { attachmentsState.value = { visible: true, transaction: t } }
+function openAttachments(t) {
+  // For payment rows (cashflow mode), attachments live on the parent
+  // transaction. Pass the txn id (not the synthetic 'pay-N' row id) so
+  // /api/documents/by-transaction/{id} hits a real Integer resource.
+  const realId = t._txnRef != null ? t._txnRef : t.id
+  attachmentsState.value = { visible: true, transaction: { ...t, id: realId } }
+}
 function closeAttachments() { attachmentsState.value = { visible: false, transaction: null } }
 function hasAttachments(t) { return !!t.blobFileIds && String(t.blobFileIds).trim() !== "" }
 
@@ -136,14 +142,30 @@ async function loadTransactions() {
   }
 }
 
-function mapCashflowEventToRow(ev) {
+function stripPaymentPrefix(desc) {
+      // Removes patterns like "Πληρωμή για #1234 — "
+      // (Greek "Payment for #N — ") so the actual transaction description
+      // can use the full display width.
+      if (!desc) return desc
+      return desc.replace(/^Πληρωμή για #\d+\s+—\s+/, '')
+    }
+
+    function mapCashflowEventToRow(ev) {
       const isPayment = ev.eventType === 'payment'
       const inflow = Number(ev.inflow || 0)
+      // For display: use ev.entityNumber (the user-visible number, e.g. "#4747"
+      // or "#101"), NOT ev.transactionId (internal DB id like #90129).
+      // For payment rows, strip the "Payment for #N - " prefix from description
+      // since the row is already marked with a "<<" badge in the id column;
+      // the bare description fits cleanly within the 40-char display cap.
+      const displayDesc = isPayment
+        ? stripPaymentPrefix(ev.description)
+        : ev.description
       return {
         id: isPayment ? 'pay-' + ev.paymentId : ev.transactionId,
-        entityNumber: ev.transactionId,
+        entityNumber: ev.entityNumber != null ? ev.entityNumber : ev.transactionId,
         docDate: ev.date,
-        description: ev.description,
+        description: displayDesc,
         category: ev.category,
         account: ev.account,
         subcategory: ev.subcategory,

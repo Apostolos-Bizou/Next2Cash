@@ -161,6 +161,7 @@ public class CashFlowService {
             .eventId("P-" + p.getId())
             .eventType("payment")
             .transactionId(txnId)
+            .entityNumber(parent != null ? parent.getEntityNumber() : null)
             .paymentId(p.getId())
             .date(p.getPaymentDate())
             .description(desc)
