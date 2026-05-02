@@ -252,6 +252,12 @@ public class TransactionController {
             t.setUpdatedBy(user.getId());
             transactionRepository.save(t);
             auditLogService.log(t.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_VOID", "transactions", t.getId().toString(), null);
+
+            // Auto-recompute bank balance after soft delete (Phase 3, Step 3.3).
+            // The voided transaction is now excluded from the paid-only sum, so the affected
+            // bank account balance must be refreshed. Helper handles null-guard + try/catch.
+            tryRecomputeBank(t.getEntityId(), t.getPaymentMethod(), t.getId(), "DELETE");
+
             return ResponseEntity.ok(Map.<String, Object>of("success", true, "message", "Transaction voided"));
         }).orElse(ResponseEntity.notFound().build());
     }
