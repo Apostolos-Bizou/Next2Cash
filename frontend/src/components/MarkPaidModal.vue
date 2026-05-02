@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import api from '@/api'
 
 // -----------------------------------------------------------------
@@ -33,6 +33,52 @@ const errorMsg      = ref('')
 const paymentMethods = [
   'Τράπεζα', 'Μετρητά', 'Κάρτα', 'Επιταγή', 'PayPal', 'Άλλο'
 ]
+
+// --- Phase 4: Bank accounts dropdown (Session #51) -----------------
+// Loads active bank accounts for the parent transaction's entity, then
+// merges them with the hardcoded generic methods above. The current
+// transaction's paymentMethod is kept as a disabled-style legacy option
+// if it's not present in either list.
+const bankAccounts = ref([])
+
+async function loadBankAccounts() {
+  const eid = props.transaction && props.transaction.entityId
+  if (!eid) { bankAccounts.value = []; return }
+  try {
+    const res = await api.get('/api/bank-accounts', { params: { entityId: eid } })
+    if (res && res.data && res.data.success) {
+      bankAccounts.value = res.data.accounts || []
+    } else {
+      bankAccounts.value = []
+    }
+  } catch (e) {
+    console.error('[MarkPaidModal] loadBankAccounts error:', e)
+    bankAccounts.value = []
+  }
+}
+
+const availablePaymentMethods = computed(() => {
+  const result = []
+  // Group 1: real bank accounts (filter out virtual + inactive)
+  for (const b of bankAccounts.value) {
+    if (!b || !b.accountLabel) continue
+    if (b.accountLabel === 'Ανεκχώρητο') continue
+    if (b.isActive === false) continue
+    if (!result.includes(b.accountLabel)) result.push(b.accountLabel)
+  }
+  // Group 2: generic hardcoded methods (for non-bank cases)
+  for (const m of paymentMethods) {
+    if (!result.includes(m)) result.push(m)
+  }
+  // Group 3: legacy fallback — keep current value visible if missing
+  const cur = paymentMethod.value
+  if (cur && !result.includes(cur)) result.unshift(cur)
+  return result
+})
+
+onMounted(() => { loadBankAccounts() })
+watch(() => props.transaction && props.transaction.entityId, () => { loadBankAccounts() })
+
 
 // --- File upload state ---
 const selectedFiles = ref([])
@@ -278,7 +324,7 @@ async function onSubmit() {
           <div class="mp-field">
             <label>Μέθοδος</label>
             <select v-model="paymentMethod" :disabled="saving" class="mp-input">
-              <option v-for="m in paymentMethods" :key="m" :value="m">{{ m }}</option>
+              <option v-for="m in availablePaymentMethods" :key="m" :value="m">{{ m }}</option>
             </select>
           </div>
         </div>
