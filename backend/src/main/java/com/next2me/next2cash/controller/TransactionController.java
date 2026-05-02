@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @RestController
@@ -153,17 +154,8 @@ public class TransactionController {
         Transaction saved = transactionRepository.save(transaction);
         auditLogService.log(saved.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_CREATE", "transactions", saved.getId().toString(), "{\"type\":\"" + saved.getType() + "\",\"amount\":" + saved.getAmount() + "}");
 
-        // Auto-recompute bank balance for the affected payment method (Phase 3, Step 3.1).
-        // Skipped when paymentMethod is null (e.g. unpaid obligations without a chosen account).
-        // Failures here MUST NOT block the save; manual recompute button exists as a safety net.
-        if (saved.getPaymentMethod() != null && !saved.getPaymentMethod().isBlank()) {
-            try {
-                bankBalanceService.recomputeForPaymentMethod(saved.getEntityId(), saved.getPaymentMethod());
-            } catch (Exception ex) {
-                log.warn("Auto-recompute failed for entity={} paymentMethod={} after CREATE txn id={}: {}",
-                        saved.getEntityId(), saved.getPaymentMethod(), saved.getId(), ex.getMessage());
-            }
-        }
+        // Auto-recompute bank balance for the affected payment method (Phase 3).
+        tryRecomputeBank(saved.getEntityId(), saved.getPaymentMethod(), saved.getId(), "CREATE");
 
         return ResponseEntity.ok(Map.of(
             "success", true,
@@ -191,6 +183,11 @@ public class TransactionController {
                 userAccessService.assertCanAccessEntity(user, updates.getEntityId());
             }
 
+            // Capture OLD state BEFORE setters run (Phase 3, Step 3.2).
+            // Needed so we can recompute the previous bank account if paymentMethod or entity change.
+            final UUID   oldEntityId      = t.getEntityId();
+            final String oldPaymentMethod = t.getPaymentMethod();
+
             t.setUpdatedBy(user.getId());
 
             if (updates.getDocDate()        != null) t.setDocDate(updates.getDocDate());
@@ -208,8 +205,34 @@ public class TransactionController {
 
             Transaction saved = transactionRepository.save(t);
             auditLogService.log(saved.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_UPDATE", "transactions", saved.getId().toString(), null);
+
+            // Auto-recompute bank balances (Phase 3, Step 3.2).
+            // Always recompute the current (post-update) bucket; if the paymentMethod or entity
+            // changed, ALSO recompute the OLD bucket so the previous bank account is corrected.
+            tryRecomputeBank(saved.getEntityId(), saved.getPaymentMethod(), saved.getId(), "UPDATE-new");
+            if (!Objects.equals(oldPaymentMethod, saved.getPaymentMethod())
+                    || !Objects.equals(oldEntityId, saved.getEntityId())) {
+                tryRecomputeBank(oldEntityId, oldPaymentMethod, saved.getId(), "UPDATE-old");
+            }
+
             return ResponseEntity.ok(Map.<String, Object>of("success", true, "data", saved));
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Phase 3 helper: bank balance recompute with null-guard + try/catch.
+    // Failures are logged as WARN but never block the parent operation.
+    // Used by CREATE (3.1), UPDATE (3.2), DELETE (3.3) and Mark-Paid (3.4).
+    // ─────────────────────────────────────────────────────────────────
+    private void tryRecomputeBank(UUID entityId, String paymentMethod, Object txnId, String action) {
+        if (entityId == null) return;
+        if (paymentMethod == null || paymentMethod.isBlank()) return;
+        try {
+            bankBalanceService.recomputeForPaymentMethod(entityId, paymentMethod);
+        } catch (Exception ex) {
+            log.warn("Auto-recompute failed for entity={} paymentMethod={} after {} txn id={}: {}",
+                    entityId, paymentMethod, action, txnId, ex.getMessage());
+        }
     }
 
     // DELETE /api/transactions/{id}  -->  soft delete (void)
