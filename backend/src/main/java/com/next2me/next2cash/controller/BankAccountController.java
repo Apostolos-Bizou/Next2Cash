@@ -115,6 +115,11 @@ public class BankAccountController {
 
             // Apply updates: only the fields the UI is allowed to change.
             b.setCurrentBalance(updates.getCurrentBalance());
+            // fx_rate_to_eur: update ONLY if explicitly provided in the payload,
+            // so a partial update (e.g. balance-only) does not wipe an existing rate.
+            if (updates.getFxRateToEur() != null) {
+                b.setFxRateToEur(updates.getFxRateToEur());
+            }
             // If no balanceDate provided, auto-stamp with today (balance was updated now).
             // Explicit balanceDate is still respected (for backfill/correction scenarios).
             if (updates.getBalanceDate() != null) {

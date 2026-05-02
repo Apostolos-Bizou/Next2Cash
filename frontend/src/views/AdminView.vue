@@ -589,6 +589,7 @@ const newSubcatValue = ref('')
 const banksLoading = ref(false)
 const adminBanks = ref([])
 const banksRecomputing = ref(false)
+const fxRateSaving = ref({})
 
 async function loadAdminConfig() {
   configLoading.value = true
@@ -754,6 +755,43 @@ async function updateBankBalance(bank) {
   } catch (e) {
     alert('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1: ' + (e.response?.data?.error || e.message))
   }
+}
+
+async function updateBankFxRate(bank) {
+  const raw = bank._editFxRate
+  if (raw === undefined || raw === null || raw === '') return
+  const newRate = Number(raw)
+  if (!isFinite(newRate) || newRate <= 0) {
+    alert('Σφάλμα: Invalid rate')
+    return
+  }
+  fxRateSaving.value[bank.id] = true
+  try {
+    // currentBalance is required by the PUT endpoint; we pass the unchanged
+    // current value so only fxRateToEur effectively changes.
+    const res = await api.put('/api/bank-accounts/' + bank.id, {
+      currentBalance: bank.currentBalance,
+      fxRateToEur: newRate,
+      entityId: adminEntityId.value
+    })
+    if (res.data && res.data.success && res.data.data) {
+      const saved = res.data.data
+      bank.fxRateToEur = saved.fxRateToEur
+      bank._editFxRate = ''
+    }
+  } catch (e) {
+    alert('Σφάλμα: ' + (e.response?.data?.error || e.message))
+  } finally {
+    fxRateSaving.value[bank.id] = false
+  }
+}
+
+function eurEquivalent(bank) {
+  if (!bank || bank.currency === 'EUR') return null
+  const bal = Number(bank.currentBalance)
+  const rate = Number(bank.fxRateToEur)
+  if (!isFinite(bal) || !isFinite(rate) || rate <= 0) return null
+  return bal * rate
 }
 
 function formatBankDate(d) {
@@ -1124,9 +1162,27 @@ onMounted(async () => {
               <div class="bank-meta">{{ b.bankName }} · {{ b.accountType }} · {{ b.currency }} · Ενημ: {{ formatBankDate(b.balanceDate) }}</div>
             </div>
             <div class="bank-balance-area">
-              <span class="balance-badge" :class="{ negative: b.currentBalance < 0 }">
-                {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2}) }} €
-              </span>
+              <template v-if="b.currency !== 'EUR'">
+                <span style="font-size:0.78rem;color:#9aa5b1">Ισοτιμία:</span>
+                <input
+                  v-model.number="b._editFxRate"
+                  type="number" step="0.0001" min="0"
+                  class="balance-input"
+                  :placeholder="b.fxRateToEur != null ? Number(b.fxRateToEur).toString() : '1.0000'"
+                  style="width:90px"
+                />
+                <button class="btn-balance-save" :title="'Αποθήκευση ισοτιμίας'" :disabled="!!fxRateSaving[b.id]" @click="updateBankFxRate(b)">
+                  <i class="fas fa-check"></i>
+                </button>
+              </template>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+                <span class="balance-badge" :class="{ negative: b.currentBalance < 0 }">
+                  {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2}) }} {{ b.currency === 'EUR' ? '€' : b.currency }}
+                </span>
+                <span v-if="b.currency !== 'EUR' && eurEquivalent(b) !== null" style="font-size:0.78rem;color:#9aa5b1">
+                  ≈ {{ Number(eurEquivalent(b)).toLocaleString('el-GR', {minimumFractionDigits:2}) }} €
+                </span>
+              </div>
               <input
                 v-model.number="b._editBalance"
                 type="number" step="0.01"
