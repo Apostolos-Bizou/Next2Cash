@@ -1244,6 +1244,14 @@ onMounted(async () => {
               <div class="bank-label">
                 <span class="active-dot" :class="{ on: b.active !== false, off: b.active === false }"></span>
                 {{ b.accountLabel }}
+                <span
+                  v-if="b.isVirtual === true && Number(b.currentBalance) > 0"
+                  class="anekchoreto-warning"
+                  :title="'Πληρωμές που δεν ταιριάζουν σε active λογαριασμό'"
+                  style="margin-left:10px;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:#3a2f00;color:#ffc107;font-size:0.72rem;font-weight:600"
+                >
+                  <i class="fas fa-exclamation-triangle"></i> Ορφανές πληρωμές
+                </span>
               </div>
               <div class="bank-meta">{{ b.bankName }} · {{ b.accountType }} · {{ b.currency }} · Ενημ: {{ formatBankDate(b.balanceDate) }}</div>
             </div>
