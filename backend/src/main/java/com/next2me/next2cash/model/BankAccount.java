@@ -47,6 +47,34 @@ public class BankAccount {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    // === Phase 2 (Session #49) — Auto-compute fields ===
+
+    /**
+     * Anchor balance at opening_date. Auto-computed balance =
+     * opening_balance + SUM(income transactions where paymentMethod = accountLabel
+     *                       AND docDate >= opening_date AND paymentStatus IN ('paid','received'))
+     *                 - SUM(expense transactions where paymentMethod = accountLabel
+     *                       AND docDate >= opening_date AND paymentStatus = 'paid')
+     */
+    @Column(name = "opening_balance", precision = 15, scale = 2)
+    private BigDecimal openingBalance;
+
+    /** Date from which transactions are considered for auto-compute. */
+    @Column(name = "opening_date")
+    private LocalDate openingDate;
+
+    /** Last successful auto-recompute run timestamp. */
+    @Column(name = "last_recomputed_at")
+    private LocalDateTime lastRecomputedAt;
+
+    /** Manual FX rate for conversion to EUR (1.0 for EUR accounts). */
+    @Column(name = "fx_rate_to_eur", precision = 10, scale = 6)
+    private BigDecimal fxRateToEur;
+
+    /** TRUE for system-managed virtual accounts like Ανεκχώρητο. */
+    @Column(name = "is_virtual")
+    private Boolean isVirtual = false;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -90,4 +118,19 @@ public class BankAccount {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
+
+    public BigDecimal getOpeningBalance() { return openingBalance; }
+    public void setOpeningBalance(BigDecimal openingBalance) { this.openingBalance = openingBalance; }
+
+    public LocalDate getOpeningDate() { return openingDate; }
+    public void setOpeningDate(LocalDate openingDate) { this.openingDate = openingDate; }
+
+    public LocalDateTime getLastRecomputedAt() { return lastRecomputedAt; }
+    public void setLastRecomputedAt(LocalDateTime lastRecomputedAt) { this.lastRecomputedAt = lastRecomputedAt; }
+
+    public BigDecimal getFxRateToEur() { return fxRateToEur; }
+    public void setFxRateToEur(BigDecimal fxRateToEur) { this.fxRateToEur = fxRateToEur; }
+
+    public Boolean getIsVirtual() { return isVirtual; }
+    public void setIsVirtual(Boolean isVirtual) { this.isVirtual = isVirtual; }
 }

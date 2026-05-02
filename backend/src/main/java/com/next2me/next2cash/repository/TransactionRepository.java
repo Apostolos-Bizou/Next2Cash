@@ -187,4 +187,40 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
      */
     List<Transaction> findByEntityIdAndRecordStatusAndDocDateBetween(
         UUID entityId, String recordStatus, LocalDate from, LocalDate to);
+
+    // === Phase 2 (Session #49) — Bank balance auto-compute ===
+
+    /**
+     * Sum of paid transactions for a specific paymentMethod (= bank account label),
+     * after a given opening date. Used by BankBalanceService.recompute().
+     *
+     * Income: paymentStatus IN ('paid', 'received')
+     * Expense: paymentStatus = 'paid'
+     */
+    @Query("SELECT COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END), 0) " +
+           "FROM Transaction t " +
+           "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND t.paymentMethod = :paymentMethod " +
+           "AND t.docDate >= :openingDate " +
+           "AND ((t.type = 'income' AND t.paymentStatus IN ('paid', 'received')) " +
+           "  OR (t.type = 'expense' AND t.paymentStatus = 'paid'))")
+    BigDecimal sumPaidNetByEntityAndPaymentMethodSince(
+        @Param("entityId") UUID entityId,
+        @Param("paymentMethod") String paymentMethod,
+        @Param("openingDate") LocalDate openingDate);
+
+    /**
+     * Find paid transactions whose paymentMethod is NOT in a given set of valid labels.
+     * These are "orphans" that should be assigned to the Ανεκχώρητο virtual account.
+     */
+    @Query("SELECT t FROM Transaction t " +
+           "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND ((t.type = 'income' AND t.paymentStatus IN ('paid', 'received')) " +
+           "  OR (t.type = 'expense' AND t.paymentStatus = 'paid')) " +
+           "AND (t.paymentMethod IS NULL OR t.paymentMethod NOT IN :validLabels) " +
+           "AND t.docDate >= :openingDate")
+    List<Transaction> findOrphanPaidTransactions(
+        @Param("entityId") UUID entityId,
+        @Param("validLabels") java.util.Collection<String> validLabels,
+        @Param("openingDate") LocalDate openingDate);
 }

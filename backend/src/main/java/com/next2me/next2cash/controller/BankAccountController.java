@@ -4,6 +4,7 @@ import com.next2me.next2cash.model.BankAccount;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.BankAccountRepository;
 import com.next2me.next2cash.service.AuditLogService;
+import com.next2me.next2cash.service.BankBalanceService;
 import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -40,6 +41,7 @@ public class BankAccountController {
     private final BankAccountRepository bankAccountRepository;
     private final UserAccessService userAccessService;
     private final AuditLogService auditLogService;
+    private final BankBalanceService bankBalanceService;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> getBankAccounts(
@@ -137,4 +139,152 @@ public class BankAccountController {
             return ResponseEntity.ok(Map.<String, Object>of("success", true, "data", saved));
         }).orElse(ResponseEntity.notFound().build());
     }
+
+    // === Phase 2 (Session #49) — Bank balance auto-compute endpoints ===
+
+    /**
+     * POST /api/bank-accounts/{id}/recompute
+     *
+     * Trigger a manual recompute of a single bank account's current_balance from
+     * its opening anchor + paid transactions. Returns the updated account.
+     *
+     * ADMIN + USER only.
+     */
+    @PostMapping("/{id}/recompute")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    public ResponseEntity<?> recomputeBankBalance(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable UUID id) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        BankAccount existing = bankAccountRepository.findById(id)
+            .orElse(null);
+        if (existing == null) {
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error", "Bank account not found");
+            return ResponseEntity.status(404).body(err);
+        }
+
+        userAccessService.assertCanAccessEntity(user, existing.getEntityId());
+
+        BankAccount recomputed = bankBalanceService.recompute(id);
+
+        auditLogService.log(
+            existing.getEntityId(),
+            user.getId(),
+            user.getUsername(),
+            "BANK_BALANCE_RECOMPUTE",
+            "bank_accounts",
+            id.toString(),
+            "Recomputed " + existing.getAccountLabel() + " => " + recomputed.getCurrentBalance());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", true);
+        response.put("data", recomputed);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * POST /api/bank-accounts/recompute-all?entityId=X
+     *
+     * Recompute ALL bank accounts for a given entity. Used by the admin
+     * "Επανυπολογισμός όλων" button and by the deploy-time auto-recompute.
+     *
+     * ADMIN + USER only.
+     */
+    @PostMapping("/recompute-all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    public ResponseEntity<?> recomputeAllForEntity(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam UUID entityId) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertCanAccessEntity(user, entityId);
+
+        List<BankAccount> recomputed = bankBalanceService.recomputeForEntity(entityId);
+
+        auditLogService.log(
+            entityId,
+            user.getId(),
+            user.getUsername(),
+            "BANK_BALANCE_RECOMPUTE_ALL",
+            "bank_accounts",
+            entityId.toString(),
+            "Recomputed " + recomputed.size() + " bank accounts");
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", true);
+        response.put("count", recomputed.size());
+        response.put("accounts", recomputed);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * PUT /api/bank-accounts/{id}/opening
+     *
+     * "Διόρθωση Σημείου Εκκίνησης" — sets a new opening_balance + opening_date
+     * and triggers recompute. This is the user-facing manual override.
+     *
+     * Body: { "openingBalance": 1234.56, "openingDate": "2026-04-30" }
+     *
+     * ADMIN + USER only.
+     */
+    @PutMapping("/{id}/opening")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    public ResponseEntity<?> updateOpeningAnchor(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        BankAccount existing = bankAccountRepository.findById(id)
+            .orElse(null);
+        if (existing == null) {
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error", "Bank account not found");
+            return ResponseEntity.status(404).body(err);
+        }
+
+        userAccessService.assertCanAccessEntity(user, existing.getEntityId());
+
+        BigDecimal newBalance = null;
+        Object balObj = body.get("openingBalance");
+        if (balObj != null) {
+            newBalance = new BigDecimal(balObj.toString());
+        }
+
+        LocalDate newDate = null;
+        Object dateObj = body.get("openingDate");
+        if (dateObj != null && !dateObj.toString().isBlank()) {
+            newDate = LocalDate.parse(dateObj.toString());
+        } else {
+            newDate = LocalDate.now();
+        }
+
+        try {
+            BankAccount updated = bankBalanceService.updateOpeningAnchor(id, newBalance, newDate);
+
+            auditLogService.log(
+                existing.getEntityId(),
+                user.getId(),
+                user.getUsername(),
+                "BANK_OPENING_UPDATE",
+                "bank_accounts",
+                id.toString(),
+                "Opening anchor: balance=" + newBalance + ", date=" + newDate);
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("success", true);
+            response.put("data", updated);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error", e.getMessage());
+            return ResponseEntity.status(400).body(err);
+        }
+    }
+
 }
