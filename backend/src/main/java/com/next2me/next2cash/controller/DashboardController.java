@@ -176,9 +176,21 @@ public class DashboardController {
             : LocalDate.of(LocalDate.now().getYear(), 12, 31);
 
         // Sum current balance of active bank accounts for this entity
+        // Session #56: multi-currency aware aggregation.
+        // Non-EUR accounts must be converted to EUR via fxRateToEur before
+        // summing into totalBanks. EUR or null currency uses raw value.
+        // Defensive fallback: missing/zero fxRateToEur uses raw (admin must fix).
         BigDecimal totalBanks = bankAccountRepository
             .findByEntityIdAndIsActiveTrueOrderBySortOrderAsc(entityId).stream()
-            .map(b -> b.getCurrentBalance() != null ? b.getCurrentBalance() : BigDecimal.ZERO)
+            .map(b -> {
+                BigDecimal bal = b.getCurrentBalance();
+                if (bal == null) return BigDecimal.ZERO;
+                String cur = b.getCurrency();
+                if (cur == null || "EUR".equals(cur)) return bal;
+                BigDecimal rate = b.getFxRateToEur();
+                if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) return bal;
+                return bal.multiply(rate);
+            })
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal paidIncome  = transactionRepository.sumPaidIncomeByEntityAndPeriod(entityId, dateFrom, dateTo);

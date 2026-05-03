@@ -126,6 +126,15 @@ function setPeriod(p) { periodMode.value = p; loadDashboard() }
 function applyFilters() { loadDashboard() }
 
 // ── Formatters ────────────────────────────────────────────────────────
+// Session #56: EUR-equivalent for non-EUR bank accounts (mirrors AdminView).
+function eurEquivalent(bank) {
+  if (!bank || bank.currency === 'EUR' || !bank.currency) return null;
+  const bal = Number(bank.currentBalance);
+  const rate = Number(bank.fxRateToEur);
+  if (!isFinite(bal) || !isFinite(rate) || rate <= 0) return null;
+  return bal * rate;
+}
+
 function fmt(v) {
   if (v === null || v === undefined) return '0,00 €'
   return new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(Number(v))
@@ -492,8 +501,15 @@ onUnmounted(() => {
                 <div class="bn">{{ b.accountLabel||b.bankName }}</div>
                 <div class="bt">{{ b.bankName }} · {{ b.currency }}</div>
               </div>
+              <!-- Session #56: native + eur display -->
               <div class="bbal">
-                <div class="bamt" :style="{color: b.currentBalance>=0?'var(--success)':'var(--danger)'}">{{ fmt(b.currentBalance) }}</div>
+                <div class="bamt" :style="{color: b.currentBalance>=0?'var(--success)':'var(--danger)'}">
+                  {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2, maximumFractionDigits:2}) }}
+                  {{ b.currency === 'EUR' || !b.currency ? '€' : b.currency }}
+                </div>
+                <div v-if="b.currency && b.currency !== 'EUR' && eurEquivalent(b) !== null" class="bdt" style="color:#9aa5b1">
+                  ≈ {{ Number(eurEquivalent(b)).toLocaleString('el-GR', {minimumFractionDigits:2, maximumFractionDigits:2}) }} €
+                </div>
                 <div class="bdt">{{ fmtDate(b.balanceDate) }}</div>
               </div>
             </li>
