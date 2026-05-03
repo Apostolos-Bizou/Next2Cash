@@ -74,8 +74,22 @@ public class BankAccountController {
             }
         }
 
+        // Session #56-10: multi-currency aware total_bank.
+        // Non-EUR accounts must be converted to EUR via fxRateToEur before
+        // summing. This total feeds bankTotal in the Dashboard, which in
+        // turn drives all cash-availability KPIs (Sum of Banks, Cash Today,
+        // After Urgent, After All, Sufficiency badge).
+        // Defensive fallback: missing/zero fxRateToEur uses raw value.
         BigDecimal totalBalance = accounts.stream()
-                .map(a -> a.getCurrentBalance() != null ? a.getCurrentBalance() : BigDecimal.ZERO)
+                .map(a -> {
+                    BigDecimal bal = a.getCurrentBalance();
+                    if (bal == null) return BigDecimal.ZERO;
+                    String cur = a.getCurrency();
+                    if (cur == null || "EUR".equals(cur)) return bal;
+                    BigDecimal rate = a.getFxRateToEur();
+                    if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) return bal;
+                    return bal.multiply(rate);
+                })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         Map<String, Object> summary = new LinkedHashMap<>();
