@@ -501,14 +501,18 @@ onUnmounted(() => {
                 <div class="bn">{{ b.accountLabel||b.bankName }}</div>
                 <div class="bt">{{ b.bankName }} · {{ b.currency }}</div>
               </div>
-              <!-- Session #56: native + eur display -->
+              <!-- Session #56-7: EUR primary, native secondary -->
               <div class="bbal">
                 <div class="bamt" :style="{color: b.currentBalance>=0?'var(--success)':'var(--danger)'}">
-                  {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2, maximumFractionDigits:2}) }}
-                  {{ b.currency === 'EUR' || !b.currency ? '€' : b.currency }}
+                  <template v-if="b.currency && b.currency !== 'EUR' && eurEquivalent(b) !== null">
+                    {{ Number(eurEquivalent(b)).toLocaleString('el-GR', {minimumFractionDigits:2, maximumFractionDigits:2}) }} €
+                  </template>
+                  <template v-else>
+                    {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2, maximumFractionDigits:2}) }} €
+                  </template>
                 </div>
                 <div v-if="b.currency && b.currency !== 'EUR' && eurEquivalent(b) !== null" class="bdt" style="color:#9aa5b1">
-                  ≈ {{ Number(eurEquivalent(b)).toLocaleString('el-GR', {minimumFractionDigits:2, maximumFractionDigits:2}) }} €
+                  {{ Number(b.currentBalance || 0).toLocaleString('el-GR', {minimumFractionDigits:2, maximumFractionDigits:2}) }} {{ b.currency }}
                 </div>
                 <div class="bdt">{{ fmtDate(b.balanceDate) }}</div>
               </div>
