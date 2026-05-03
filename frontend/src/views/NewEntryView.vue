@@ -112,17 +112,38 @@ function applyFrequent(f) {
   description.value = nextId.value + ' - ' + f
 }
 
-// ── File upload (placeholder — Google Drive → Azure Blob later) ─────
-const uploadedFile = ref(null)
-const driveFileName = ref("")
-function onFileChange(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  uploadedFile.value = file
-  const name = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
-  if (!description.value) description.value = nextId.value + ' - ' + name
+// ── Multi-file upload (Phase 56-A) ────────────────────────────────────────
+const uploadedFiles = ref([])      // Array<File>
+const driveFileNames = ref([])     // Array<string>, parallel index
+
+function buildDefaultName(file, indexAmongAll) {
+  // Pattern: <description>.<ext> for first, <description> (2).<ext>, (3).<ext> ...
   const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : ''
-  driveFileName.value = (description.value.trim() || String(nextId.value) + ' - ') + ext
+  const baseDesc = (description.value || '').trim() || String(nextId.value)
+  if (indexAmongAll === 0) return baseDesc + ext
+  return baseDesc + ' (' + (indexAmongAll + 1) + ')' + ext
+}
+
+function onFileChange(e) {
+  const incoming = Array.from(e.target.files || [])
+  if (incoming.length === 0) return
+  // Auto-fill description from first file (preserves legacy UX for first upload only)
+  if (uploadedFiles.value.length === 0 && incoming.length > 0 && !description.value) {
+    const firstName = incoming[0].name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
+    description.value = nextId.value + ' - ' + firstName
+  }
+  for (const file of incoming) {
+    const idx = uploadedFiles.value.length
+    uploadedFiles.value.push(file)
+    driveFileNames.value.push(buildDefaultName(file, idx))
+  }
+  // Reset input so selecting same file again triggers change
+  try { e.target.value = '' } catch (_) {}
+}
+
+function removeFile(idx) {
+  uploadedFiles.value.splice(idx, 1)
+  driveFileNames.value.splice(idx, 1)
 }
 
 // ── Save ────────────────────────────────────────────────────────────
@@ -154,12 +175,14 @@ async function save() {
     const res = await api.post('/api/transactions', payload)
     if (res.data.success) {
       const newId = res.data.id
-      if (uploadedFile.value) {
+      if (uploadedFiles.value.length > 0) {
+        let uploadFailures = 0
+        for (let i = 0; i < uploadedFiles.value.length; i++) {
         try {
           saving.value = true
-          const file = uploadedFile.value
+          const file = uploadedFiles.value[i]
           const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : ''
-          let fileName = driveFileName.value.trim()
+          let fileName = (driveFileNames.value[i] || '').trim()
           if (!fileName) fileName = newId + ' - ' + (description.value.replace(/^\d+\s*-\s*/, '').substring(0,50)) + '.' + ext
           if (fileName && !fileName.toLowerCase().endsWith('.' + ext)) fileName += '.' + ext
           const formData = new FormData()
@@ -170,8 +193,13 @@ async function save() {
           await api.post('/api/documents/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
           successMsg.value = '✅ Καταχωρήθηκε + αρχείο! ID: #' + newId
         } catch (fe) {
-          console.warn('File upload failed:', fe)
+          console.warn('File upload failed for ' + (file && file.name) + ':', fe)
+          uploadFailures++
           successMsg.value = '✅ Καταχωρήθηκε! ID: #' + newId + ' (αρχείο απέτυχε)'
+        }
+        } // end for-loop over files
+        if (uploadFailures > 0) {
+          alert('\u03a0\u03c1\u03bf\u03c3\u03bf\u03c7\u03ae: ' + uploadFailures + ' \u03b1\u03c1\u03c7\u03b5\u03af\u03b1 \u03b4\u03b5\u03bd \u03b1\u03bd\u03ad\u03b2\u03b7\u03ba\u03b1\u03bd. \u0397 \u03c3\u03c5\u03bd\u03b1\u03bb\u03bb\u03b1\u03b3\u03ae \u03b4\u03b7\u03bc\u03b9\u03bf\u03c5\u03c1\u03b3\u03ae\u03b8\u03b7\u03ba\u03b5 \u03ba\u03b1\u03bd\u03bf\u03bd\u03b9\u03ba\u03ac.')
         }
       } else {
         successMsg.value = '✅ Καταχωρήθηκε επιτυχώς! ID: #' + newId
@@ -196,7 +224,7 @@ function reset() {
   payDate.value = ''; category.value = ''; subcategory.value = ''
   amount.value = ''; method.value = ''; isPending.value = false
   isUrgent.value = false; description.value = ''; docStatus.value = ''
-  uploadedFile.value = null; suggestions.value = []; showSuggestions.value = false
+  uploadedFiles.value = []; driveFileNames.value = []; suggestions.value = []; showSuggestions.value = false
 }
 
 const docStatuses = [
@@ -333,25 +361,30 @@ onMounted(async () => {
         <button v-for="f in frequentEntries" :key="f" class="frequent-btn" @click="applyFrequent(f)">{{ f }}</button>
       </div>
 
-      <!-- File upload -->
+      <!-- File upload (multi-file - Phase 56-A) -->
       <div class="form-group">
         <label>Συνημμένα</label>
-        <label class="upload-area" :class="{uploaded: uploadedFile}" v-if="!uploadedFile">
-          <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="onFileChange" style="display:none" />
+        <label class="upload-area">
+          <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" @change="onFileChange" style="display:none" />
           <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
-          <div class="upload-text">Πατήστε για upload αποδεικτικού</div>
-          <div class="upload-hint">PDF, JPG, PNG — αυτόματη αποθήκευση στο Drive</div>
-        </label>
-        <div v-if="uploadedFile" class="file-preview">
-          <div class="file-preview-row">
-            <i class="fas fa-file-pdf file-icon"></i>
-            <span class="file-name">{{ uploadedFile.name }}</span>
-            <span class="file-size">{{ Math.round(uploadedFile.size/1024) }}KB</span>
-            <button class="remove-file" @click="uploadedFile=null; driveFileName=''"><i class="fas fa-times"></i></button>
+          <div class="upload-text">
+            <span v-if="uploadedFiles.length === 0">Πατήστε για upload αποδεικτικών</span>
+            <span v-else>+ Προσθήκη κι άλλων αρχείων</span>
           </div>
-          <div class="drive-row">
-            <span class="drive-lbl"><i class="fas fa-arrow-right"></i> Drive:</span>
-            <input type="text" v-model="driveFileName" class="drive-input" />
+          <div class="upload-hint">PDF, JPG, PNG — πολλαπλή επιλογή επιτρέπεται</div>
+        </label>
+        <div v-if="uploadedFiles.length > 0" class="file-preview">
+          <div v-for="(f, idx) in uploadedFiles" :key="idx" class="file-preview-item">
+            <div class="file-preview-row">
+              <i class="fas fa-file-pdf file-icon"></i>
+              <span class="file-name">{{ f.name }}</span>
+              <span class="file-size">{{ Math.round(f.size/1024) }}KB</span>
+              <button class="remove-file" @click="removeFile(idx)" type="button"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="drive-row">
+              <span class="drive-lbl"><i class="fas fa-arrow-right"></i> Drive:</span>
+              <input type="text" v-model="driveFileNames[idx]" class="drive-input" />
+            </div>
           </div>
         </div>
       </div>
@@ -433,6 +466,9 @@ onMounted(async () => {
 .btn-save:hover:not(:disabled) { opacity:.9; transform:translateY(-1px); }
 .btn-save:disabled { opacity:.5; cursor:not-allowed; }
 .file-preview { margin-top:8px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:8px 12px; }
+.file-preview-item { padding:8px 0; border-bottom:1px solid var(--border); }
+.file-preview-item:last-child { border-bottom:none; padding-bottom:0; }
+.file-preview-item:first-child { padding-top:0; }
 .file-preview-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
 .file-icon { color:var(--danger); font-size:1rem; }
 .file-name { flex:1; font-size:.82rem; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
