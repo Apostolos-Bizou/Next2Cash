@@ -1242,14 +1242,14 @@ onUnmounted(() => {
 .badge-partial { background:var(--warning-bg); color:var(--warning); }
 .actions {
   white-space: nowrap;
-  text-align: right;
+  text-align: left;
   display: inline-grid;
   grid-template-columns: 92px 36px 36px 36px;
   gap: 6px;
   align-items: center;
-  justify-content: end;
-  width: 100%;
-  padding-right: 8px;
+  justify-content: start;
+  width: auto;
+  padding-left: 12px;
 }
 td.actions { vertical-align: middle; }
 .act-slot {
