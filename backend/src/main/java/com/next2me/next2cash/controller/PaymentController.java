@@ -8,6 +8,11 @@ import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.service.BankBalanceService;
 import com.next2me.next2cash.service.PaymentService;
 import com.next2me.next2cash.service.UserAccessService;
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobServiceClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +42,12 @@ public class PaymentController {
     private final TransactionRepository transactionRepository;
     private final UserAccessService userAccessService;
     private final BankBalanceService bankBalanceService;
+
+    @Value("${next2cash.azure.blob.connection-string:}")
+    private String blobConnectionString;
+
+    @Value("${next2cash.azure.blob.container:next2cash-documents}")
+    private String blobContainerName;
 
     private static final Logger log = LoggerFactory.getLogger(PaymentController.class);
 
@@ -161,5 +172,111 @@ public class PaymentController {
             "data", payments,
             "total", payments.size()
         ));
+    }
+
+    // ============================================================
+    // DELETE /api/payments/{id}  (Phase 57-D.1)
+    // ------------------------------------------------------------
+    // Removes a payment record. Recomputes parent transaction's
+    // amountPaid/amountRemaining/paymentStatus/paymentDate via
+    // PaymentService.recalcParentTransaction (idempotent).
+    //
+    // EDGE CASE: When the deleted payment was the LAST one for the
+    // parent, recalc leaves status unchanged (service comment at
+    // PaymentService line 143). We explicitly force status='unpaid'
+    // and paymentDate=null in that case.
+    //
+    // Also deletes the blob (if any) and triggers bank balance
+    // recompute for the affected paymentMethod.
+    //
+    // Auth: ADMIN + USER only.
+    // ============================================================
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    public ResponseEntity<?> deletePayment(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Integer id) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+
+        Payment payment = paymentRepository.findById(id).orElse(null);
+        if (payment == null) {
+            return ResponseEntity.notFound().build();
+        }
+        userAccessService.assertCanAccessEntity(user, payment.getEntityId());
+
+        // Capture details BEFORE delete (we need them for downstream actions)
+        Integer transactionId = payment.getTransactionId();
+        UUID entityId = payment.getEntityId();
+        String paymentMethod = payment.getPaymentMethod();
+        String blobFileId = payment.getBlobFileId();
+
+        try {
+            // 1. Delete the payment row
+            paymentRepository.deleteById(id);
+            log.info("Deleted Payment id={} txnId={} amount={} method={}",
+                    id, transactionId, payment.getAmount(), paymentMethod);
+
+            // 2. Recompute parent transaction (idempotent, reads remaining payments)
+            if (transactionId != null) {
+                paymentService.recalcParentTransaction(transactionId, user.getId());
+
+                // 3. EDGE CASE: if no payments remain, force status='unpaid' + paymentDate=null
+                Transaction txn = transactionRepository.findById(transactionId).orElse(null);
+                if (txn != null) {
+                    BigDecimal paid = txn.getAmountPaid() != null ? txn.getAmountPaid() : BigDecimal.ZERO;
+                    if (paid.compareTo(new BigDecimal("0.01")) <= 0) {
+                        txn.setPaymentStatus("unpaid");
+                        txn.setPaymentDate(null);
+                        txn.setUpdatedBy(user.getId());
+                        transactionRepository.save(txn);
+                        log.info("No payments remain on txn id={}, reset to unpaid", transactionId);
+                    }
+                }
+            }
+
+            // 4. Auto-recompute bank balance for the affected paymentMethod
+            if (paymentMethod != null && !paymentMethod.isBlank()) {
+                try {
+                    bankBalanceService.recomputeForPaymentMethod(entityId, paymentMethod);
+                } catch (Exception ex) {
+                    log.warn("Auto-recompute failed for entity={} paymentMethod={} after PAYMENT-DELETE id={}: {}",
+                            entityId, paymentMethod, id, ex.getMessage());
+                }
+            }
+
+            // 5. Delete blob proof (if any)
+            if (blobFileId != null && !blobFileId.isBlank()) {
+                try {
+                    BlobServiceClient client = new BlobServiceClientBuilder()
+                        .connectionString(blobConnectionString)
+                        .buildClient();
+                    BlobContainerClient container = client.getBlobContainerClient(blobContainerName);
+                    BlobClient blob = container.getBlobClient(blobFileId);
+                    if (blob.exists()) {
+                        blob.delete();
+                        log.info("Deleted blob proof: {}", blobFileId);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Blob delete failed for blobFileId={}: {}", blobFileId, ex.getMessage());
+                    // Non-fatal: payment row already gone, blob is now orphan
+                }
+            }
+
+            // 6. Return updated transaction so frontend can refresh in one round-trip
+            Transaction updatedTxn = (transactionId != null)
+                ? transactionRepository.findById(transactionId).orElse(null)
+                : null;
+
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "transaction", updatedTxn == null ? "" : updatedTxn
+            ));
+
+        } catch (Exception e) {
+            log.error("deletePayment failed for id=" + id, e);
+            return ResponseEntity.internalServerError()
+                .body(Map.of("success", false, "error", "Σφάλμα διαγραφής: " + e.getMessage()));
+        }
     }
 }

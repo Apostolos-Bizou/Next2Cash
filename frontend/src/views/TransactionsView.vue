@@ -470,6 +470,32 @@ function resetFilters() {
   page.value = 0
 }
 
+// ───── Step 57-D.2: Route Edit click for virtual payment rows ─────
+// Virtual payment rows (» #X — Πληρωμή #X) carry _txnRef pointing to the
+// parent transaction. When the user clicks Edit on such a row, we open
+// the edit modal for the PARENT transaction (which holds the editable
+// fields — type, category, amount, etc).
+function onEditAnyRow(t) {
+  if (!t) return
+  if (t._isPaymentRow) {
+    const realId = t._txnRef
+    if (realId == null) return
+    // Find the canonical (non-virtual) parent row in the loaded list.
+    const parent = transactions.value.find(x => x.id === realId && !x._isPaymentRow)
+    if (parent) {
+      openEdit(parent)
+    } else {
+      // Fallback: open edit on the virtual row itself (data is partial,
+      // but openEdit expects fields that exist on the virtual row too).
+      // This branch should be rare since the parent is always loaded
+      // alongside its virtual injections.
+      openEdit(t)
+    }
+  } else {
+    openEdit(t)
+  }
+}
+
 // ───── EDIT ─────
 function openEdit(t) {
   if (!canModify.value) return
@@ -587,6 +613,40 @@ async function saveEdit() {
   } finally {
     editModal.value.saving = false
   }
+}
+
+// ───── Step 57-D.3: Route Delete click for virtual payment rows ─────
+// Virtual payment rows in CASHFLOW MODE carry a real _paymentId from the
+// backend cashflow event. Clicking Delete on such a row deletes ONLY that
+// Payment record (not the parent transaction) via DELETE /api/payments/{id}.
+// Backend recomputes parent's amountPaid/Remaining/Status accordingly.
+//
+// Standard-mode virtual rows have _paymentId=null (we cannot identify
+// the specific Payment), so the Delete button is hidden via the v-if.
+async function onDeleteAnyRow(t) {
+  if (!t) return
+  if (t._isPaymentRow && t._paymentId) {
+    const ok = window.confirm(
+      'Διαγραφή αυτής της πληρωμής;\n\n' +
+      'Η συναλλαγή θα επανυπολογιστεί αυτόματα.\nΗ ενέργεια δεν αναιρείται.'
+    )
+    if (!ok) return
+    try {
+      const res = await api.delete('/api/payments/' + t._paymentId)
+      if (res.data && res.data.success !== false) {
+        showToast('success', 'Η πληρωμή διαγράφηκε')
+        await loadTransactions()
+      } else {
+        showToast('error', (res.data && res.data.error) || 'Αποτυχία διαγραφής')
+      }
+    } catch (e) {
+      console.error('onDeleteAnyRow payment delete failed:', e)
+      showToast('error', e.response?.data?.error || 'Σφάλμα διαγραφής')
+    }
+  } else if (!t._isPaymentRow) {
+    openDelete(t)
+  }
+  // else: virtual row without _paymentId -> button is hidden anyway, no-op
 }
 
 // ───── DELETE ─────
@@ -920,10 +980,10 @@ onUnmounted(() => {
                 :style="hasAttachments(t) ? {} : { opacity: 0.45 }">
                 📎
               </button>
-              <button v-if="canModify && !t._isPaymentRow" class="icon-btn" title="Επεξεργασία" @click="openEdit(t)">
+              <button v-if="canModify" class="icon-btn" title="Επεξεργασία" @click="onEditAnyRow(t)">
                 <i class="fas fa-edit"></i>
               </button>
-              <button v-if="canModify && !t._isPaymentRow" class="icon-btn icon-danger" title="Διαγραφή" @click="openDelete(t)">
+              <button v-if="canModify && (!t._isPaymentRow || t._paymentId)" class="icon-btn icon-danger" title="Διαγραφή" @click="onDeleteAnyRow(t)">
                 <i class="fas fa-trash"></i>
               </button>
             </td>
