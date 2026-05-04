@@ -19,13 +19,14 @@ const props = defineProps({
   visible:     { type: Boolean, default: false },
   transaction: { type: Object,  default: null }
 })
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'attachment-deleted'])
 
 // --- State --------------------------------------------------------
 const loading     = ref(false)
 const errorMsg    = ref('')
 const attachments = ref([])          // [{ fileName, blobPath, sizeBytes, downloadUrl }]
 const downloadingIdx = ref(-1)
+const deletingIdx    = ref(-1)
 const showUpload = ref(false)
 
 function onUploadComplete() {
@@ -98,6 +99,40 @@ async function onDownload(file, idx) {
     alert('Σφάλμα λήψης: ' + (e.message || 'άγνωστο σφάλμα'))
   } finally {
     downloadingIdx.value = -1
+  }
+}
+
+// --- Delete attachment --------------------------------------------
+async function onDelete(file, idx) {
+  // Confirm with the user before destructive action
+  const ok1 = window.confirm(
+    '\u0394\u03b9\u03b1\u03b3\u03c1\u03b1\u03c6\u03ae \u03b1\u03c1\u03c7\u03b5\u03af\u03bf\u03c5;\n\n' +
+    (file.fileName || '') + '\n\n' +
+    '\u0397 \u03b5\u03bd\u03ad\u03c1\u03b3\u03b5\u03b9\u03b1 \u03b4\u03b5\u03bd \u03b1\u03bd\u03b1\u03b9\u03c1\u03b5\u03af\u03c4\u03b1\u03b9.'
+  )
+  if (!ok1) return
+
+  deletingIdx.value = idx
+  try {
+    const res = await api.delete(
+      '/api/documents/by-transaction/' + props.transaction.id,
+      { data: { blobPath: file.blobPath } }
+    )
+    if (res.data && res.data.success) {
+      // Remove from local array (no full reload)
+      attachments.value.splice(idx, 1)
+      // Notify parent (e.g. to refresh transaction list / attachment count badge)
+      emit('attachment-deleted', { transactionId: props.transaction.id, blobPath: file.blobPath })
+    } else {
+      const err = (res.data && res.data.error) || '\u03b1\u03b3\u03bd\u03c9\u03c3\u03c4\u03bf \u03c3\u03c6\u03ac\u03bb\u03bc\u03b1'
+      alert('\u03a3\u03c6\u03ac\u03bb\u03bc\u03b1 \u03b4\u03b9\u03b1\u03b3\u03c1\u03b1\u03c6\u03ae\u03c2: ' + err)
+    }
+  } catch (e) {
+    console.error('delete attachment error:', e)
+    const msg = e.response?.data?.error || e.message || '\u03ac\u03b3\u03bd\u03c9\u03c3\u03c4\u03bf \u03c3\u03c6\u03ac\u03bb\u03bc\u03b1'
+    alert('\u03a3\u03c6\u03ac\u03bb\u03bc\u03b1 \u03b4\u03b9\u03b1\u03b3\u03c1\u03b1\u03c6\u03ae\u03c2: ' + msg)
+  } finally {
+    deletingIdx.value = -1
   }
 }
 
@@ -208,6 +243,15 @@ function iconColor(fileName) {
                   <span class="ap-btn-icon">⬇</span>
                   <span v-if="downloadingIdx === idx" class="ap-btn-label">...</span>
                   <span v-else class="ap-btn-label">Λήψη</span>
+                </button>
+                <button
+                  class="ap-btn ap-btn-delete"
+                  @click="onDelete(f, idx)"
+                  :disabled="deletingIdx === idx"
+                  title="Διαγραφή αρχείου">
+                  <span class="ap-btn-icon">✕</span>
+                  <span v-if="deletingIdx === idx" class="ap-btn-label">...</span>
+                  <span v-else class="ap-btn-label">Διαγραφή</span>
                 </button>
               </div>
             </div>
@@ -399,6 +443,10 @@ function iconColor(fileName) {
   background: #2c3e50; color: #e0e6ed;
 }
 .ap-btn-download:hover:not(:disabled) { background: #3a4f66; }
+.ap-btn-delete {
+  background: #c0392b; color: #ffffff;
+}
+.ap-btn-delete:hover:not(:disabled) { background: #e74c3c; }
 .ap-btn-icon { font-size: 0.95rem; }
 .ap-btn-label {
   text-decoration: underline;
