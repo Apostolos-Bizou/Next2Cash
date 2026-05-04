@@ -394,6 +394,14 @@ function stripPaymentPrefix(desc) {
         paymentMethod: ev.paymentMethod,
         amount: ev.amount,
         type: inflow > 0 ? 'income' : 'expense',
+        // Step 57-E.3: populate amountRemaining so canMarkPaid() works
+        // in cashflow mode. For paid/received/payment rows it's 0; for
+        // urgent/unpaid it's the full event amount.
+        amountRemaining: (isPayment
+          || ev.paymentStatus === 'paid'
+          || ev.paymentStatus === 'received')
+          ? 0
+          : Number(ev.amount || 0),
         paymentStatus: isPayment ? 'paid' : (ev.paymentStatus || 'unpaid'),
         blobFileIds: ev.blobFileIds,
         _isPaymentRow: isPayment,

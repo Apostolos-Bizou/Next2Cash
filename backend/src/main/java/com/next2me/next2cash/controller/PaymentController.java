@@ -279,4 +279,212 @@ public class PaymentController {
                 .body(Map.of("success", false, "error", "Σφάλμα διαγραφής: " + e.getMessage()));
         }
     }
+
+    // ============================================================
+    // GET/POST /api/payments/backfill  (Phase 57-E)
+    // ------------------------------------------------------------
+    // Backfills Payment records for legacy "paid" transactions that
+    // have a paymentDate set but no corresponding Payment row.
+    //
+    // Use:
+    //   GET  /api/payments/backfill?entityId=XXX&dryRun=true   (preview only)
+    //   POST /api/payments/backfill?entityId=XXX               (execute)
+    //
+    // Idempotent: skips transactions that already have a Payment record.
+    //
+    // Auth: ADMIN only.
+    // ============================================================
+    @GetMapping("/backfill")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> backfillDryRun(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam("entityId") String entityIdStr) {
+        return runBackfill(authHeader, entityIdStr, true, true);
+    }
+
+    @PostMapping("/backfill")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> backfillExecute(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam("entityId") String entityIdStr,
+            @RequestParam(value = "splitOnly", defaultValue = "true") boolean splitOnly) {
+        return runBackfill(authHeader, entityIdStr, false, splitOnly);
+    }
+
+    private ResponseEntity<?> runBackfill(String authHeader, String entityIdStr, boolean dryRun, boolean splitOnly) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        UUID entityId;
+        try {
+            entityId = UUID.fromString(entityIdStr);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                .body(Map.of("success", false, "error", "Invalid entityId: " + e.getMessage()));
+        }
+        userAccessService.assertCanAccessEntity(user, entityId);
+
+        try {
+            // 1. Fetch all active transactions for the entity
+            List<Transaction> allTxns = transactionRepository
+                .findByEntityIdAndRecordStatusOrderByDocDateDesc(entityId, "active");
+
+            // 2. Filter to candidate orphans
+            List<Transaction> candidates = new java.util.ArrayList<>();
+            for (Transaction t : allTxns) {
+                String ps = t.getPaymentStatus();
+                if (ps == null) continue;
+                boolean isPaid = "paid".equals(ps) || "received".equals(ps);
+                if (!isPaid) continue;
+                if (t.getPaymentDate() == null) continue;
+                candidates.add(t);
+            }
+
+            // 3. Bulk-fetch existing Payment records for all candidate txn ids
+            //    so we can detect which ones already have a Payment.
+            List<Integer> candidateIds = new java.util.ArrayList<>();
+            for (Transaction t : candidates) candidateIds.add(t.getId());
+
+            java.util.Set<Integer> txnIdsWithPayments = new java.util.HashSet<>();
+            if (!candidateIds.isEmpty()) {
+                List<Payment> existing = paymentRepository
+                    .findByEntityIdAndTransactionIdIn(entityId, candidateIds);
+                for (Payment p : existing) {
+                    if (p.getTransactionId() != null) {
+                        txnIdsWithPayments.add(p.getTransactionId());
+                    }
+                }
+            }
+
+            // 4. Identify the actual orphans (paid + paymentDate + no Payment)
+            List<Transaction> orphans = new java.util.ArrayList<>();
+            for (Transaction t : candidates) {
+                if (!txnIdsWithPayments.contains(t.getId())) {
+                    orphans.add(t);
+                }
+            }
+
+            // Step 57-E.2.1: filter orphans by split-only when executing
+            if (!dryRun && splitOnly) {
+                List<Transaction> filtered = new java.util.ArrayList<>();
+                for (Transaction t : orphans) {
+                    boolean isSplit = t.getPaymentDate() != null
+                                   && t.getDocDate() != null
+                                   && !t.getPaymentDate().equals(t.getDocDate());
+                    if (isSplit) filtered.add(t);
+                }
+                orphans = filtered;
+            }
+
+            // 5. If dry-run, just return the count + sample (first 10)
+            if (dryRun) {
+                List<Map<String, Object>> samples = new java.util.ArrayList<>();
+                int sampleLimit = Math.min(10, orphans.size());
+                for (int i = 0; i < sampleLimit; i++) {
+                    Transaction t = orphans.get(i);
+                    Map<String, Object> sample = new java.util.LinkedHashMap<>();
+                    sample.put("id", t.getId());
+                    sample.put("entityNumber", t.getEntityNumber());
+                    sample.put("docDate", t.getDocDate());
+                    sample.put("paymentDate", t.getPaymentDate());
+                    sample.put("amount", t.getAmount());
+                    sample.put("paymentStatus", t.getPaymentStatus());
+                    sample.put("paymentMethod", t.getPaymentMethod());
+                    sample.put("description", t.getDescription());
+                    samples.add(sample);
+                }
+                // Step 57-E.1.1: break down orphans by split vs same-day
+                int splitOrphans = 0;
+                int sameDayOrphans = 0;
+                List<Map<String, Object>> splitSamples = new java.util.ArrayList<>();
+                for (Transaction t : orphans) {
+                    boolean isSplit = t.getPaymentDate() != null
+                                   && t.getDocDate() != null
+                                   && !t.getPaymentDate().equals(t.getDocDate());
+                    if (isSplit) {
+                        splitOrphans++;
+                        if (splitSamples.size() < 20) {
+                            Map<String, Object> s = new java.util.LinkedHashMap<>();
+                            s.put("id", t.getId());
+                            s.put("entityNumber", t.getEntityNumber());
+                            s.put("docDate", t.getDocDate());
+                            s.put("paymentDate", t.getPaymentDate());
+                            s.put("amount", t.getAmount());
+                            s.put("paymentMethod", t.getPaymentMethod());
+                            s.put("description", t.getDescription());
+                            splitSamples.add(s);
+                        }
+                    } else {
+                        sameDayOrphans++;
+                    }
+                }
+
+                Map<String, Object> result = new java.util.LinkedHashMap<>();
+                result.put("success", true);
+                result.put("dryRun", true);
+                result.put("totalActive", allTxns.size());
+                result.put("candidatesPaidWithDate", candidates.size());
+                result.put("alreadyHavePayment", txnIdsWithPayments.size());
+                result.put("orphansToBackfill", orphans.size());
+                result.put("splitOrphans", splitOrphans);
+                result.put("sameDayOrphans", sameDayOrphans);
+                result.put("samples", samples);
+                result.put("splitSamples", splitSamples);
+                return ResponseEntity.ok(result);
+            }
+
+            // 6. Execute: create Payment records for each orphan
+            int created = 0;
+            int skipped = 0;
+            int failed = 0;
+            List<Map<String, Object>> errors = new java.util.ArrayList<>();
+            for (Transaction t : orphans) {
+                try {
+                    Payment p = new Payment();
+                    p.setEntityId(t.getEntityId());
+                    p.setTransactionId(t.getId());
+                    p.setPaymentDate(t.getPaymentDate());
+                    p.setAmount(t.getAmount() != null ? t.getAmount() : BigDecimal.ZERO);
+                    p.setPaymentMethod(t.getPaymentMethod());
+                    p.setCounterparty(t.getCounterparty());
+                    p.setDescription(t.getDescription());
+                    p.setStatus("completed");
+                    p.setNotes("Backfilled from legacy data (Phase 57-E)");
+                    if ("income".equals(t.getType())) {
+                        p.setPaymentType("incoming");
+                    } else if ("expense".equals(t.getType())) {
+                        p.setPaymentType("outgoing");
+                    }
+                    p.setCreatedBy(user.getId());
+                    paymentRepository.save(p);
+                    created++;
+                } catch (Exception ex) {
+                    failed++;
+                    Map<String, Object> err = new java.util.LinkedHashMap<>();
+                    err.put("txnId", t.getId());
+                    err.put("entityNumber", t.getEntityNumber());
+                    err.put("error", ex.getMessage());
+                    errors.add(err);
+                    log.warn("Backfill failed for txn id={}: {}", t.getId(), ex.getMessage());
+                }
+            }
+
+            log.info("Backfill complete for entity {}: created={} skipped={} failed={}",
+                    entityId, created, skipped, failed);
+
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "dryRun", false,
+                "entityId", entityId,
+                "orphansFound", orphans.size(),
+                "created", created,
+                "skipped", skipped,
+                "failed", failed,
+                "errors", errors
+            ));
+
+        } catch (Exception e) {
+            log.error("Backfill failed for entity " + entityIdStr, e);
+            return ResponseEntity.internalServerError()
+                .body(Map.of("success", false, "error", "Σφάλμα backfill: " + e.getMessage()));
+        }
+    }
 }
