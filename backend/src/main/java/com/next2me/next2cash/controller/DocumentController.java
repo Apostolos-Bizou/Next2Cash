@@ -377,4 +377,99 @@ public class DocumentController {
             "total",   result.size()
         ));
     }
+
+    // -- DELETE /api/documents/by-transaction/{id} ------------------------
+    // Hard delete: removes a single blob from Azure AND removes its path
+    // from transactions.blob_file_ids. ADMIN + USER only.
+    //
+    // Body: { "blobPath": "<existing path inside container>" }
+    // Returns: { success, blobFileIds (updated), removed }
+    @DeleteMapping("/by-transaction/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> deleteDocumentByTransaction(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Integer id,
+            @RequestBody Map<String, String> body) {
+
+        // 1. Resolve current user
+        User user = userAccessService.getCurrentUser(authHeader);
+
+        // 2. Validate input
+        String blobPath = body == null ? null : body.get("blobPath");
+        if (blobPath == null || blobPath.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error",   "blob_path_missing"
+            ));
+        }
+        blobPath = blobPath.trim();
+
+        // 3. Load transaction + entity-access check
+        var txnOpt = transactionRepository.findById(id);
+        if (txnOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of(
+                "success", false,
+                "error",   "transaction_not_found"
+            ));
+        }
+        var txn = txnOpt.get();
+        userAccessService.assertCanAccessEntity(user, txn.getEntityId());
+
+        // 4. Verify blobPath actually belongs to this transaction
+        String existing = txn.getBlobFileIds();
+        if (existing == null || existing.isBlank()) {
+            return ResponseEntity.status(404).body(Map.of(
+                "success", false,
+                "error",   "blob_not_attached"
+            ));
+        }
+        java.util.List<String> paths = new java.util.ArrayList<>();
+        for (String p : existing.split(",")) {
+            String t = p.trim();
+            if (!t.isEmpty()) paths.add(t);
+        }
+        if (!paths.contains(blobPath)) {
+            return ResponseEntity.status(404).body(Map.of(
+                "success", false,
+                "error",   "blob_not_attached"
+            ));
+        }
+
+        // 5. Delete blob from Azure FIRST (fail fast).
+        // If Azure is down or path is corrupt, abort before touching DB.
+        try {
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                .connectionString(blobConnectionString)
+                .buildClient();
+
+            BlobClient blobClient = blobServiceClient
+                .getBlobContainerClient(containerName)
+                .getBlobClient(blobPath);
+
+            // deleteIfExists returns false if blob is already gone — that
+            // is fine, treat as success and proceed to DB cleanup so we
+            // remove the dangling reference.
+            blobClient.deleteIfExists();
+        } catch (Exception ex) {
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "error",   "blob_delete_failed",
+                "detail",  ex.getMessage() == null ? "" : ex.getMessage()
+            ));
+        }
+
+        // 6. Rebuild blob_file_ids without the deleted path, save txn
+        paths.remove(blobPath);
+        String updated = String.join(",", paths);
+        txn.setBlobFileIds(updated.isEmpty() ? null : updated);
+        txn.setUpdatedBy(user.getId());
+        transactionRepository.save(txn);
+
+        return ResponseEntity.ok(Map.of(
+            "success",     true,
+            "removed",     blobPath,
+            "blobFileIds", updated
+        ));
+    }
 }
