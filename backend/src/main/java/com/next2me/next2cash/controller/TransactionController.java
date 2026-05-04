@@ -1,7 +1,9 @@
 package com.next2me.next2cash.controller;
 
+import com.next2me.next2cash.model.Payment;
 import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.model.User;
+import com.next2me.next2cash.repository.PaymentRepository;
 import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.security.JwtUtil;
 import com.next2me.next2cash.service.AuditLogService;
@@ -17,6 +19,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +33,11 @@ import java.util.UUID;
 public class TransactionController {
 
     private final TransactionRepository transactionRepository;
+    private final PaymentRepository paymentRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
     private final JwtUtil jwtUtil;
     private final UserAccessService userAccessService;
     private final AuditLogService auditLogService;
@@ -178,6 +187,27 @@ public class TransactionController {
             // SECURITY GUARD: the existing transaction's entity must be accessible
             userAccessService.assertCanAccessEntity(user, t.getEntityId());
 
+              // [Step 59-C-2] Block paymentDate edit when split payments exist.
+              // If the parent has >1 Payment records, only the Payment-level edit UI
+              // (per virtual row) is the safe place to change dates. Editing here would
+              // be silently overridden by recalcParentTransaction (max payment date).
+              if (updates.getPaymentDate() != null
+                      && (t.getPaymentDate() == null
+                          || !updates.getPaymentDate().equals(t.getPaymentDate()))) {
+                  long payCount = ((Number) entityManager.createNativeQuery(
+                          "SELECT COUNT(*) FROM payments WHERE transaction_id = :tid")
+                      .setParameter("tid", t.getId())
+                      .getSingleResult()).longValue();
+                  if (payCount > 1L) {
+                      return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                          "success", false,
+                          "error",   "split_payments_present",
+                          "message", "Has multiple payments \u2014 edit Payment records individually.",
+                          "paymentCount", payCount
+                      ));
+                  }
+              }
+
             // Also block attempts to MOVE a transaction to an entity the user can't access
             if (updates.getEntityId() != null && !updates.getEntityId().equals(t.getEntityId())) {
                 userAccessService.assertCanAccessEntity(user, updates.getEntityId());
@@ -205,6 +235,26 @@ public class TransactionController {
 
             Transaction saved = transactionRepository.save(t);
             auditLogService.log(saved.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_UPDATE", "transactions", saved.getId().toString(), null);
+
+              // [Step 59-C-2] Sync Payment.paymentDate to Transaction.paymentDate.
+              // Single-payment case: keep the Payment record aligned with the parent
+              // so virtual rows + cashflow + bank balances all use the same date.
+              // Split-payment case is already blocked above by the pre-guard.
+              if (updates.getPaymentDate() != null && saved.getPaymentDate() != null) {
+                  @SuppressWarnings("unchecked")
+                  java.util.List<Payment> linkedPayments = entityManager.createQuery(
+                      "SELECT p FROM Payment p WHERE p.transactionId = :tid",
+                      Payment.class)
+                    .setParameter("tid", saved.getId())
+                    .getResultList();
+                  if (linkedPayments.size() == 1) {
+                      Payment p = linkedPayments.get(0);
+                      if (!saved.getPaymentDate().equals(p.getPaymentDate())) {
+                          p.setPaymentDate(saved.getPaymentDate());
+                          paymentRepository.save(p);
+                      }
+                  }
+              }
 
             // Auto-recompute bank balances (Phase 3, Step 3.2).
             // Always recompute the current (post-update) bucket; if the paymentMethod or entity

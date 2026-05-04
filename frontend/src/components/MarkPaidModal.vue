@@ -79,9 +79,54 @@ const availablePaymentMethods = computed(() => {
 onMounted(() => { loadBankAccounts() })
 watch(() => props.transaction && props.transaction.entityId, () => { loadBankAccounts() })
 
+// [Step 59-D-fix3] Reset form when modal opens for a NEW transaction.
+// Without this, the modal stays mounted across Mark-Paid clicks and
+// the previous transaction's files / filenames / amount / notes
+// stick around. Reset on open transition (false -> true).
+watch(
+  () => props.visible,
+  (now, prev) => {
+    if (now && !prev) {
+      // Modal just opened: clear file-related state.
+      selectedFiles.value = []
+      proofFileNames.value = []
+      // Also reset the rest of the form fields to defaults.
+      const t = props.transaction
+      const remaining = (t && t.amountRemaining != null)
+        ? Number(t.amountRemaining)
+        : (t && t.amount != null ? Number(t.amount) : 0)
+      amount.value = remaining > 0 ? String(remaining) : '0'
+      paymentDate.value = new Date().toISOString().split('T')[0]
+      notes.value = ''
+      errorMsg.value = ''
+    }
+  }
+)
+
+// [Step 59-D-fix2] Hardened recompute of proof filenames.
+// v1 had a race: when modal closed, props.transaction transitioned to null
+// briefly, the watch fired with no id, and wrote empty names ("\u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ae #.pdf")
+// that stuck around for the next open. v2 guards against that.
+watch(
+  () => {
+    const t = props.transaction
+    if (!t) return null
+    return t.entityNumber != null ? t.entityNumber : (t.id != null ? t.id : null)
+  },
+  (newKey) => {
+    // Skip when transaction is gone (modal closing) or has no usable id.
+    if (newKey == null) return
+    if (!selectedFiles.value || selectedFiles.value.length === 0) return
+    proofFileNames.value = selectedFiles.value.map(f => buildSuggestedFilename(f))
+  },
+  { flush: 'post' }
+)
+
 
 // --- File upload state ---
 const selectedFiles = ref([])
+// [Step 59-D] Editable filename per selected file (mirrors NewEntryView pattern).
+const proofFileNames = ref([])
 const fileInputRef  = ref(null)
 const MAX_BYTES = 10 * 1024 * 1024
 const ACCEPT = '.pdf,.jpg,.jpeg,.png'
@@ -107,12 +152,37 @@ function addFiles(files) {
     if (f.size > MAX_BYTES) continue
     if (selectedFiles.value.length >= 4) break
     selectedFiles.value.push(f)
+    proofFileNames.value.push(buildSuggestedFilename(f))
   }
+}
+
+
+// [Step 59-D-fix] Use entityNumber + correct description
+// Mirrors NewEntryView / TransactionsView saveEdit pattern:
+//   (entityNumber || id) + " - " + descWithoutLeadingId + "." + ext
+function buildSuggestedFilename(file) {
+  const ext = (file && file.name && file.name.includes('.'))
+    ? file.name.split('.').pop().toLowerCase()
+    : ''
+  const t = props.transaction || {}
+  const numLabel = (t.entityNumber != null) ? t.entityNumber : (t.id || '')
+  // Strip leading "<digits> - " from description to avoid "4800 - 4800 - X"
+  const baseDesc = String(t.description || '')
+    .replace(/^\d+\s*-\s*/, '')
+    .substring(0, 50)
+    .trim()
+  // Greek "\u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ae" = "Plirwmi"
+  const PAY = '\u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ae'
+  let name = PAY + ' #' + numLabel
+  if (baseDesc) name += ' - ' + baseDesc
+  if (ext) name += '.' + ext
+  return name
 }
 
 function removeFile(idx) {
   if (saving.value) return
   selectedFiles.value.splice(idx, 1)
+  proofFileNames.value.splice(idx, 1)
 }
 
 function fmtBytes(n) {
@@ -223,10 +293,19 @@ async function onSubmit() {
     if (res.data && res.data.success) {
       // Upload files if any selected
       if (selectedFiles.value.length > 0) {
-        for (const f of selectedFiles.value) {
+        // [Step 59-D] Mirror NewEntryView pattern: send custom (editable) filename.
+        for (let i = 0; i < selectedFiles.value.length; i++) {
+          const f = selectedFiles.value[i]
           try {
+            const ext = f.name.includes('.')
+              ? f.name.split('.').pop().toLowerCase()
+              : ''
+            let fileName = (proofFileNames.value[i] || '').trim()
+            if (!fileName) fileName = buildSuggestedFilename(f)
+            if (ext && !fileName.toLowerCase().endsWith('.' + ext)) fileName += '.' + ext
             const form = new FormData()
             form.append('file', f)
+            form.append('customFileName', fileName)
             await api.post('/api/documents/upload?transactionId=' + props.transaction.id, form)
           } catch (fe) {
             console.warn('File upload failed:', fe)
@@ -364,7 +443,13 @@ async function onSubmit() {
               <span class="mp-file-icon" :class="f.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'img'">
                 {{ f.name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'IMG' }}
               </span>
-              <span class="mp-file-name">{{ f.name }}</span>
+              <input
+                type="text"
+                class="mp-file-name-input"
+                v-model="proofFileNames[i]"
+                :disabled="saving"
+                :title="f.name"
+                placeholder="\u038c\u03bd\u03bf\u03bc\u03b1 \u03b1\u03c1\u03c7\u03b5\u03af\u03bf\u03c5" />
               <span class="mp-file-size">{{ fmtBytes(f.size) }}</span>
               <button class="mp-file-remove" :disabled="saving" @click="removeFile(i)">×</button>
             </div>
@@ -397,6 +482,27 @@ async function onSubmit() {
 </template>
 
 <style scoped>
+/* [Step 59-D] mp-file-name-input */
+.mp-file-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e6f0ff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  outline: none;
+}
+.mp-file-name-input:focus {
+  border-color: #4da3ff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.mp-file-name-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Backdrop */
 .modal-backdrop {
   position: fixed; inset: 0;
