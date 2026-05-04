@@ -380,8 +380,13 @@ function stripPaymentPrefix(desc) {
       // For payment rows, strip the "Payment for #N - " prefix from description
       // since the row is already marked with a "<<" badge in the id column;
       // the bare description fits cleanly within the 40-char display cap.
+      // Step 57-E.4: align with standard-mode injectVirtualPaymentRows.
+      // Standard mode produces "💳 Πληρωμή #X — [parent]" for
+      // virtual rows. Cashflow mode should match for consistency.
+      const cleanDesc = isPayment ? stripPaymentPrefix(ev.description) : ev.description
+      const idForLabel = ev.entityNumber != null ? ev.entityNumber : ev.transactionId
       const displayDesc = isPayment
-        ? stripPaymentPrefix(ev.description)
+        ? '💳 Πληρωμή #' + idForLabel + ' — ' + cleanDesc
         : ev.description
       return {
         id: isPayment ? 'pay-' + ev.paymentId : ev.transactionId,
