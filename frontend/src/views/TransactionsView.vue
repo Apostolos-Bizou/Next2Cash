@@ -968,24 +968,32 @@ onUnmounted(() => {
             <td class="ra mono" :class="t.type === 'expense' && isUnpaid(t) ? 'red' : 'white'">{{ t.type === 'expense' ? fmt(t.amount) : '—' }}</td>
             <td><span class="status-badge" :class="statusClass(t.paymentStatus)">{{ statusLabel(t.paymentStatus) }}</span></td>
             <td class="actions">
-              <button
-                v-if="canMarkPaid(t) && !t._isPaymentRow"
-                class="btn-action btn-mark-paid-sm"
-                @click="openMarkPaid(t)">
-                ✓ Εξόφληση
-              </button>
-              <button
-                class="btn-action btn-attach-sm"
-                @click="openAttachments(t)"
-                :style="hasAttachments(t) ? {} : { opacity: 0.45 }">
-                📎
-              </button>
-              <button v-if="canModify" class="icon-btn" title="Επεξεργασία" @click="onEditAnyRow(t)">
-                <i class="fas fa-edit"></i>
-              </button>
-              <button v-if="canModify && (!t._isPaymentRow || t._paymentId)" class="icon-btn icon-danger" title="Διαγραφή" @click="onDeleteAnyRow(t)">
-                <i class="fas fa-trash"></i>
-              </button>
+              <span class="act-slot act-slot-mark">
+                <button
+                  v-if="canMarkPaid(t) && !t._isPaymentRow"
+                  class="btn-action btn-mark-paid-sm"
+                  @click="openMarkPaid(t)">
+                  ✓ Εξόφληση
+                </button>
+              </span>
+              <span class="act-slot">
+                <button
+                  class="btn-action btn-attach-sm"
+                  @click="openAttachments(t)"
+                  :style="hasAttachments(t) ? {} : { opacity: 0.45 }">
+                  📎
+                </button>
+              </span>
+              <span class="act-slot">
+                <button v-if="canModify" class="icon-btn" title="Επεξεργασία" @click="onEditAnyRow(t)">
+                  <i class="fas fa-edit"></i>
+                </button>
+              </span>
+              <span class="act-slot">
+                <button v-if="canModify && (!t._isPaymentRow || t._paymentId)" class="icon-btn icon-danger" title="Διαγραφή" @click="onDeleteAnyRow(t)">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </span>
             </td>
           </tr>
         </tbody>
@@ -1232,7 +1240,47 @@ onUnmounted(() => {
 .badge-unpaid  { background:var(--danger-bg);  color:var(--danger); }
 .badge-urgent  { background:rgba(255,100,0,.15); color:#ff6400; }
 .badge-partial { background:var(--warning-bg); color:var(--warning); }
-.actions { white-space:nowrap; text-align:center; }
+.actions {
+  white-space: nowrap;
+  text-align: right;
+  display: inline-grid;
+  grid-template-columns: 92px 36px 36px 36px;
+  gap: 6px;
+  align-items: center;
+  justify-content: end;
+  width: 100%;
+  padding-right: 8px;
+}
+td.actions { vertical-align: middle; }
+.act-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+}
+.act-slot .icon-btn,
+.act-slot .btn-action {
+  margin: 0;
+  width: 100%;
+}
+.act-slot .icon-btn {
+  padding: 4px 0;
+}
+/* Mark-Paid slot wider to fit "✓ Εξόφληση" text */
+.act-slot-mark .btn-mark-paid-sm {
+  width: 100%;
+  padding-left: 4px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+/* Mobile: shrink slot widths but keep the grid intact */
+@media (max-width: 720px) {
+  .actions {
+    grid-template-columns: 76px 30px 30px 30px;
+    gap: 4px;
+  }
+  .act-slot { min-height: 28px; }
+}
 .icon-btn { background:none; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-muted); padding:4px 8px; cursor:pointer; font-size:.78rem; transition:all .2s; margin:0 2px; }
 .icon-btn:hover { background:var(--bg-card-hover); color:var(--text-primary); }
 .icon-btn.icon-danger:hover { color:var(--danger); border-color:var(--danger); }
