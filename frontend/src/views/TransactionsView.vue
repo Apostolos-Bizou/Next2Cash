@@ -79,7 +79,7 @@ const availableEditPaymentMethods = computed(() => {
 })
 
 // Reload when the user switches entity
-watch(entityId, () => { loadEditBankAccounts() })
+watch(entityId, () => { loadEditBankAccounts(); loadEditConfig() })
 
 
 // ───── Toast notifications ─────
@@ -99,6 +99,181 @@ const editModal = ref({
   data: null,
   original: null
 })
+
+// --- Step 57-A.2: Categories + subcategories for edit modal cascading dropdowns -----
+// Categories and subcategories come from /api/config. Subcategories are
+// filtered by the currently selected category in the edit modal via the
+// filteredEditSubcategories computed below. The watch on the category field
+// resets the subcategory whenever the user changes the category, EXCEPT on
+// the initial pre-fill from openEdit (where _skipNextSubcatReset is set).
+//
+// IMPORTANT: This block MUST live AFTER the editModal declaration above,
+// otherwise the watch's getter throws a TDZ error during setup execution.
+const editCategories = ref([])    // [{ key, value, ... }]
+const editAllSubcats = ref([])    // [{ key, value, parentKey, ... }]
+let _skipNextSubcatReset = false
+
+async function loadEditConfig() {
+  const eid = entityId.value
+  if (!eid) { editCategories.value = []; editAllSubcats.value = []; return }
+  try {
+    const res = await api.get('/api/config', { params: { entityId: eid } })
+    if (res && res.data && res.data.success) {
+      editCategories.value = res.data.categories    || []
+      editAllSubcats.value = res.data.subcategories || []
+    } else {
+      editCategories.value = []
+      editAllSubcats.value = []
+    }
+  } catch (e) {
+    console.error('[TransactionsView] loadEditConfig error:', e)
+    editCategories.value = []
+    editAllSubcats.value = []
+  }
+}
+
+const filteredEditSubcategories = computed(() => {
+  const cat = editModal.value && editModal.value.data && editModal.value.data.category
+  if (!cat) return []
+  const list = editAllSubcats.value.filter(s => s.parentKey === cat)
+  // Legacy fallback: if the currently selected subcategory is NOT in the
+  // canonical filtered list (e.g. the parent category has a Greek/Latin
+  // letter mismatch from legacy data, or the subcategory was renamed), keep
+  // it visible as a leading option so the user sees their actual value.
+  const cur = editModal.value && editModal.value.data && editModal.value.data.subcategory
+  if (cur && !list.some(s => s.key === cur)) {
+    return [{ key: cur, value: cur + ' (legacy)', parentKey: cat }, ...list]
+  }
+  return list
+})
+
+// Legacy fallback for the category dropdown - mirrors the subcategory pattern.
+// If the current category is not in the canonical list (e.g. legacy "ΕΣΟΔΑ B"
+// with Latin B vs the canonical "ΕΣΟΔΑ Β" with Greek B), prepend it so the
+// user sees the actual stored value.
+const editCategoriesWithFallback = computed(() => {
+  const list = editCategories.value || []
+  const cur = editModal.value && editModal.value.data && editModal.value.data.category
+  if (cur && !list.some(c => c.key === cur)) {
+    return [{ key: cur, value: cur + ' (legacy)', parentKey: null }, ...list]
+  }
+  return list
+})
+
+watch(
+  () => editModal.value && editModal.value.data && editModal.value.data.category,
+  (newCat, oldCat) => {
+    if (_skipNextSubcatReset) { _skipNextSubcatReset = false; return }
+    if (!editModal.value || !editModal.value.data) return
+    if (newCat !== oldCat) {
+      editModal.value.data.subcategory = ''
+    }
+  }
+)
+
+// --- Step 57-A.3: Attachments list inside edit modal -----------------------
+// Loaded when openEdit fires. Uses the same endpoints as AttachmentsPopover.
+// Per-row: preview (open in new tab) + delete (DELETE /api/documents/by-transaction/{id}).
+// On delete success the entry is spliced from the local array (no full reload).
+const editAttachments = ref([])              // [{ fileName, blobPath, sizeBytes, downloadUrl }]
+const editAttachmentsLoading = ref(false)
+const editAttachmentsError = ref('')
+const editAttachmentDeletingIdx = ref(-1)
+
+async function loadEditAttachments(txId) {
+  if (!txId) { editAttachments.value = []; return }
+  editAttachmentsLoading.value = true
+  editAttachmentsError.value = ''
+  editAttachments.value = []
+  try {
+    const res = await api.get('/api/documents/by-transaction/' + txId)
+    if (res && res.data && res.data.success) {
+      editAttachments.value = res.data.data || []
+    } else {
+      editAttachmentsError.value = (res.data && res.data.error) || 'Αποτυχία φόρτωσης αρχείων'
+    }
+  } catch (e) {
+    console.error('[TransactionsView] loadEditAttachments error:', e)
+    editAttachmentsError.value = e.response?.data?.error || e.message || 'Σφάλμα σύνδεσης'
+  } finally {
+    editAttachmentsLoading.value = false
+  }
+}
+
+function onPreviewEditAttachment(file) {
+  if (file && file.downloadUrl) {
+    window.open(file.downloadUrl, '_blank', 'noopener,noreferrer')
+  }
+}
+
+async function onDeleteEditAttachment(file, idx) {
+  // Greek confirm dialog via \u escapes (PowerShell display safety + .cjs compat).
+  const ok = window.confirm(
+    '\u0394\u03b9\u03b1\u03b3\u03c1\u03b1\u03c6\u03ae \u03b1\u03c1\u03c7\u03b5\u03af\u03bf\u03c5;\n\n' +
+    (file.fileName || '') + '\n\n' +
+    '\u0397 \u03b5\u03bd\u03ad\u03c1\u03b3\u03b5\u03b9\u03b1 \u03b4\u03b5\u03bd \u03b1\u03bd\u03b1\u03b9\u03c1\u03b5\u03af\u03c4\u03b1\u03b9.'
+  )
+  if (!ok) return
+
+  const txId = editModal.value && editModal.value.data && editModal.value.data.id
+  if (!txId) return
+  editAttachmentDeletingIdx.value = idx
+  try {
+    const res = await api.delete(
+      '/api/documents/by-transaction/' + txId,
+      { data: { blobPath: file.blobPath } }
+    )
+    if (res && res.data && res.data.success) {
+      editAttachments.value.splice(idx, 1)
+      showToast('success', 'Το αρχείο διαγράφηκε')
+    } else {
+      const err = (res.data && res.data.error) || 'άγνωστο σφάλμα'
+      showToast('error', 'Σφάλμα διαγραφής: ' + err)
+    }
+  } catch (e) {
+    console.error('[TransactionsView] onDeleteEditAttachment error:', e)
+    showToast('error', 'Σφάλμα διαγραφής: ' + (e.response?.data?.error || e.message || ''))
+  } finally {
+    editAttachmentDeletingIdx.value = -1
+  }
+}
+
+// --- Step 57-A.4: Multi-file upload area in edit modal ---------------------
+// Files are STAGED here (not uploaded immediately) and are POSTed in saveEdit
+// after the PUT succeeds. Mirrors the NewEntryView pattern from Phase 56-A.1.
+const editUploadedFiles = ref([])    // Array<File>
+const editDriveFileNames = ref([])   // Array<string>, parallel index
+
+function buildEditDefaultName(file, indexAmongAll) {
+  const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : ''
+  const desc = (editModal.value && editModal.value.data && editModal.value.data.description) || ''
+  const baseDesc = desc.trim() ||
+    String((editModal.value && editModal.value.data && editModal.value.data.entityNumber) ||
+           (editModal.value && editModal.value.data && editModal.value.data.id) || '')
+  if (indexAmongAll === 0) return baseDesc + ext
+  return baseDesc + ' (' + (indexAmongAll + 1) + ')' + ext
+}
+
+function onEditFileChange(e) {
+  const incoming = Array.from(e.target.files || [])
+  if (incoming.length === 0) return
+  for (const file of incoming) {
+    const idx = editUploadedFiles.value.length
+    editUploadedFiles.value.push(file)
+    editDriveFileNames.value.push(buildEditDefaultName(file, idx))
+  }
+  try { e.target.value = '' } catch (_) {}
+}
+
+function removeEditFile(idx) {
+  editUploadedFiles.value.splice(idx, 1)
+  editDriveFileNames.value.splice(idx, 1)
+}
+
+function resetEditUploadedFiles() {
+  editUploadedFiles.value = []
+  editDriveFileNames.value = []
+}
 
 // ───── Delete confirm state ─────
 const deleteConfirm = ref({ show: false, item: null, deleting: false })
@@ -298,17 +473,22 @@ function resetFilters() {
 // ───── EDIT ─────
 function openEdit(t) {
   if (!canModify.value) return
+  // Skip the next subcategory reset - we are pre-filling both fields below
+  // and the watch on data.category would otherwise wipe the subcategory.
+  _skipNextSubcatReset = true
   editModal.value = {
     show: true,
     saving: false,
     deleting: false,
     data: {
       id: t.id,
+      entityNumber: t.entityNumber != null ? t.entityNumber : null,
       docDate: t.docDate || '',
       description: t.description || '',
       amount: t.amount != null ? String(t.amount) : '',
       type: t.type || 'expense',
       category: t.category || '',
+      subcategory: t.subcategory || t.account || '',
       account: t.account || '',
       paymentMethod: t.paymentMethod || '',
       paymentStatus: t.paymentStatus || 'unpaid',
@@ -316,11 +496,17 @@ function openEdit(t) {
     },
     original: { ...t }
   }
+  // Step 57-A.3: load attachments for this transaction
+  loadEditAttachments(t.id)
+  // Step 57-A.4: reset any staged uploads from a previous open
+  resetEditUploadedFiles()
 }
 
 function closeEdit() {
   if (editModal.value.saving || editModal.value.deleting) return
   editModal.value.show = false
+  // Step 57-A.4: clear staged uploads so reopening starts fresh
+  resetEditUploadedFiles()
 }
 
 async function saveEdit() {
@@ -338,14 +524,58 @@ async function saveEdit() {
       amount: amountNum,
       type: d.type,
       category: d.category,
-      account: d.account,
+      subcategory: d.subcategory,
+      account: d.subcategory || d.account,
       paymentMethod: d.paymentMethod,
       paymentStatus: d.paymentStatus,
       paymentDate: d.paymentDate || null
     }
     const res = await api.put('/api/transactions/' + d.id, payload)
     if (res.data && res.data.success !== false) {
-      showToast('success', 'Η κίνηση αποθηκεύτηκε')
+      // Step 57-A.5: upload staged files (if any) AFTER successful PUT.
+      // Continue-on-error pattern - txn is saved even if a file fails,
+      // matching NewEntryView Phase 56-A.1 semantics.
+      let uploadFailures = 0
+      const stagedCount = editUploadedFiles.value.length
+      if (stagedCount > 0) {
+        for (let i = 0; i < stagedCount; i++) {
+          try {
+            const file = editUploadedFiles.value[i]
+            const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : ''
+            let fileName = (editDriveFileNames.value[i] || '').trim()
+            if (!fileName) {
+              const baseDesc = (d.description || '').replace(/^\d+\s*-\s*/, '').substring(0, 50)
+              fileName = (d.entityNumber || d.id) + ' - ' + baseDesc + (ext ? '.' + ext : '')
+            }
+            if (fileName && ext && !fileName.toLowerCase().endsWith('.' + ext)) {
+              fileName += '.' + ext
+            }
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('entityId', entityId.value)
+            formData.append('transactionId', d.id)
+            formData.append('customFileName', fileName)
+            await api.post('/api/documents/upload', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+              timeout: 60000
+            })
+          } catch (fe) {
+            console.warn('[TransactionsView] saveEdit upload failed:', fe)
+            uploadFailures++
+          }
+        }
+      }
+
+      if (stagedCount === 0) {
+        showToast('success', 'Η κίνηση αποθηκεύτηκε')
+      } else if (uploadFailures === 0) {
+        showToast('success', 'Η κίνηση αποθηκεύτηκε με ' + stagedCount + ' νέο' + (stagedCount === 1 ? '' : 'α') + ' αρχεί' + (stagedCount === 1 ? 'ο' : 'α'))
+      } else {
+        showToast('error', 'Η κίνηση αποθηκεύτηκε αλλά ' + uploadFailures + '/' + stagedCount + ' αρχεία απέτυχαν')
+      }
+
+      // Reset and close
+      resetEditUploadedFiles()
       editModal.value.show = false
       await loadTransactions()
     } else {
@@ -548,6 +778,7 @@ function onEntityChanged() {
 
 onMounted(() => {
   loadEditBankAccounts()
+  loadEditConfig()
   const q = route.query || {}
   // entityId: UUID -> reverse map to 'next2me' / 'house' / 'polaris' key
   if (q.entityId) {
@@ -714,37 +945,57 @@ onUnmounted(() => {
     <div v-if="editModal.show" class="modal-backdrop" @click.self="closeEdit">
       <div class="modal">
         <div class="modal-header">
-          <h3>Επεξεργασία Κίνησης #{{ editModal.data.entityNumber ?? editModal.data.id }}</h3>
+          <h3 class="edit-modal-title"><i class="fas fa-edit edit-modal-icon"></i> Επεξεργασία <span class="edit-modal-num">#{{ editModal.data.entityNumber ?? editModal.data.id }}</span></h3>
           <button class="modal-close" @click="closeEdit" :disabled="editModal.saving">×</button>
         </div>
         <div class="modal-body">
           <div class="form-grid">
+            <!-- Step 57-A.3.1 layout -->
+            <div class="form-field full">
+              <label>Τύπος</label>
+              <div class="edit-type-toggle">
+                <button type="button"
+                        :class="['edit-type-btn', 'expense', { active: editModal.data.type === 'expense' }]"
+                        @click="editModal.data.type = 'expense'">
+                  <i class="fas fa-arrow-up"></i> Πληρωμή
+                </button>
+                <button type="button"
+                        :class="['edit-type-btn', 'income', { active: editModal.data.type === 'income' }]"
+                        @click="editModal.data.type = 'income'">
+                  <i class="fas fa-arrow-down"></i> Είσπραξη
+                </button>
+              </div>
+            </div>
             <div class="form-field">
-              <label>Ημερομηνία *</label>
+              <label>Ημ/νία</label>
               <input v-model="editModal.data.docDate" type="date" class="f-input" />
             </div>
             <div class="form-field">
-              <label>Τύπος</label>
-              <select v-model="editModal.data.type" class="f-select">
-                <option value="income">Έσοδο</option>
-                <option value="expense">Έξοδο</option>
-              </select>
-            </div>
-            <div class="form-field full">
-              <label>Περιγραφή *</label>
-              <input v-model="editModal.data.description" type="text" class="f-input" maxlength="500" />
-            </div>
-            <div class="form-field">
-              <label>Ποσό (€) *</label>
-              <input v-model="editModal.data.amount" type="number" step="0.01" min="0" class="f-input" />
+              <label>Ημ/νία Πληρωμής</label>
+              <input v-model="editModal.data.paymentDate" type="date" class="f-input" />
             </div>
             <div class="form-field">
               <label>Κατηγορία</label>
-              <input v-model="editModal.data.category" type="text" class="f-input" />
+              <select v-model="editModal.data.category" class="f-select">
+                <option value="">— Επιλέξτε —</option>
+                <option v-for="c in editCategoriesWithFallback" :key="c.key" :value="c.key">
+                  {{ c.value || c.key }}
+                </option>
+              </select>
             </div>
             <div class="form-field">
-              <label>Λογαριασμός / Υποκατηγορία</label>
-              <input v-model="editModal.data.account" type="text" class="f-input" />
+              <label>Υποκατηγορία</label>
+              <select v-model="editModal.data.subcategory" class="f-select"
+                      :disabled="!editModal.data.category">
+                <option value="">{{ editModal.data.category ? '— Επιλέξτε —' : '— Επιλέξτε κατηγορία πρώτα —' }}</option>
+                <option v-for="s in filteredEditSubcategories" :key="s.key" :value="s.key">
+                  {{ s.value || s.key }}
+                </option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Ποσό (€)</label>
+              <input v-model="editModal.data.amount" type="number" step="0.01" min="0" class="f-input" />
             </div>
             <div class="form-field">
               <label>Μέθοδος Πληρωμής</label>
@@ -753,24 +1004,79 @@ onUnmounted(() => {
                 <option v-for="m in availableEditPaymentMethods" :key="m" :value="m">{{ m }}</option>
               </select>
             </div>
-            <div class="form-field">
-              <label>Status</label>
-              <select v-model="editModal.data.paymentStatus" class="f-select">
-                <option value="paid">Πληρωμένη</option>
-                <option value="unpaid">Απλήρωτη</option>
-                <option value="urgent">Εκκρεμής</option>
-                <option value="partial">Μερική</option>
-              </select>
+            <div class="form-field full">
+              <label>Περιγραφή</label>
+              <textarea v-model="editModal.data.description" class="f-input edit-desc-textarea" maxlength="500" rows="2"></textarea>
             </div>
-            <div class="form-field">
-              <label>Ημερομηνία Πληρωμής</label>
-              <input v-model="editModal.data.paymentDate" type="date" class="f-input" />
+            <div class="form-field full edit-pending-row">
+              <label class="edit-pending-label">
+                <input type="checkbox"
+                       :checked="editModal.data.paymentStatus !== 'paid'"
+                       @change="editModal.data.paymentStatus = $event.target.checked ? 'unpaid' : 'paid'" />
+                <span>Εκκρεμεί πληρωμή</span>
+              </label>
+            </div>
+            <div class="form-field full edit-attachments-block">
+              <label class="edit-attach-label">
+                Συνημμένα αρχεία
+                <span v-if="!editAttachmentsLoading && editAttachments.length > 0" class="edit-attach-count">
+                  {{ editAttachments.length }} αρχεί{{ editAttachments.length === 1 ? 'ο' : 'α' }}
+                </span>
+              </label>
+              <div v-if="editAttachmentsLoading" class="edit-attach-state">
+                <span class="spinner-sm"></span> Φόρτωση…
+              </div>
+              <div v-else-if="editAttachmentsError" class="edit-attach-state edit-attach-error">
+                <i class="fas fa-exclamation-triangle"></i> {{ editAttachmentsError }}
+              </div>
+              <div v-else-if="editAttachments.length === 0" class="edit-attach-state edit-attach-empty">
+                Δεν υπάρχουν συνημμένα αρχεία
+              </div>
+              <div v-else class="edit-attach-list">
+                <div v-for="(file, idx) in editAttachments" :key="file.blobPath || idx" class="edit-attach-row">
+                  <i class="fas fa-file-pdf edit-attach-icon"></i>
+                  <span class="edit-attach-name" :title="file.fileName">{{ file.fileName }}</span>
+                  <button type="button" class="edit-attach-btn preview"
+                          @click="onPreviewEditAttachment(file)"
+                          :disabled="editAttachmentDeletingIdx === idx"
+                          title="Άνοιγμα">
+                    <i class="fas fa-external-link-alt"></i>
+                  </button>
+                  <button type="button" class="edit-attach-btn delete"
+                          @click="onDeleteEditAttachment(file, idx)"
+                          :disabled="editAttachmentDeletingIdx === idx"
+                          title="Διαγραφή">
+                    <span v-if="editAttachmentDeletingIdx === idx" class="spinner-sm"></span>
+                    <i v-else class="fas fa-times"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="form-field full edit-upload-block">
+              <label class="edit-upload-area">
+                <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" @change="onEditFileChange" style="display:none" />
+                <div class="edit-upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                <div class="edit-upload-text">
+                  <span v-if="editUploadedFiles.length === 0">Πατήστε για upload αρχείων (πολλαπλά)</span>
+                  <span v-else>+ Προσθήκη κι άλλων αρχείων</span>
+                </div>
+              </label>
+              <div v-if="editUploadedFiles.length > 0" class="edit-upload-preview">
+                <div v-for="(f, idx) in editUploadedFiles" :key="idx" class="edit-upload-preview-row">
+                  <i class="fas fa-file-pdf edit-attach-icon"></i>
+                  <span class="edit-upload-preview-name">{{ f.name }}</span>
+                  <span class="edit-upload-preview-size">{{ Math.round(f.size/1024) }}KB</span>
+                  <button type="button" class="edit-attach-btn delete" @click="removeEditFile(idx)" title="Αφαίρεση">
+                    <i class="fas fa-times"></i>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn-secondary" @click="closeEdit" :disabled="editModal.saving">
-            Ακύρωση
+            <i class="fas fa-times"></i> Ακύρωση
           </button>
           <button class="btn-primary" @click="saveEdit" :disabled="editModal.saving">
             <span v-if="editModal.saving"><span class="spinner-sm"></span> Αποθήκευση...</span>
@@ -940,5 +1246,330 @@ onUnmounted(() => {
   content: "» ";
   opacity: 0.6;
 }
+
+
+/* ───── Step 57-A.1: Edit modal type toggle + pending row ───── */
+.edit-type-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+.edit-type-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.edit-type-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.edit-type-btn.expense.active {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+}
+.edit-type-btn.income.active {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.6);
+  color: #6ee7b7;
+}
+.edit-pending-row {
+  margin-top: 4px;
+}
+.edit-pending-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.edit-pending-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+/* ───── /Step 57-A.1 ───── */
+
+
+/* ───── Step 57-A.3: Edit modal attachments section ───── */
+.edit-attachments-block {
+  margin-top: 4px;
+}
+.edit-attach-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 6px;
+}
+.edit-attach-count {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+}
+.edit-attach-state {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.edit-attach-state.edit-attach-error {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.06);
+}
+.edit-attach-state.edit-attach-empty {
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}
+.edit-attach-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.edit-attach-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+}
+.edit-attach-icon {
+  color: #60a5fa;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.edit-attach-name {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.edit-attach-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all .15s ease;
+  flex-shrink: 0;
+}
+.edit-attach-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.edit-attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.edit-attach-btn.preview:hover:not(:disabled) {
+  border-color: rgba(96, 165, 250, 0.5);
+  color: #60a5fa;
+}
+.edit-attach-btn.delete:hover:not(:disabled) {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+}
+/* ───── /Step 57-A.3 ───── */
+
+
+/* ───── Step 57-A.3.1: Header accent + textarea + footer ───── */
+.edit-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+.edit-modal-icon {
+  color: #60a5fa;
+  font-size: 16px;
+}
+.edit-modal-num {
+  color: #60a5fa;
+  font-weight: 500;
+  font-size: 16px;
+}
+.edit-desc-textarea {
+  resize: vertical;
+  min-height: 56px;
+  font-family: inherit;
+  line-height: 1.4;
+}
+/* Cancel button × icon spacing */
+.btn-secondary > i.fa-times {
+  margin-right: 4px;
+  font-size: 11px;
+}
+/* ───── /Step 57-A.3.1 ───── */
+
+
+/* ───── Step 57-A.4: Edit modal upload area ───── */
+.edit-upload-block {
+  margin-top: 4px;
+}
+.edit-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all .15s ease;
+  text-align: center;
+}
+.edit-upload-area:hover {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(59, 130, 246, 0.04);
+}
+.edit-upload-icon {
+  color: #60a5fa;
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+.edit-upload-text {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 500;
+}
+.edit-upload-preview {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.edit-upload-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.edit-upload-preview-name {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.edit-upload-preview-size {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+/* ───── /Step 57-A.4 ───── */
+
+
+/* ───── Step 57-A.4.1: Edit modal sizing (legacy parity) ───── */
+/* Target ONLY the edit modal (which contains .edit-modal-title) so we don't
+   affect the delete-confirm modal or any other future modals. */
+.modal:has(.edit-modal-title) {
+  max-width: 820px;
+}
+.modal:has(.edit-modal-title) .modal-header h3 {
+  font-size: 1.15rem;
+}
+.modal:has(.edit-modal-title) .modal-body {
+  padding: 22px 24px;
+}
+.modal:has(.edit-modal-title) .form-grid {
+  gap: 16px 18px;
+}
+.modal:has(.edit-modal-title) .form-field label {
+  font-size: 0.85rem;
+  letter-spacing: 0.2px;
+}
+.modal:has(.edit-modal-title) .f-input,
+.modal:has(.edit-modal-title) .f-select {
+  font-size: 0.95rem;
+  padding: 10px 12px;
+}
+.modal:has(.edit-modal-title) .edit-desc-textarea {
+  min-height: 72px;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+}
+.modal:has(.edit-modal-title) .edit-type-btn {
+  padding: 12px 16px;
+  font-size: 0.95rem;
+}
+.modal:has(.edit-modal-title) .edit-pending-label {
+  font-size: 0.95rem;
+}
+.modal:has(.edit-modal-title) .edit-pending-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+.modal:has(.edit-modal-title) .edit-attach-label {
+  font-size: 0.85rem;
+}
+.modal:has(.edit-modal-title) .edit-attach-row {
+  padding: 10px 14px;
+}
+.modal:has(.edit-modal-title) .edit-attach-name,
+.modal:has(.edit-modal-title) .edit-upload-preview-name {
+  font-size: 0.95rem;
+}
+.modal:has(.edit-modal-title) .edit-attach-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+}
+.modal:has(.edit-modal-title) .edit-upload-area {
+  padding: 22px 16px;
+}
+.modal:has(.edit-modal-title) .edit-upload-icon {
+  font-size: 26px;
+}
+.modal:has(.edit-modal-title) .edit-upload-text {
+  font-size: 0.95rem;
+}
+.modal:has(.edit-modal-title) .modal-footer {
+  padding: 16px 24px;
+}
+.modal:has(.edit-modal-title) .btn-secondary,
+.modal:has(.edit-modal-title) .btn-primary {
+  font-size: 0.95rem;
+  padding: 10px 18px;
+}
+
+/* Mobile: keep readability but cap at 100% */
+@media (max-width: 640px) {
+  .modal:has(.edit-modal-title) {
+    max-width: 100%;
+  }
+  .modal:has(.edit-modal-title) .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .modal:has(.edit-modal-title) .modal-body {
+    padding: 18px 16px;
+  }
+}
+/* ───── /Step 57-A.4.1 ───── */
 
 </style>
