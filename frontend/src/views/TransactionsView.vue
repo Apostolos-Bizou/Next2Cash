@@ -462,7 +462,12 @@ function stripPaymentPrefix(desc) {
     // Filter / pagination handlers are now pure client-side state changes.
 // No backend round-trip - the paginatedTransactions computed reacts
 // automatically to filter and page changes.
-function applyFilters() { page.value = 0 }
+function applyFilters() {
+  // Step 57-D.7: reset page AND reload transactions so cashflow vs
+  // standard mode switches correctly when date filters change.
+  page.value = 0
+  loadTransactions()
+}
 function goToPage(p)    { page.value = p }
 function resetFilters() {
   dateFrom.value = ''; dateTo.value = ''
