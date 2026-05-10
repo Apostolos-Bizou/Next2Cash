@@ -201,3 +201,15 @@ session48-diag/
 # Local dev overrides (rotated DB password, never commit)
 application-local.properties
 
+
+# Session backup folders (added Phase 60-B, 10 May 2026)
+.session*_backups/
+
+# Local patch scripts (kept locally for forensics, not for repo)
+patch_step*.cjs
+
+# Local property backups
+application-local.properties.bak.*
+
+# Local gitignore backups
+.gitignore.bak.*
