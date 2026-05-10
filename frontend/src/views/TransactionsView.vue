@@ -831,7 +831,11 @@ function fmtDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('el-GR', { day:'2-digit', month:'2-digit', year:'2-digit' })
 }
-function statusLabel(s) {
+// Phase 60-D: statusLabel accepts type for income-aware labels
+function statusLabel(s, type) {
+  if (type === 'income') {
+    return { paid:'Εισπράχθηκε', received:'Εισπράχθηκε', unpaid:'Δεν εισπράχθηκε', urgent:'Σε εκκρεμότητα', partial:'Μερική' }[s] || s || '—'
+  }
   return { paid:'Πληρωμένη', received:'Εισπράχθηκε', unpaid:'Απλήρωτη', urgent:'Εκκρεμής', partial:'Μερική' }[s] || s || '—'
 }
 function statusClass(s) {
@@ -984,14 +988,14 @@ onUnmounted(() => {
             <td class="method-col">{{ t.paymentMethod || '—' }}</td>
             <td class="ra green mono">{{ t.type === 'income'  ? fmt(t.amount) : '—' }}</td>
             <td class="ra mono" :class="t.type === 'expense' && isUnpaid(t) ? 'red' : 'white'">{{ t.type === 'expense' ? fmt(t.amount) : '—' }}</td>
-            <td><span class="status-badge" :class="statusClass(t.paymentStatus)">{{ statusLabel(t.paymentStatus) }}</span></td>
+            <td><span class="status-badge" :class="statusClass(t.paymentStatus)">{{ statusLabel(t.paymentStatus, t.type) }}</span></td>
             <td class="actions">
               <span class="act-slot act-slot-mark">
                 <button
                   v-if="canMarkPaid(t) && !t._isPaymentRow"
                   class="btn-action btn-mark-paid-sm"
                   @click="openMarkPaid(t)">
-                  ✓ Εξόφληση
+                  ✓ {{ t.type === 'income' ? 'Καταγραφή Είσπραξης' : 'Εξόφληση' }}
                 </button>
               </span>
               <span class="act-slot">

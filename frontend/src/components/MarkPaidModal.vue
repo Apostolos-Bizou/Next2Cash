@@ -336,7 +336,8 @@ async function onSubmit() {
       <div class="mp-header">
         <div class="mp-title">
           <span class="mp-icon">✓</span>
-          <h3>Εξόφληση Συναλλαγής</h3>
+          <!-- Phase 60-D: dynamic title by transaction.type -->
+          <h3>{{ transaction.type === 'income' ? 'Καταγραφή Είσπραξης' : 'Εξόφληση Συναλλαγής' }}</h3>
         </div>
         <button class="mp-close" @click="onCancel" :disabled="saving">×</button>
       </div>
