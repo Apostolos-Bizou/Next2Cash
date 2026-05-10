@@ -138,6 +138,26 @@ function reformatPaymentDescriptions() {
         .replace(/^\s*Πληρωμή για #\d+\s*/u, '')
         .trim()
     }
+    // [62-D] strip duplicate entity number from parent desc
+    // Avoid "Πληρωμή #4797 — 4797 - DESC" by removing the leading
+    // "<entityNumber>" + separator from parentDesc when present.
+    // Uses startsWith + indexOf instead of RegExp to avoid escape pitfalls.
+    if (parentDesc && parentEntityNumber != null) {
+      const pENs = String(parentEntityNumber)
+      if (parentDesc.startsWith(pENs)) {
+        let rest = parentDesc.slice(pENs.length)
+        // Skip whitespace
+        let i = 0
+        while (i < rest.length && (rest[i] === ' ' || rest[i] === '\t')) i++
+        // Check for a separator: hyphen, en-dash (—), em-dash (—)
+        if (i < rest.length && (rest[i] === '-' || rest[i] === '\u2013' || rest[i] === '\u2014')) {
+          i++
+          // Skip trailing whitespace after separator
+          while (i < rest.length && (rest[i] === ' ' || rest[i] === '\t')) i++
+          parentDesc = rest.slice(i)
+        }
+      }
+    }
     // [62-C] no leading 💳 in description; template adds it.
     const newDesc = 'Πληρωμή #' + parentEntityNumber +
       (parentDesc ? ' — ' + parentDesc : '')

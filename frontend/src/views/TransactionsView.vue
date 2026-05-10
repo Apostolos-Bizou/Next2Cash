@@ -379,12 +379,29 @@ async function loadTransactions() {
   }
 }
 
-function stripPaymentPrefix(desc) {
-      // Removes patterns like "Πληρωμή για #1234 — "
-      // (Greek "Payment for #N — ") so the actual transaction description
-      // can use the full display width.
+function stripPaymentPrefix(desc, entityNumber) {
+      // [62-E] strip leading entity number from parent desc
+      // Two patterns are removed:
+      //   1. Legacy "Πληρωμή για #1234 — " (preserved from before)
+      //   2. Leading "<entityNumber>" + separator (hyphen, en-dash, em-dash)
+      //      when entityNumber matches the leading digits, to avoid
+      //      "Payment #4797 — 4797 - DESC". Uses string-methods, no RegExp.
       if (!desc) return desc
-      return desc.replace(/^Πληρωμή για #\d+\s+—\s+/, '')
+      let out = desc.replace(/^Πληρωμή για #\d+\s+—\s+/, '')
+      if (entityNumber != null) {
+        const pENs = String(entityNumber)
+        if (out.startsWith(pENs)) {
+          let rest = out.slice(pENs.length)
+          let i = 0
+          while (i < rest.length && (rest[i] === ' ' || rest[i] === '\t')) i++
+          if (i < rest.length && (rest[i] === '-' || rest[i] === '–' || rest[i] === '—')) {
+            i++
+            while (i < rest.length && (rest[i] === ' ' || rest[i] === '\t')) i++
+            out = rest.slice(i)
+          }
+        }
+      }
+      return out
     }
 
     function mapCashflowEventToRow(ev) {
@@ -398,7 +415,7 @@ function stripPaymentPrefix(desc) {
       // Step 57-E.4: align with standard-mode injectVirtualPaymentRows.
       // Standard mode produces "💳 Πληρωμή #X — [parent]" for
       // virtual rows. Cashflow mode should match for consistency.
-      const cleanDesc = isPayment ? stripPaymentPrefix(ev.description) : ev.description
+      const cleanDesc = isPayment ? stripPaymentPrefix(ev.description, ev.entityNumber != null ? ev.entityNumber : ev.transactionId) : ev.description
       const idForLabel = ev.entityNumber != null ? ev.entityNumber : ev.transactionId
       const displayDesc = isPayment
         ? '💳 Πληρωμή #' + idForLabel + ' — ' + cleanDesc
@@ -463,8 +480,8 @@ function stripPaymentPrefix(desc) {
                         && r.paymentDate !== r.docDate
                         && r.paymentStatus === 'paid'
         if (!hasSplit) continue
-        const cleanDesc = stripPaymentPrefix(r.description || '')
         const idLabel   = r.entityNumber != null ? r.entityNumber : r.id
+        const cleanDesc = stripPaymentPrefix(r.description || '', idLabel)
         const virtualRow = {
           ...r,
           id:            'pay-' + r.id,
