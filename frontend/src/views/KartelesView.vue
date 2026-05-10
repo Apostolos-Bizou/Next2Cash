@@ -474,6 +474,17 @@ function universalMatch(t, searchRaw) {
 }
 
 // ─── Derived / filtered data ──────────────────────────────────
+// Phase 60-B: dynamic label for payments tab
+const paymentsTabLabel = computed(() => {
+  const txns = transactions.value.filter(t => t.recordSource !== 'PAYMENT')
+  if (txns.length === 0) return '\ud83d\udcb3 \u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ad\u03c2'
+  const allIncome  = txns.every(t => t.type === 'income')
+  const allExpense = txns.every(t => t.type === 'expense')
+  if (allIncome)  return '\ud83d\udcb0 \u0395\u03b9\u03c3\u03c0\u03c1\u03ac\u03be\u03b5\u03b9\u03c2'
+  if (allExpense) return '\ud83d\udcb3 \u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ad\u03c2'
+  return '\ud83d\udcb3 \u0395\u03be\u03bf\u03c6\u03bb\u03ae\u03c3\u03b5\u03b9\u03c2'
+})
+
 const filteredTransactions = computed(() => {
   // universalMatch handles search internally
   return transactions.value.filter(t => {
@@ -617,7 +628,7 @@ const ruleLabel = computed(() => {
             class="view-chip view-chip-payments"
             :class="{ active: viewFilter === 'payments' }"
             @click="viewFilter = 'payments'">
-            💳 Πληρωμές ({{ transactions.filter(t => t.recordSource === 'PAYMENT').length }})
+            {{ paymentsTabLabel }} ({{ transactions.filter(t => t.recordSource === 'PAYMENT').length }})
           </button>
         </div>
 

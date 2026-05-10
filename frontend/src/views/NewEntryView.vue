@@ -36,6 +36,13 @@ async function loadConfig() {
 
 // ── Form state ──────────────────────────────────────────────────────
 const type        = ref('expense')
+// Phase 60-B: auto-uncheck pending when type=income
+watch(type, (newType) => {
+  if (newType === 'income') {
+    isPending.value = false
+    isUrgent.value = false
+  }
+})
 const docDate     = ref(new Date().toISOString().split('T')[0])
 const payDate     = ref('')
 const category    = ref('')
@@ -287,7 +294,7 @@ onMounted(async () => {
           <input v-model="docDate" type="date" class="form-input" />
         </div>
         <div class="form-group">
-          <label>Ημ/νία Πληρωμής</label>
+          <label>{{ type === 'income' ? 'Ημ/νία Είσπραξης' : 'Ημ/νία Πληρωμής' }}</label>
           <input v-model="payDate" type="date" class="form-input" />
           <span class="hint">Κενή = ίδια με παραστατικού</span>
         </div>
@@ -327,7 +334,7 @@ onMounted(async () => {
       </div>
 
       <!-- Pending -->
-      <div class="pending-row">
+      <div class="pending-row" v-if="type !== 'income'">
         <label class="checkbox-label">
           <input type="checkbox" v-model="isPending" />
           <span>Εκκρεμεί πληρωμή</span>
