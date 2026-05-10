@@ -34,6 +34,21 @@ const loading = ref(false)
 const error   = ref(null)
 const transactions = ref([])
 const searchQuery = ref('')
+
+// Phase 60-E: column filter state
+const filterCategory    = ref([])
+const filterSubcategory = ref([])
+const filterMethod      = ref([])
+const openFilterMenu    = ref(null) // 'category' | 'subcategory' | 'method' | null
+const filterMenuSearch  = ref('')
+function toggleFilterMenu(name) {
+  openFilterMenu.value = openFilterMenu.value === name ? null : name
+  filterMenuSearch.value = ''
+}
+function closeFilterMenu() {
+  openFilterMenu.value = null
+  filterMenuSearch.value = ''
+}
 let searchDebounceTimer = null
 
 // --- Phase 4 / Step 4.2: Bank accounts for edit modal dropdown -----
@@ -485,6 +500,11 @@ function goToPage(p)    { page.value = p }
 function resetFilters() {
   dateFrom.value = ''; dateTo.value = ''
   selectedType.value = ''; selectedStatus.value = ''
+  // Phase 60-E: clear column filters too
+  filterCategory.value = []
+  filterSubcategory.value = []
+  filterMethod.value = []
+  closeFilterMenu()
   page.value = 0
 }
 
@@ -766,6 +786,26 @@ function universalMatch(t, searchRaw) {
 // Client-side filtering: applies date range, type, status, AND search
 // across the full augmented dataset (canonical + virtual payment rows).
 // Everything is in-memory so this is instant - no backend round-trip.
+// Phase 60-E: distinct values for column filters
+function uniqueSortedField(field) {
+  const values = new Set()
+  for (const t of transactions.value) {
+    if (t._isPaymentRow) continue  // skip virtual payment rows
+    const v = t[field]
+    if (v == null || v === '') values.add('')
+    else values.add(String(v))
+  }
+  return Array.from(values).sort((a, b) => a.localeCompare(b, 'el'))
+}
+const categoryOptions    = computed(() => uniqueSortedField('category'))
+const subcategoryOptions = computed(() => uniqueSortedField('subcategory'))
+const methodOptions      = computed(() => uniqueSortedField('paymentMethod'))
+function filteredOptions(allOptions) {
+  const q = (filterMenuSearch.value || '').toLowerCase().trim()
+  if (!q) return allOptions
+  return allOptions.filter(o => (o || '').toLowerCase().includes(q))
+}
+
 const filteredTransactions = computed(() => {
   let list = transactions.value
   // Date range filter (against docDate, which for virtual rows = paymentDate)
@@ -782,6 +822,16 @@ const filteredTransactions = computed(() => {
   // Status filter (paid / unpaid / urgent / etc.)
   if (selectedStatus.value) {
     list = list.filter(t => t.paymentStatus === selectedStatus.value)
+  }
+  // Phase 60-E: column dropdown filters
+  if (filterCategory.value.length > 0) {
+    list = list.filter(t => filterCategory.value.includes(String(t.category || '')))
+  }
+  if (filterSubcategory.value.length > 0) {
+    list = list.filter(t => filterSubcategory.value.includes(String(t.subcategory || '')))
+  }
+  if (filterMethod.value.length > 0) {
+    list = list.filter(t => filterMethod.value.includes(String(t.paymentMethod || '')))
   }
   // Search filter (universal match across all fields)
   const q = (searchQuery.value || '').trim()
@@ -963,9 +1013,84 @@ onUnmounted(() => {
             <th>ID</th>
             <th>ΗΜ/ΝΙΑ</th>
             <th>ΠΕΡΙΓΡΑΦΗ</th>
-            <th>ΚΑΤΗΓΟΡΙΑ</th>
-            <th>ΥΠΟΚΑΤΗΓΟΡΙΑ</th>
-            <th>ΤΡΟΠΟΣ</th>
+            <th class="th-filter">
+              <!-- Phase 60-E: dropdown header for category -->
+              <div class="th-filter-wrap" :class="{ 'has-filter': filterCategory.length > 0 }">
+                <button class="th-btn" @click.stop="toggleFilterMenu('category')">
+                  ΚΑΤΗΓΟΡΙΑ
+                  <span v-if="filterCategory.length > 0" class="th-filter-count">{{ filterCategory.length }}</span>
+                  <i class="fas fa-caret-down th-caret"></i>
+                </button>
+                <div v-if="openFilterMenu === 'category'" class="filter-menu" @click.stop>
+                  <div class="filter-menu-search">
+                    <input v-model="filterMenuSearch" type="text" placeholder="Αναζήτηση..." />
+                  </div>
+                  <div class="filter-menu-list">
+                    <label v-for="opt in filteredOptions(categoryOptions)" :key="opt" class="filter-menu-item">
+                      <input type="checkbox" :value="opt" v-model="filterCategory" />
+                      <span class="filter-menu-label">{{ opt || '(κενό)' }}</span>
+                    </label>
+                  </div>
+                  <div class="filter-menu-footer">
+                    <button class="fm-btn-link" @click="filterCategory = [...categoryOptions]">Επιλογή Όλων</button>
+                    <button class="fm-btn-link" @click="filterCategory = []">Καθαρισμός</button>
+                    <button class="fm-btn-apply" @click="closeFilterMenu()">Εφαρμογή</button>
+                  </div>
+                </div>
+              </div>
+            </th>
+            <th class="th-filter">
+              <!-- Phase 60-E: dropdown header for subcategory -->
+              <div class="th-filter-wrap" :class="{ 'has-filter': filterSubcategory.length > 0 }">
+                <button class="th-btn" @click.stop="toggleFilterMenu('subcategory')">
+                  ΥΠΟΚΑΤΗΓΟΡΙΑ
+                  <span v-if="filterSubcategory.length > 0" class="th-filter-count">{{ filterSubcategory.length }}</span>
+                  <i class="fas fa-caret-down th-caret"></i>
+                </button>
+                <div v-if="openFilterMenu === 'subcategory'" class="filter-menu" @click.stop>
+                  <div class="filter-menu-search">
+                    <input v-model="filterMenuSearch" type="text" placeholder="Αναζήτηση..." />
+                  </div>
+                  <div class="filter-menu-list">
+                    <label v-for="opt in filteredOptions(subcategoryOptions)" :key="opt" class="filter-menu-item">
+                      <input type="checkbox" :value="opt" v-model="filterSubcategory" />
+                      <span class="filter-menu-label">{{ opt || '(κενό)' }}</span>
+                    </label>
+                  </div>
+                  <div class="filter-menu-footer">
+                    <button class="fm-btn-link" @click="filterSubcategory = [...subcategoryOptions]">Επιλογή Όλων</button>
+                    <button class="fm-btn-link" @click="filterSubcategory = []">Καθαρισμός</button>
+                    <button class="fm-btn-apply" @click="closeFilterMenu()">Εφαρμογή</button>
+                  </div>
+                </div>
+              </div>
+            </th>
+            <th class="th-filter">
+              <!-- Phase 60-E: dropdown header for method -->
+              <div class="th-filter-wrap" :class="{ 'has-filter': filterMethod.length > 0 }">
+                <button class="th-btn" @click.stop="toggleFilterMenu('method')">
+                  ΤΡΟΠΟΣ
+                  <span v-if="filterMethod.length > 0" class="th-filter-count">{{ filterMethod.length }}</span>
+                  <i class="fas fa-caret-down th-caret"></i>
+                </button>
+                <div v-if="openFilterMenu === 'method'" class="filter-menu" @click.stop>
+                  <div class="filter-menu-search">
+                    <input v-model="filterMenuSearch" type="text" placeholder="Αναζήτηση..." />
+                  </div>
+                  <div class="filter-menu-list">
+                    <label v-for="opt in filteredOptions(methodOptions)" :key="opt" class="filter-menu-item">
+                      <input type="checkbox" :value="opt" v-model="filterMethod" />
+                      <span class="filter-menu-label">{{ opt || '(κενό)' }}</span>
+                    </label>
+                  </div>
+                  <div class="filter-menu-footer">
+                    <button class="fm-btn-link" @click="filterMethod = [...methodOptions]">Επιλογή Όλων</button>
+                    <button class="fm-btn-link" @click="filterMethod = []">Καθαρισμός</button>
+                    <button class="fm-btn-apply" @click="closeFilterMenu()">Εφαρμογή</button>
+                  </div>
+                </div>
+              </div>
+            </th>
             <th class="ra">ΕΙΣΠΡΑΞΗ</th>
             <th class="ra">ΠΛΗΡΩΜΗ</th>
             <th>STATUS</th>
@@ -1702,4 +1827,114 @@ td.actions { vertical-align: middle; }
 }
 /* ───── /Step 57-A.4.1 ───── */
 
+
+/* Phase 60-E: column dropdown filters */
+.th-filter { position: relative; }
+.th-filter-wrap { position: relative; display: inline-block; }
+.th-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+.th-btn:hover { background: rgba(79, 195, 161, 0.12); color: #4FC3A1; }
+.th-filter-wrap.has-filter .th-btn { color: #4FC3A1; }
+.th-filter-count {
+  display: inline-block;
+  background: #4FC3A1;
+  color: #0d1421;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  min-width: 16px;
+  text-align: center;
+}
+.th-caret { font-size: 0.78rem; opacity: 0.7; }
+.filter-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 260px;
+  max-width: 360px;
+  background: #182230;
+  border: 1px solid #2a3848;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  z-index: 50;
+  font-weight: normal;
+  font-size: 0.88rem;
+  color: #c8d4e3;
+}
+.filter-menu-search {
+  padding: 8px;
+  border-bottom: 1px solid #2a3848;
+}
+.filter-menu-search input {
+  width: 100%;
+  padding: 6px 10px;
+  background: #0d1421;
+  border: 1px solid #2a3848;
+  border-radius: 4px;
+  color: #e8eef7;
+  font-size: 0.85rem;
+}
+.filter-menu-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.filter-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.filter-menu-item:hover { background: rgba(79, 195, 161, 0.08); }
+.filter-menu-item input[type="checkbox"] { cursor: pointer; }
+.filter-menu-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-menu-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid #2a3848;
+}
+.fm-btn-link {
+  background: transparent;
+  border: none;
+  color: #c8d4e3;
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 4px 6px;
+  text-decoration: underline;
+}
+.fm-btn-link:hover { color: #4FC3A1; }
+.fm-btn-apply {
+  background: #4FC3A1;
+  color: #0d1421;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.fm-btn-apply:hover { background: #6dd1b3; }
 </style>
