@@ -474,14 +474,27 @@ function universalMatch(t, searchRaw) {
 }
 
 // ─── Derived / filtered data ──────────────────────────────────
-// Phase 60-B: dynamic label for payments tab
+// Phase 60-C.2: smarter cardKind with threshold + zero-filter
+// Filters out zero-amount noise (e.g. ΕΠΙΣΤΡΟΦΗ ΧΡΗΜΑΤΩΝ with 0€)
+// and uses 95% threshold so a single outlier does not flip the type.
+const cardKind = computed(() => {
+  const txns = transactions.value
+    .filter(t => t.recordSource !== 'PAYMENT')
+    .filter(t => Math.abs(Number(t.amount) || 0) > 0.01)
+  if (txns.length === 0) return 'expense'
+  const incomeCount  = txns.filter(t => t.type === 'income').length
+  const expenseCount = txns.filter(t => t.type === 'expense').length
+  const total = incomeCount + expenseCount
+  if (total === 0) return 'expense'
+  if (incomeCount  / total >= 0.95) return 'income'
+  if (expenseCount / total >= 0.95) return 'expense'
+  return 'mixed'
+})
+
+// Phase 60-B: dynamic label for payments tab (reuses cardKind for consistency)
 const paymentsTabLabel = computed(() => {
-  const txns = transactions.value.filter(t => t.recordSource !== 'PAYMENT')
-  if (txns.length === 0) return '\ud83d\udcb3 \u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ad\u03c2'
-  const allIncome  = txns.every(t => t.type === 'income')
-  const allExpense = txns.every(t => t.type === 'expense')
-  if (allIncome)  return '\ud83d\udcb0 \u0395\u03b9\u03c3\u03c0\u03c1\u03ac\u03be\u03b5\u03b9\u03c2'
-  if (allExpense) return '\ud83d\udcb3 \u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ad\u03c2'
+  if (cardKind.value === 'income')  return '\ud83d\udcb0 \u0395\u03b9\u03c3\u03c0\u03c1\u03ac\u03be\u03b5\u03b9\u03c2'
+  if (cardKind.value === 'expense') return '\ud83d\udcb3 \u03a0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ad\u03c2'
   return '\ud83d\udcb3 \u0395\u03be\u03bf\u03c6\u03bb\u03ae\u03c3\u03b5\u03b9\u03c2'
 })
 
@@ -661,32 +674,32 @@ const ruleLabel = computed(() => {
         <div v-if="selectedCard" class="kpi-row">
           <div v-if="loadingSummary" class="kpi-loading">Υπολογισμός KPIs...</div>
           <template v-else-if="summary">
-            <div class="kpi-card kpi-neutral">
+            <div v-if="cardKind !== 'income'" class="kpi-card kpi-neutral">
               <div class="kpi-label">Σύνολο</div>
               <div class="kpi-amount">{{ fmtMoney(summary.total) }}</div>
               <div class="kpi-count">{{ summary.countTotal }} κινήσεις</div>
             </div>
-            <div class="kpi-card kpi-green">
+            <div v-if="cardKind !== 'income'" class="kpi-card kpi-green">
               <div class="kpi-label">Εξοφλημένες</div>
               <div class="kpi-amount">{{ fmtMoney(summary.paid) }}</div>
               <div class="kpi-count">{{ summary.countPaid }} κινήσεις</div>
             </div>
-            <div class="kpi-card kpi-red">
+            <div v-if="cardKind !== 'income'" class="kpi-card kpi-red">
               <div class="kpi-label">Απλήρωτες</div>
               <div class="kpi-amount">{{ fmtMoney(summary.unpaid) }}</div>
               <div class="kpi-count">{{ summary.countUnpaid }} κινήσεις</div>
             </div>
-            <div class="kpi-card kpi-blue">
+            <div v-if="cardKind !== 'expense'" class="kpi-card kpi-blue">
               <div class="kpi-label">Εισπράξεις</div>
               <div class="kpi-amount">{{ fmtMoney(summary.income) }}</div>
               <div class="kpi-count">{{ summary.countIncome }} κινήσεις</div>
             </div>
-            <div class="kpi-card kpi-payments">
+            <div v-if="cardKind !== 'income'" class="kpi-card kpi-payments">
               <div class="kpi-label">💳 Πληρωμές</div>
               <div class="kpi-amount">{{ fmtMoney(summary.paymentsTotal) }}</div>
               <div class="kpi-count">{{ summary.countPayments }} πληρωμές</div>
             </div>
-            <div class="kpi-card kpi-orange">
+            <div v-if="cardKind !== 'income'" class="kpi-card kpi-orange">
               <div class="kpi-label">⚡ Εκκρεμείς</div>
               <div class="kpi-amount">{{ fmtMoney(summary.urgent) }}</div>
               <div class="kpi-count">{{ summary.countUrgent }} κινήσεις</div>
