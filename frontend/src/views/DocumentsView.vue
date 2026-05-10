@@ -14,8 +14,42 @@ const ENTITIES = {
   'polaris': { id: '50317f44-9961-4fb4-add0-7a118e32dc14', label: 'Polaris' }
 }
 
+// PHASE_61B_ENTITY_FILTER: filter entities by user's allowed entityIds
+// If user.entityIds is null/missing => no restriction (show all).
+function getUserEntityIds() {
+  try {
+    const raw = localStorage.getItem('n2c_user')
+    if (!raw) return null
+    const u = JSON.parse(raw)
+    if (!u || !Array.isArray(u.entityIds) || u.entityIds.length === 0) return null
+    return u.entityIds
+  } catch { return null }
+}
+const availableEntities = computed(() => {
+  const allowedIds = getUserEntityIds()
+  if (allowedIds === null) {
+    return Object.entries(ENTITIES).map(([key, ent]) => ({ key, ...ent }))
+  }
+  return Object.entries(ENTITIES)
+    .filter(([_, ent]) => allowedIds.includes(ent.id))
+    .map(([key, ent]) => ({ key, ...ent }))
+})
+// Persist entity selection to localStorage + notify app
+function saveEntity(key) {
+  try { localStorage.setItem('n2c_entity', key) } catch {}
+  try { window.dispatchEvent(new Event('entity-changed')) } catch {}
+}
+
 // State
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
+// Auto-correct if current selection is not in allowed list (runs once at setup)
+{
+  const list = availableEntities.value
+  if (list.length > 0 && !list.some(e => e.key === selectedEntity.value)) {
+    selectedEntity.value = list[0].key
+    saveEntity(list[0].key)
+  }
+}
 const dateFrom = ref('')
 const dateTo = ref('')
 const downloading = ref(false)
@@ -139,13 +173,17 @@ async function downloadZip() {
       <!-- Entity selector -->
       <div class="zx-section">
         <label class="zx-label">Εταιρεία</label>
-        <div class="zx-entity-btns">
+        <!-- PHASE_61B_ENTITY_FILTER: single entity -> read-only label; multiple -> buttons -->
+        <div v-if="availableEntities.length === 1" class="zx-entity-single">
+          {{ availableEntities[0].label }}
+        </div>
+        <div v-else class="zx-entity-btns">
           <button
-            v-for="(ent, key) in ENTITIES"
-            :key="key"
+            v-for="ent in availableEntities"
+            :key="ent.key"
             class="zx-entity-btn"
-            :class="{ active: selectedEntity === key }"
-            @click="selectedEntity = key">
+            :class="{ active: selectedEntity === ent.key }"
+            @click="selectedEntity = ent.key; saveEntity(ent.key)">
             {{ ent.label }}
           </button>
         </div>
@@ -285,4 +323,16 @@ async function downloadZip() {
   font-size: 0.82rem; color: #6c7a8a; margin: 0 0 6px;
 }
 .zx-info p:last-child { margin: 0; }
+
+/* PHASE_61B_ENTITY_FILTER: single-entity read-only display */
+.zx-entity-single {
+  padding: 10px 16px;
+  background: #0f1724;
+  border: 1px solid #2c3e50;
+  border-radius: 8px;
+  color: #4A9EFF;
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: inline-block;
+}
 </style>
