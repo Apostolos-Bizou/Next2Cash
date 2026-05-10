@@ -102,6 +102,50 @@ async function loadSummary(cardId) {
   }
 }
 
+// [62-B] Helper: rewrite description of each PAYMENT row to canonical form
+//   "💳 Πληρωμή #<parentNumber> — <parent description>"
+// Parent transactions are looked up in the same payload (transactions.value).
+// Result is idempotent: a row already in canonical form is rewritten
+// identically. Rows whose parent cannot be found fall back to the row's
+// own description.
+function reformatPaymentDescriptions() {
+  // [62-C] id-lookup + emoji dedup
+  // Compared to the 62-B version:
+  //   - description NO LONGER carries a leading "💳 " (template renders it)
+  //   - each payment row gets _parentEntityNumber so the ID column can
+  //     display the user-visible number instead of the raw db parentTransactionId
+  const all = transactions.value || []
+  if (!all.length) return
+  const parentById = new Map()
+  for (const r of all) {
+    if (r && r.recordSource !== 'PAYMENT' && r.id != null) {
+      parentById.set(Number(r.id), r)
+    }
+  }
+  const next = all.map(r => {
+    if (!r || r.recordSource !== 'PAYMENT') return r
+    const parentId = r.parentTransactionId
+    const parent   = parentId != null ? parentById.get(Number(parentId)) : null
+    const parentEntityNumber = parent
+      ? (parent.entityNumber != null ? parent.entityNumber : parent.id)
+      : (parentId != null ? parentId : r.id)
+    let parentDesc = ''
+    if (parent && parent.description) {
+      parentDesc = String(parent.description).trim()
+    } else if (r.description) {
+      parentDesc = String(r.description)
+        .replace(/^\s*💳\s*Πληρωμή[^—]*—\s*/u, '')
+        .replace(/^\s*Πληρωμή για #\d+\s*/u, '')
+        .trim()
+    }
+    // [62-C] no leading 💳 in description; template adds it.
+    const newDesc = 'Πληρωμή #' + parentEntityNumber +
+      (parentDesc ? ' — ' + parentDesc : '')
+    return { ...r, description: newDesc, _parentEntityNumber: parentEntityNumber }
+  })
+  transactions.value = next
+}
+
 async function loadTransactions(cardId) {
   loadingTxns.value = true
   try {
@@ -111,6 +155,13 @@ async function loadTransactions(cardId) {
     if (res.data?.success) {
       selectedCard.value = res.data.card || null
       transactions.value = res.data.data || []
+      // [62-B] payment row id+desc reformat
+      // For PAYMENT rows, rewrite description to canonical
+      //   "💳 Πληρωμή #<parentNumber> — <parent description>"
+      // matching TransactionsView. We always rebuild from the parent's own
+      // description (looked up by parentTransactionId) so the result is
+      // consistent regardless of what the backend put in the payment row.
+      reformatPaymentDescriptions()
     } else {
       transactions.value = []
     }
@@ -163,6 +214,31 @@ async function onPaymentSaved() {
 }
 
 function openAttachments(t) {
+  // [62-A] virtual-payment attachments fix
+  // For PAYMENT rows, attachments live on the parent transaction.
+  // Resolve parent and pass its identity to AttachmentsPopover so:
+  //   - GET /api/documents/by-transaction/{id} hits the parent transaction
+  //   - Header reads "Αρχεία #<entityNumber>" of the parent
+  if (t && t.recordSource === 'PAYMENT' && t.parentTransactionId) {
+    const parent = transactions.value.find(
+      x => x.recordSource !== 'PAYMENT' && Number(x.id) === Number(t.parentTransactionId)
+    )
+    if (parent) {
+      attachmentsState.value = { visible: true, transaction: parent }
+      return
+    }
+    // Fallback: parent not in current list — still use parentTransactionId as id
+    attachmentsState.value = {
+      visible: true,
+      transaction: {
+        ...t,
+        id: t.parentTransactionId,
+        entityNumber: t.parentTransactionId,
+        blobFileIds: t.blobFileIds
+      }
+    }
+    return
+  }
   attachmentsState.value = { visible: true, transaction: t }
 }
 function closeAttachments() {
@@ -170,7 +246,16 @@ function closeAttachments() {
 }
 
 function hasAttachments(t) {
-  return !!(t && t.blobFileIds && String(t.blobFileIds).trim() !== '')
+  // [62-A] For PAYMENT rows, look up parent transaction's blobFileIds
+  if (!t) return false
+  if (t.recordSource === 'PAYMENT' && t.parentTransactionId) {
+    const parent = transactions.value.find(
+      x => x.recordSource !== 'PAYMENT' && Number(x.id) === Number(t.parentTransactionId)
+    )
+    if (parent && parent.blobFileIds && String(parent.blobFileIds).trim() !== '') return true
+    // fall through to row's own blobFileIds (backwards-compat)
+  }
+  return !!(t.blobFileIds && String(t.blobFileIds).trim() !== '')
 }
 
 function canMarkPaid(t) {
@@ -736,7 +821,7 @@ const ruleLabel = computed(() => {
                 :class="{ 'payment-row': t.recordSource === 'PAYMENT' }"
               >
                 <td class="id-col">
-                  <span v-if="t.recordSource === 'PAYMENT'" class="payment-id" :title="'Πληρωμή #' + (t.parentTransactionId || t.id)">-{{ t.id }}</span>
+                  <span v-if="t.recordSource === 'PAYMENT'" class="payment-id" :title="'Πληρωμή (id #' + t.id + ')'">#{{ t._parentEntityNumber || t.parentTransactionId || t.id }}</span>
                   <span v-else>{{ t.entityNumber || t.id }}</span>
                 </td>
                 <td>{{ fmtDate(t.docDate) }}</td>
@@ -1125,7 +1210,8 @@ const ruleLabel = computed(() => {
   cursor: help;
 }
 .payment-id {
-  color: #e24b4a;
+  /* [62-B] muted color - parent transaction id reference */
+  color: #8a99a8;
   font-family: monospace;
   font-weight: 600;
   cursor: help;
