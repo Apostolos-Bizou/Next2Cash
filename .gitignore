@@ -213,3 +213,6 @@ application-local.properties.bak.*
 
 # Local gitignore backups
 .gitignore.bak.*
+
+# Local debug artifacts
+logs.zip
