@@ -11,6 +11,43 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 
+// PHASE_61_LANDING_ROUTE: resolve landing route based on allowedSections
+// Section -> route path map (must stay in sync with router/index.js)
+const SECTION_TO_ROUTE = {
+  'dashboard': '/dashboard',
+  'new-entry': '/new-entry',
+  'transactions': '/transactions',
+  'payments': '/payments',
+  'obligations': '/obligations',
+  'karteles': '/karteles',
+  'zip-export': '/documents',
+  'reports': '/reports',
+  'report-builder': '/report-builder',
+  'ai-analysis': '/ai-analysis',
+  'admin': '/admin',
+  'admin-categories': '/admin',
+  'admin-accounts': '/admin',
+  'admin-banks': '/admin',
+  'admin-audit': '/admin',
+}
+// Preferred landing order when user has multiple allowed sections
+const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'report-builder', 'ai-analysis', 'zip-export', 'admin']
+function resolveLandingRoute(user) {
+  if (!user || !user.allowedSections) return '/dashboard'
+  let allowed = null
+  try { allowed = JSON.parse(user.allowedSections) } catch { return '/dashboard' }
+  if (!Array.isArray(allowed) || allowed.length === 0) return '/dashboard'
+  // Pick by priority: first match in LANDING_PRIORITY that user has
+  for (const s of LANDING_PRIORITY) {
+    if (allowed.includes(s) && SECTION_TO_ROUTE[s]) return SECTION_TO_ROUTE[s]
+  }
+  // Fallback: first allowed section regardless of priority
+  for (const s of allowed) {
+    if (SECTION_TO_ROUTE[s]) return SECTION_TO_ROUTE[s]
+  }
+  return '/dashboard'
+}
+
 const login = async () => {
   error.value = ''
   loading.value = true
@@ -37,7 +74,8 @@ const login = async () => {
         }
       }
 
-      router.push('/dashboard')
+      // PHASE_61_LANDING_ROUTE: route to first allowed section (not always /dashboard)
+      router.push(resolveLandingRoute(user))
     } else {
       error.value = 'Λάθος username ή password'
     }
