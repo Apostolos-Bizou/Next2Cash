@@ -101,4 +101,73 @@ public class Transaction {
     @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // ===============================================================
+    // Phase 1 -- Cash Planning Module (Session 3, May 2026)
+    // Added by migration V2026_05_16_001__phase1_planning.sql
+    // All fields nullable / defaulted for 100% backward compatibility.
+    // ===============================================================
+
+    /**
+     * ACTUAL = historical/realized transaction (default for all existing rows).
+     * PLANNED = future transaction that has not happened yet.
+     * Drives the mode-aware form and the 90-day forecast view.
+     */
+    @Column(name = "entry_mode", length = 10)
+    private String entryMode = "ACTUAL";
+
+    /**
+     * true = this row is the "mother" of a recurring series (the template).
+     * Children (generated instances) have parentRecurringId pointing here.
+     */
+    @Column(name = "is_recurring")
+    private Boolean isRecurring = false;
+
+    /**
+     * FK -> recurrence_patterns.id. NULL unless this row is recurring.
+     * Defines frequency, day-of-month, end conditions, etc.
+     */
+    @Column(name = "recurrence_pattern_id")
+    private UUID recurrencePatternId;
+
+    /**
+     * Self-FK -> transactions.id. NULL unless this row is a child instance
+     * of a recurring "mother". Note: INTEGER, not UUID (transactions.id is INTEGER).
+     */
+    @Column(name = "parent_recurring_id")
+    private Integer parentRecurringId;
+
+    /**
+     * FK -> projects.id (Phase 2). NULL = OpEx (general company expense).
+     */
+    @Column(name = "project_id")
+    private UUID projectId;
+
+    /**
+     * 0-100. Probability that a PLANNED transaction will actually occur.
+     * 100 = certain (default). Lower values shrink contribution to forecast.
+     */
+    @Column(name = "confidence_pct")
+    private Integer confidencePct = 100;
+
+    /**
+     * FK -> forecast_scenarios.id (Phase 2). NULL = BASELINE scenario.
+     */
+    @Column(name = "scenario_id")
+    private UUID scenarioId;
+
+    /**
+     * Audit trail: when a PLANNED transaction is realized, the new ACTUAL
+     * transaction's id is stored here on the original PLANNED row.
+     * Self-FK INTEGER (transactions.id type).
+     */
+    @Column(name = "converted_to_transaction_id")
+    private Integer convertedToTransactionId;
+
+    /**
+     * Timestamp of when entryMode flipped PLANNED -> ACTUAL via the
+     * convert action. NULL until conversion happens.
+     */
+    @Column(name = "converted_at")
+    private LocalDateTime convertedAt;
 }
