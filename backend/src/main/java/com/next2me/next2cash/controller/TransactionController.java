@@ -13,15 +13,18 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -45,11 +48,17 @@ public class TransactionController {
 
     private static final Logger log = LoggerFactory.getLogger(TransactionController.class);
 
-    // GET /api/transactions?entityId=X&page=0&perPage=25&type=expense&status=unpaid
+    // GET /api/transactions?entityId=X&page=0&perPage=25&type=expense&status=unpaid&mode=ACTUAL
     //
     // Role access:
     //   - ADMIN, USER: allowed (then entity-level check)
     //   - ACCOUNTANT, VIEWER: 403 (use /api/documents/export or /api/dashboard instead)
+    //
+    // Phase 1 (Session 3, May 2026): added optional `mode` filter for Cash Planning.
+    //   mode=ACTUAL   -> only historical/realized transactions (default behaviour pre-Phase-1)
+    //   mode=PLANNED  -> only future planned transactions
+    //   mode=all      -> both modes (or simply omit the param)
+    // Filter is applied AFTER the repository query so existing query methods stay untouched.
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     public ResponseEntity<?> getTransactions(
@@ -62,7 +71,8 @@ public class TransactionController {
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
-            @RequestParam(required = false) String search) {
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String mode) {
 
         // SECURITY GUARD: verify the user has access to this entity
         User user = userAccessService.getCurrentUser(authHeader);
@@ -99,6 +109,24 @@ public class TransactionController {
                     entityId, "active", pageable);
         }
 
+        // Phase 1: optional mode filter applied AFTER paging (rare in practice, see note below).
+        //
+        // Trade-off: filtering after paging means the page count and total may include rows
+        // that get dropped here. For the Cash Planning UI (90-day forecast), the frontend
+        // typically requests perPage>=1000 so the filter is effectively complete. The
+        // dedicated /planned endpoint below is the precise tool for forecast views.
+        if (mode != null && !mode.isBlank() && !"all".equalsIgnoreCase(mode)) {
+            String wantedMode = mode.toUpperCase();
+            List<Transaction> filtered = result.getContent().stream()
+                .filter(t -> {
+                    String tm = t.getEntryMode();
+                    if (tm == null) tm = "ACTUAL"; // safety: pre-Phase-1 rows
+                    return wantedMode.equals(tm);
+                })
+                .toList();
+            result = new PageImpl<>(filtered, pageable, filtered.size());
+        }
+
         return ResponseEntity.ok(Map.of(
             "success", true,
             "data",    result.getContent(),
@@ -127,6 +155,12 @@ public class TransactionController {
     }
 
     // POST /api/transactions
+    //
+    // Phase 1 note: Jackson deserializes ALL @Column fields including the 9 new
+    // Phase 1 fields (entryMode, isRecurring, recurrencePatternId, parentRecurringId,
+    // projectId, confidencePct, scenarioId, convertedToTransactionId, convertedAt).
+    // No code change needed here: the frontend can already send them and they will
+    // be persisted automatically. Database CHECK constraints validate values.
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     public ResponseEntity<?> createTransaction(
@@ -233,6 +267,22 @@ public class TransactionController {
             if (updates.getPaymentDate()    != null) t.setPaymentDate(updates.getPaymentDate());
             if (updates.getDocStatus()      != null) t.setDocStatus(updates.getDocStatus());
 
+            // -------------------------------------------------------------------
+            // Phase 1 (Session 3, May 2026): partial updates for Cash Planning.
+            //
+            // Frontend can edit any of these on an existing transaction without
+            // wiping the others. The conversion fields (convertedToTransactionId,
+            // convertedAt) are intentionally NOT exposed here -- they are managed
+            // exclusively by POST /api/transactions/{id}/convert below.
+            // -------------------------------------------------------------------
+            if (updates.getEntryMode()            != null) t.setEntryMode(updates.getEntryMode());
+            if (updates.getIsRecurring()          != null) t.setIsRecurring(updates.getIsRecurring());
+            if (updates.getRecurrencePatternId()  != null) t.setRecurrencePatternId(updates.getRecurrencePatternId());
+            if (updates.getParentRecurringId()    != null) t.setParentRecurringId(updates.getParentRecurringId());
+            if (updates.getProjectId()            != null) t.setProjectId(updates.getProjectId());
+            if (updates.getConfidencePct()        != null) t.setConfidencePct(updates.getConfidencePct());
+            if (updates.getScenarioId()           != null) t.setScenarioId(updates.getScenarioId());
+
             Transaction saved = transactionRepository.save(t);
             auditLogService.log(saved.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_UPDATE", "transactions", saved.getId().toString(), null);
 
@@ -269,11 +319,11 @@ public class TransactionController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    // ─────────────────────────────────────────────────────────────────
+    // ----------------------------------------------------------------
     // Phase 3 helper: bank balance recompute with null-guard + try/catch.
     // Failures are logged as WARN but never block the parent operation.
     // Used by CREATE (3.1), UPDATE (3.2), DELETE (3.3) and Mark-Paid (3.4).
-    // ─────────────────────────────────────────────────────────────────
+    // ----------------------------------------------------------------
     private void tryRecomputeBank(UUID entityId, String paymentMethod, Object txnId, String action) {
         if (entityId == null) return;
         if (paymentMethod == null || paymentMethod.isBlank()) return;
@@ -376,13 +426,13 @@ public class TransactionController {
         return ResponseEntity.ok(Map.of("success", true, "data", results));
     }
 
-    // Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬
-    // PHASE H Ξ²β‚¬β€ KARTELES ENDPOINTS
-    // Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬
+    // ===================================================================
+    // PHASE H -- KARTELES ENDPOINTS
+    // ===================================================================
 
     // GET /api/transactions/counterparties?entityId=X
     // Returns list of counterparties with aggregated metrics (count, total, paid, balance).
-    // Service-layer aggregation in Java Ξ²β‚¬β€ NO SQL GROUP BY (Postgres-safe).
+    // Service-layer aggregation in Java -- NO SQL GROUP BY (Postgres-safe).
     @GetMapping("/counterparties")
     @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER')")
     public ResponseEntity<?> getCounterparties(
@@ -460,5 +510,174 @@ public class TransactionController {
         }
 
         return ResponseEntity.ok(Map.of("success", true, "data", results, "total", results.size()));
+    }
+
+    // ===================================================================
+    // PHASE 1 (Session 3, May 2026) -- CASH PLANNING ENDPOINTS
+    // ===================================================================
+
+    /**
+     * POST /api/transactions/{id}/convert
+     *
+     * Convert a PLANNED transaction into an ACTUAL one. This is the moment
+     * when a forecasted entry becomes realized. The semantics:
+     *
+     *   1. The original PLANNED row is preserved (audit trail).
+     *   2. A NEW ACTUAL row is created with copied fields, entryMode=ACTUAL,
+     *      and confidencePct=100. Its entity_number gets the next sequential
+     *      value (so it appears in the standard ledger).
+     *   3. The original is marked: convertedToTransactionId = newId, convertedAt = now.
+     *
+     * Optional body (all fields optional, used to override the new ACTUAL row):
+     *   {
+     *     "docDate":       "2026-06-12",
+     *     "amount":        347.50,
+     *     "paymentDate":   "2026-06-12",
+     *     "paymentMethod": "Eurobank",
+     *     "paymentStatus": "paid",
+     *     "description":   "AWS June (actual)"
+     *   }
+     *
+     * Body fields not provided are copied as-is from the original PLANNED row.
+     *
+     * Returns the newly-created ACTUAL transaction.
+     *
+     * ADMIN + USER only. Idempotency: if the original already has
+     * convertedToTransactionId set, returns 409 with the existing target.
+     */
+    @PostMapping("/{id}/convert")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @Transactional
+    public ResponseEntity<?> convertPlannedToActual(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Integer id,
+            @RequestBody(required = false) Transaction overrides) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+
+        return transactionRepository.findById(id).map(original -> {
+            // SECURITY GUARD: original must belong to an accessible entity
+            userAccessService.assertCanAccessEntity(user, original.getEntityId());
+
+            // Validation: only PLANNED rows can be converted.
+            String mode = original.getEntryMode() == null ? "ACTUAL" : original.getEntryMode();
+            if (!"PLANNED".equals(mode)) {
+                return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                    "success", false,
+                    "error",   "not_planned",
+                    "message", "Only PLANNED transactions can be converted to ACTUAL."
+                ));
+            }
+
+            // Idempotency: if already converted, do not create a second ACTUAL.
+            if (original.getConvertedToTransactionId() != null) {
+                return ResponseEntity.status(409).body(Map.<String, Object>of(
+                    "success", false,
+                    "error",   "already_converted",
+                    "message", "This planned transaction has already been converted.",
+                    "convertedToTransactionId", original.getConvertedToTransactionId(),
+                    "convertedAt", original.getConvertedAt()
+                ));
+            }
+
+            // Build the new ACTUAL row by copying the original.
+            Transaction actual = new Transaction();
+            actual.setEntityId(original.getEntityId());
+            actual.setType(original.getType());
+            actual.setCounterparty(original.getCounterparty());
+            actual.setAccount(original.getAccount());
+            actual.setCategory(original.getCategory());
+            actual.setSubcategory(original.getSubcategory());
+            actual.setDescription(original.getDescription());
+            actual.setAmount(original.getAmount());
+            actual.setAmountPaid(original.getAmountPaid());
+            actual.setPaymentMethod(original.getPaymentMethod());
+            actual.setPaymentStatus(original.getPaymentStatus());
+            actual.setPaymentDate(original.getPaymentDate());
+            actual.setDueDate(original.getDueDate());
+            actual.setDocStatus(original.getDocStatus());
+            // docDate defaults to today if not overridden -- the conversion moment.
+            actual.setDocDate(LocalDate.now());
+            // Project / scenario / recurrence linkage stays the same.
+            actual.setProjectId(original.getProjectId());
+            actual.setScenarioId(original.getScenarioId());
+            actual.setRecurrencePatternId(original.getRecurrencePatternId());
+            actual.setParentRecurringId(original.getParentRecurringId());
+
+            // Apply optional overrides from the body.
+            if (overrides != null) {
+                if (overrides.getDocDate()       != null) actual.setDocDate(overrides.getDocDate());
+                if (overrides.getAmount()        != null) actual.setAmount(overrides.getAmount());
+                if (overrides.getAmountPaid()    != null) actual.setAmountPaid(overrides.getAmountPaid());
+                if (overrides.getPaymentMethod() != null) actual.setPaymentMethod(overrides.getPaymentMethod());
+                if (overrides.getPaymentStatus() != null) actual.setPaymentStatus(overrides.getPaymentStatus());
+                if (overrides.getPaymentDate()   != null) actual.setPaymentDate(overrides.getPaymentDate());
+                if (overrides.getDescription()   != null) actual.setDescription(overrides.getDescription());
+                if (overrides.getDocStatus()     != null) actual.setDocStatus(overrides.getDocStatus());
+                if (overrides.getCounterparty()  != null) actual.setCounterparty(overrides.getCounterparty());
+                if (overrides.getCategory()      != null) actual.setCategory(overrides.getCategory());
+                if (overrides.getSubcategory()   != null) actual.setSubcategory(overrides.getSubcategory());
+            }
+
+            // Mark as ACTUAL with full confidence.
+            actual.setEntryMode("ACTUAL");
+            actual.setIsRecurring(false); // the child is never itself the "mother"
+            actual.setConfidencePct(100);
+
+            // System-managed fields
+            actual.setCreatedBy(user.getId());
+            actual.setRecordStatus("active");
+
+            // Auto-assign entity_number
+            Integer maxEntityNumber = transactionRepository.findMaxEntityNumberByEntityId(actual.getEntityId());
+            actual.setEntityNumber(maxEntityNumber == null ? 1 : maxEntityNumber + 1);
+
+            // amount_remaining = amount - amountPaid (guard against null)
+            if (actual.getAmountPaid() == null) {
+                actual.setAmountPaid(java.math.BigDecimal.ZERO);
+            }
+            if (actual.getAmount() != null) {
+                actual.setAmountRemaining(
+                    actual.getAmount().subtract(actual.getAmountPaid()));
+            }
+
+            // accounting_period from docDate
+            if (actual.getDocDate() != null) {
+                actual.setAccountingPeriod(
+                    actual.getDocDate().getYear() + "-" +
+                    String.format("%02d", actual.getDocDate().getMonthValue()));
+            }
+
+            Transaction savedActual = transactionRepository.save(actual);
+
+            // Update the original PLANNED row with audit trail.
+            original.setConvertedToTransactionId(savedActual.getId());
+            original.setConvertedAt(LocalDateTime.now());
+            original.setUpdatedBy(user.getId());
+            transactionRepository.save(original);
+
+            // Audit logs: one for the new ACTUAL, one for the conversion on the PLANNED.
+            auditLogService.log(
+                savedActual.getEntityId(), user.getId(), user.getUsername(),
+                "TRANSACTION_CREATE_FROM_PLANNED", "transactions",
+                savedActual.getId().toString(),
+                "{\"convertedFrom\":" + original.getId() + "}");
+
+            auditLogService.log(
+                original.getEntityId(), user.getId(), user.getUsername(),
+                "TRANSACTION_CONVERT_PLANNED", "transactions",
+                original.getId().toString(),
+                "{\"convertedTo\":" + savedActual.getId() + "}");
+
+            // Recompute bank balance for the new ACTUAL's payment method if it's paid.
+            tryRecomputeBank(savedActual.getEntityId(), savedActual.getPaymentMethod(),
+                savedActual.getId(), "CONVERT");
+
+            return ResponseEntity.ok(Map.<String, Object>of(
+                "success", true,
+                "data",    savedActual,
+                "original", original
+            ));
+        }).orElse(ResponseEntity.notFound().build());
     }
 }
