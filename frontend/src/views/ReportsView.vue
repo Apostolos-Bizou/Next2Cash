@@ -29,7 +29,7 @@ const loading = ref(false)
 const ENTITY_MAP = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
   house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  polaris: '50317f44-9961-4fb4-add0-7a118e32dc14',
+  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
 }
 
 const MONTH_NAMES = [

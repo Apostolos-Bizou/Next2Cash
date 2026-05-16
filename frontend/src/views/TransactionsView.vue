@@ -8,7 +8,7 @@ import AttachmentsPopover from '@/components/AttachmentsPopover.vue'
 const ENTITIES = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
   house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  polaris: '50317f44-9961-4fb4-add0-7a118e32dc14',
+  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
 }
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const entityId = computed(() => ENTITIES[selectedEntity.value])
@@ -929,7 +929,7 @@ onMounted(() => {
   loadEditBankAccounts()
   loadEditConfig()
   const q = route.query || {}
-  // entityId: UUID -> reverse map to 'next2me' / 'house' / 'polaris' key
+  // entityId: UUID -> reverse map to 'next2me' / 'house' / 'next2megroup' key
   if (q.entityId) {
     const key = Object.keys(ENTITIES).find(k => ENTITIES[k] === q.entityId)
     if (key) selectedEntity.value = key

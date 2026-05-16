@@ -54,10 +54,14 @@ const filteredEntities = computed(() => {
   if (restricted === null) return entities.value // null = all entities
 
   // Map entity UUIDs to keys
+  // Phase 0 migration: rename old 'polaris' localStorage key to 'next2megroup'
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('n2c_entity') === 'polaris') {
+    localStorage.setItem('n2c_entity', 'next2megroup')
+  }
   const uuidToKey = {
     '58202b71-4ddb-45c9-8e3c-39e816bde972': 'next2me',
     'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
-    '50317f44-9961-4fb4-add0-7a118e32dc14': 'polaris',
+    '50317f44-9961-4fb4-add0-7a118e32dc14': 'next2megroup',
   }
   const allowedKeys = restricted.map(uuid => uuidToKey[uuid]).filter(Boolean)
   return entities.value.filter(e => allowedKeys.includes(e.key))
@@ -85,7 +89,7 @@ const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const entities = ref([
   { key: 'next2me', label: 'Next2Me' },
   { key: 'house',   label: 'House' },
-  { key: 'polaris', label: 'Polaris' }
+  { key: 'next2megroup', label: 'Next2Me Group' }
 ])
 function selectEntity(e) {
   selectedEntity.value = e.key

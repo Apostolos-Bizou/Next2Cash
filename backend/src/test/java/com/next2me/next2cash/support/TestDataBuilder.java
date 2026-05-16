@@ -92,13 +92,13 @@ public class TestDataBuilder {
     }
 
     /**
-     * Quick helper: create 3 typical entities (Next2Me, House, Polaris) similar to production.
+     * Quick helper: create 3 typical entities (Next2Me, House, Next2Me Group) similar to production.
      */
     public CompanyEntity[] createStandardEntities() {
         return new CompanyEntity[] {
             createEntity("NEXT2ME", "Next2Me"),
             createEntity("HOUSE",   "House"),
-            createEntity("POLARIS", "Polaris")
+            createEntity("NEXT2MEGROUP", "Next2Me Group")
         };
     }
 

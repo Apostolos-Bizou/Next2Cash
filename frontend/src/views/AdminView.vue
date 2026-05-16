@@ -151,7 +151,7 @@ async function fetchEntities() {
   entities.value = [
     { id: '58202b71-4ddb-45c9-8e3c-39e816bde972', code: 'next2me', name: 'Next2Me' },
     { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', code: 'house',   name: 'House'   },
-    { id: '50317f44-9961-4fb4-add0-7a118e32dc14', code: 'polaris', name: 'Polaris' }
+    { id: '50317f44-9961-4fb4-add0-7a118e32dc14', code: 'next2megroup', name: 'Next2Me Group' }
   ]
 }
 
@@ -505,7 +505,7 @@ const visibleUsers = computed(() => {
 const ENTITIES_MAP = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
   house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  polaris: '50317f44-9961-4fb4-add0-7a118e32dc14',
+  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
 }
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const adminEntityId = computed(() => ENTITIES_MAP[selectedEntity.value])
@@ -1082,7 +1082,7 @@ onMounted(async () => {
     <div v-else-if="activeTab === 'categories' && canAccessTab('categories')" class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h2>Κατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
+          <h2>Κατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Next2Me Group' }}</h2>
           <button class="btn btn-secondary btn-sm" @click="loadAdminConfig" :disabled="configLoading">
             {{ configLoading ? '...' : 'Ανανέωση' }}
           </button>
@@ -1120,7 +1120,7 @@ onMounted(async () => {
     <div v-else-if="activeTab === 'accounts' && canAccessTab('accounts')" class="tab-content">
       <div class="card">
         <div class="card-header">
-          <h2>Υποκατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Polaris' }}</h2>
+          <h2>Υποκατηγορίες — {{ selectedEntity === 'next2me' ? 'Next2Me' : selectedEntity === 'house' ? 'House' : 'Next2Me Group' }}</h2>
           <button class="btn btn-secondary btn-sm" @click="loadAdminConfig" :disabled="configLoading">
             {{ configLoading ? '...' : 'Ανανέωση' }}
           </button>

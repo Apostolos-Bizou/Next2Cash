@@ -66,7 +66,7 @@ const login = async () => {
         const uuidToKey = {
           '58202b71-4ddb-45c9-8e3c-39e816bde972': 'next2me',
           'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
-          '50317f44-9961-4fb4-add0-7a118e32dc14': 'polaris',
+          '50317f44-9961-4fb4-add0-7a118e32dc14': 'next2megroup',
         }
         const firstKey = uuidToKey[user.entityIds[0]]
         if (firstKey) {

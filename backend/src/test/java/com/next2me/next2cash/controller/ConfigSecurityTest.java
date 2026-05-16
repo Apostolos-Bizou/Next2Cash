@@ -33,19 +33,19 @@ class ConfigSecurityTest extends BaseIntegrationTest {
 
     private CompanyEntity next2me;
     private CompanyEntity house;
-    private CompanyEntity polaris;
+    private CompanyEntity next2meGroup;
 
     @BeforeEach
     void setupEntitiesAndConfig() {
         CompanyEntity[] ents = tdb.createStandardEntities();
         next2me = ents[0];
         house   = ents[1];
-        polaris = ents[2];
+        next2meGroup = ents[2];
 
         // Seed one config row per entity so the GET has something to return.
         saveConfig(next2me, "category", "salary",  "Salary");
         saveConfig(house,   "category", "rent",    "Rent");
-        saveConfig(polaris, "category", "fees",    "Fees");
+        saveConfig(next2meGroup, "category", "fees",    "Fees");
     }
 
     private void saveConfig(CompanyEntity entity, String type, String key, String value) {
@@ -79,7 +79,7 @@ class ConfigSecurityTest extends BaseIntegrationTest {
         // No assignments needed — admin bypass.
         mockMvc.perform(get("/api/config")
                 .header("Authorization", tdb.bearerToken(admin))
-                .param("entityId", polaris.getId().toString()))
+                .param("entityId", next2meGroup.getId().toString()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.categories").isArray());
@@ -110,7 +110,7 @@ class ConfigSecurityTest extends BaseIntegrationTest {
 
         mockMvc.perform(get("/api/config")
                 .header("Authorization", tdb.bearerToken(sissy))
-                .param("entityId", polaris.getId().toString()))  // polaris not assigned
+                .param("entityId", next2meGroup.getId().toString()))  // next2meGroup not assigned
             .andExpect(status().isForbidden());
     }
 
@@ -124,7 +124,7 @@ class ConfigSecurityTest extends BaseIntegrationTest {
 
         mockMvc.perform(get("/api/config")
                 .header("Authorization", tdb.bearerToken(legacy))
-                .param("entityId", polaris.getId().toString()))
+                .param("entityId", next2meGroup.getId().toString()))
             .andExpect(status().isOk());
     }
 

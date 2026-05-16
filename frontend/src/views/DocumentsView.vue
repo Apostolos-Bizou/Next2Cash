@@ -11,7 +11,7 @@ import api from '@/api'
 const ENTITIES = {
   'next2me': { id: '58202b71-4ddb-45c9-8e3c-39e816bde972', label: 'Next2me' },
   'house':   { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', label: 'House' },
-  'polaris': { id: '50317f44-9961-4fb4-add0-7a118e32dc14', label: 'Polaris' }
+  'next2megroup': { id: '50317f44-9961-4fb4-add0-7a118e32dc14', label: 'Next2Me Group' }
 }
 
 // PHASE_61B_ENTITY_FILTER: filter entities by user's allowed entityIds
