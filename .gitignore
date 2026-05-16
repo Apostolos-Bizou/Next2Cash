@@ -216,3 +216,5 @@ application-local.properties.bak.*
 
 # Local debug artifacts
 logs.zip
+
+backend/src/main/resources/application-localinit.properties
