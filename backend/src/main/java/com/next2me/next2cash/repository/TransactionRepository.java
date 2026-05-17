@@ -33,14 +33,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
 
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
-           "AND t.type = 'income' AND t.docDate BETWEEN :from AND :to")
+           "AND t.type = 'income' AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) AND t.docDate BETWEEN :from AND :to")
     BigDecimal sumIncomeByEntityAndPeriod(@Param("entityId") UUID entityId,
                                           @Param("from") LocalDate from,
                                           @Param("to") LocalDate to);
 
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
-           "AND t.type = 'expense' AND t.docDate BETWEEN :from AND :to")
+           "AND t.type = 'expense' AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) AND t.docDate BETWEEN :from AND :to")
     BigDecimal sumExpenseByEntityAndPeriod(@Param("entityId") UUID entityId,
                                            @Param("from") LocalDate from,
                                            @Param("to") LocalDate to);
@@ -49,7 +49,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.type = 'income' AND t.paymentStatus IN ('paid', 'received') " +
-           "AND t.docDate BETWEEN :from AND :to")
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) AND t.docDate BETWEEN :from AND :to")
     BigDecimal sumPaidIncomeByEntityAndPeriod(@Param("entityId") UUID entityId,
                                               @Param("from") LocalDate from,
                                               @Param("to") LocalDate to);
@@ -57,23 +57,24 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.type = 'expense' AND t.paymentStatus = 'paid' " +
-           "AND t.docDate BETWEEN :from AND :to")
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) AND t.docDate BETWEEN :from AND :to")
     BigDecimal sumPaidExpenseByEntityAndPeriod(@Param("entityId") UUID entityId,
                                                @Param("from") LocalDate from,
                                                @Param("to") LocalDate to);
 
     @Query("SELECT COALESCE(SUM(t.amountRemaining), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
-           "AND t.paymentStatus = 'urgent'")
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) AND t.paymentStatus = 'urgent'")
     BigDecimal sumUrgentRemaining(@Param("entityId") UUID entityId);
 
     @Query("SELECT COALESCE(SUM(t.amountRemaining), 0) FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
-           "AND t.paymentStatus IN ('unpaid', 'urgent')")
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) AND t.paymentStatus IN ('unpaid', 'urgent')")
     BigDecimal sumUnpaidRemaining(@Param("entityId") UUID entityId);
 
     @Query("SELECT t FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) " +
            "ORDER BY t.docDate DESC, t.id DESC")
     List<Transaction> findRecentByEntity(@Param("entityId") UUID entityId, Pageable pageable);
 
@@ -122,6 +123,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
            "FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND EXTRACT(YEAR FROM t.docDate) = :year " +
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) " +
            "GROUP BY EXTRACT(MONTH FROM t.docDate), t.category " +
            "ORDER BY month")
     List<Object[]> getMonthlyReport(@Param("entityId") UUID entityId,
@@ -133,6 +135,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
            "OVER (ORDER BY t.doc_date, t.id) as running_balance " +
            "FROM transactions t " +
            "WHERE t.entity_id = :entityId AND t.record_status = 'active' " +
+           "AND (t.entry_mode = 'ACTUAL' OR t.entry_mode IS NULL) " +
            "AND t.doc_date BETWEEN :from AND :to " +
            "ORDER BY t.doc_date, t.id",
            nativeQuery = true)
@@ -147,6 +150,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
            "FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND t.type = 'expense' " +
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) " +
            "GROUP BY EXTRACT(YEAR FROM t.docDate), t.category " +
            "ORDER BY year, total DESC")
     List<Object[]> getYearlyReport(@Param("entityId") UUID entityId);
@@ -157,6 +161,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
            "SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END) as expense " +
            "FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) " +
            "AND t.docDate BETWEEN :from AND :to " +
            "GROUP BY t.category, t.account " +
            "ORDER BY expense DESC")
@@ -200,6 +205,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
     @Query("SELECT COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END), 0) " +
            "FROM Transaction t " +
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) " +
            "AND t.paymentMethod = :paymentMethod " +
            "AND t.docDate >= :openingDate " +
            "AND ((t.type = 'income' AND t.paymentStatus IN ('paid', 'received')) " +
@@ -217,6 +223,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
            "WHERE t.entityId = :entityId AND t.recordStatus = 'active' " +
            "AND ((t.type = 'income' AND t.paymentStatus IN ('paid', 'received')) " +
            "  OR (t.type = 'expense' AND t.paymentStatus = 'paid')) " +
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) " +
            "AND (t.paymentMethod IS NULL OR t.paymentMethod NOT IN :validLabels) " +
            "AND t.docDate >= :openingDate")
     List<Transaction> findOrphanPaidTransactions(
