@@ -75,7 +75,7 @@ async function loadPayments() {
     })
     if (res.data.success) {
       allPayments.value = res.data.data
-        .filter(t => t.recordStatus !== 'void')
+        .filter(t => t.recordStatus !== 'void' && (t.entryMode || 'ACTUAL') === 'ACTUAL')
         .map(t => {
           const amount = parseFloat(t.amount || 0)
           const paid = parseFloat(t.amountPaid || 0)

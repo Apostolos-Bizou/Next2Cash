@@ -81,7 +81,7 @@ async function loadObligations() {
     })
     if (res.data.success) {
       allObligations.value = res.data.data
-        .filter(t => t.recordStatus !== 'void' && t.type === 'expense')
+        .filter(t => t.recordStatus !== 'void' && t.type === 'expense' && (t.entryMode || 'ACTUAL') === 'ACTUAL')
         .map(t => {
           const amount = parseFloat(t.amount || 0)
           const paid = parseFloat(t.amountPaid || 0)

@@ -606,6 +606,9 @@ const paymentsTabLabel = computed(() => {
 const filteredTransactions = computed(() => {
   // universalMatch handles search internally
   return transactions.value.filter(t => {
+    // S67 Task 3: PLANNED transactions excluded from actuality views.
+    // Virtual payment rows inherit parent.entryMode so they follow the same gating.
+    if (!((t.entryMode || 'ACTUAL') === 'ACTUAL')) return false
     // Phase K: view filter (transactions vs payments vs all)
     if (viewFilter.value === 'transactions' && t.recordSource === 'PAYMENT') return false
     if (viewFilter.value === 'payments'     && t.recordSource !== 'PAYMENT') return false
