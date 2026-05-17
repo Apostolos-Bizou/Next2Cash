@@ -187,6 +187,9 @@ public class CardService {
         List<Transaction> all = transactionRepository
             .findByEntityIdAndRecordStatusOrderByDocDateDesc(entityId, RECORD_STATUS_ACTIVE);
         return all.stream()
+            // S67 Task 3: exclude PLANNED transactions from card lists/exports.
+            // Null entryMode is treated as ACTUAL (defensive, matches TransactionRepository).
+            .filter(t -> "ACTUAL".equals(t.getEntryMode()) || t.getEntryMode() == null)
             .filter(t -> matches(t, ctx.filterType(), ctx.values()))
             .toList();
     }
@@ -301,6 +304,8 @@ public class CardService {
         List<Integer> matchedIds = new ArrayList<>();
 
         for (Transaction t : all) {
+            // S67 Task 3: skip PLANNED transactions (null treated as ACTUAL).
+            if (!("ACTUAL".equals(t.getEntryMode()) || t.getEntryMode() == null)) continue;
             if (!matches(t, ctx.filterType(), ctx.values())) continue;
             matchedIds.add(t.getId());
 
