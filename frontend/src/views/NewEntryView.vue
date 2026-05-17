@@ -36,6 +36,8 @@ async function loadConfig() {
 
 // ── Form state ──────────────────────────────────────────────────────
 const type        = ref('expense')
+// Phase 1-F1: entry mode (ACTUAL = past/today, PLANNED = future/budget)
+const entryMode   = ref('ACTUAL')
 // Phase 60-B: auto-uncheck pending when type=income
 watch(type, (newType) => {
   if (newType === 'income') {
@@ -177,6 +179,8 @@ async function save() {
       amountPaid:    isPending.value ? 0 : Number(amount.value),
       amountRemaining: isPending.value ? Number(amount.value) : 0,
       recordStatus:  'active',
+      // Phase 1-F1: entry mode
+      entryMode:     entryMode.value,
     }
 
     const res = await api.post('/api/transactions', payload)
@@ -232,6 +236,7 @@ function reset() {
   amount.value = ''; method.value = ''; isPending.value = false
   isUrgent.value = false; description.value = ''; docStatus.value = ''
   uploadedFiles.value = []; driveFileNames.value = []; suggestions.value = []; showSuggestions.value = false
+  entryMode.value = 'ACTUAL'  // Phase 1-F1: reset to default
 }
 
 const docStatuses = [
@@ -256,9 +261,29 @@ onMounted(async () => {
   <div class="new-entry-page">
     <div class="entry-card">
 
+      <!-- Phase 1-F1: Mode Switcher (ACTUAL / PLANNED) -->
+      <div class="mode-switcher">
+        <div class="mode-switcher-label">Τί είδος καταχώρησης;</div>
+        <div class="mode-switcher-options">
+          <button :class="['mode-btn', 'mode-actual', {active: entryMode==='ACTUAL'}]" @click="entryMode='ACTUAL'" type="button">
+            <div class="mode-btn-icon">💰</div>
+            <div class="mode-btn-title">Πραγματική</div>
+            <div class="mode-btn-hint">Έχει γίνει ήδη</div>
+          </button>
+          <button :class="['mode-btn', 'mode-planned', {active: entryMode==='PLANNED'}]" @click="entryMode='PLANNED'" type="button">
+            <div class="mode-btn-icon">📋</div>
+            <div class="mode-btn-title">Προγραμματισμένη</div>
+            <div class="mode-btn-hint">Θα γίνει στο μέλλον</div>
+          </button>
+        </div>
+      </div>
+
       <!-- Header -->
       <div class="entry-header">
-        <div class="entry-title"><i class="fas fa-plus-circle"></i> Νέα Καταχώριση</div>
+        <div class="entry-title">
+          <i class="fas fa-plus-circle"></i> Νέα Καταχώριση
+          <span v-if="entryMode==='PLANNED'" class="planned-badge">📋 Προγραμματισμένη</span>
+        </div>
         <div class="entry-meta">
           <div class="meta-badge">
             <div class="meta-label">ΑΡ. ΚΑΤΑΧΩΡΙΣΗΣ</div>
@@ -484,4 +509,19 @@ onMounted(async () => {
 .drive-row { display:flex; align-items:center; gap:8px; }
 .drive-lbl { font-size:.68rem; color:var(--success); font-weight:600; white-space:nowrap; }
 .drive-input { flex:1; padding:6px 10px; font-size:.82rem; font-weight:500; background:var(--bg-input); border:1px solid var(--success); border-radius:var(--radius-sm); color:var(--success); font-family:var(--font); }
+/* Phase 1-F1: Mode Switcher styles */
+.mode-switcher { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 18px; }
+.mode-switcher-label { font-size: .72rem; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; font-weight: 600; }
+.mode-switcher-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media(max-width:600px) { .mode-switcher-options { grid-template-columns: 1fr; } }
+.mode-btn { background: var(--bg-card); border: 2px solid var(--border); border-radius: var(--radius-md); padding: 14px 12px; cursor: pointer; text-align: center; font-family: var(--font); color: var(--text-muted); transition: all .2s; }
+.mode-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.mode-btn-icon { font-size: 1.4rem; margin-bottom: 6px; opacity: .7; }
+.mode-btn-title { font-size: .92rem; font-weight: 700; margin-bottom: 2px; }
+.mode-btn-hint { font-size: .72rem; color: var(--text-muted); }
+.mode-btn.active { background: var(--accent-glow); border-color: var(--accent); color: var(--text-primary); }
+.mode-btn.active .mode-btn-icon { opacity: 1; }
+.mode-btn.mode-planned.active { background: rgba(245, 158, 11, .15); border-color: #f59e0b; }
+.mode-btn.mode-planned.active .mode-btn-title { color: #f59e0b; }
+.planned-badge { display: inline-flex; align-items: center; gap: 4px; background: rgba(245, 158, 11, .15); color: #f59e0b; border: 1px solid #f59e0b; padding: 2px 10px; border-radius: 12px; font-size: .72rem; font-weight: 600; margin-left: 10px; vertical-align: middle; }
 </style>
