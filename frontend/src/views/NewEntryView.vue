@@ -10,7 +10,7 @@ const ENTITIES = {
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const entityId = computed(() => ENTITIES[selectedEntity.value])
 
-// ── Config from backend ──────────────────────────────────────────────
+// Config from backend
 const categories     = ref([])
 const allSubcats     = ref([])
 const accounts       = ref([])
@@ -26,7 +26,6 @@ async function loadConfig() {
       accounts.value       = res.data.accounts       || []
       paymentMethods.value = res.data.paymentMethods || []
     }
-    // Load bank accounts for Μέθοδος Πληρωμής dropdown
     const bankRes = await api.get('/api/bank-accounts', { params: { entityId: entityId.value } })
     if (bankRes.data.success) {
       bankAccounts.value = bankRes.data.accounts || []
@@ -34,7 +33,7 @@ async function loadConfig() {
   } catch (e) { console.error('Config error:', e) }
 }
 
-// ── Form state ──────────────────────────────────────────────────────
+// Form state
 const type        = ref('expense')
 // Phase 1-F1: entry mode (ACTUAL = past/today, PLANNED = future/budget)
 const entryMode   = ref('ACTUAL')
@@ -60,7 +59,56 @@ const successMsg  = ref('')
 const errorMsg    = ref('')
 const nextId      = ref('...')
 
-// ── Autocomplete ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Phase 1-F2: Mode B (PLANNED) — Cash Planning form extension
+// ─────────────────────────────────────────────────────────────
+// Επανάληψη (Recurrence)
+const isRecurring    = ref(false)
+const frequency      = ref('MONTHLY')   // DAILY / WEEKLY / MONTHLY / QUARTERLY / YEARLY
+const dayOfMonth     = ref(1)            // for MONTHLY/QUARTERLY/YEARLY
+const dayOfWeek      = ref(1)            // for WEEKLY (1=Mon..7=Sun)
+const intervalCount  = ref(1)
+const startDate      = ref(new Date().toISOString().split('T')[0])
+const endDate        = ref('')
+const isOpenEnded    = ref(true)         // true => endDate ignored
+
+// Project (Phase 2 dependency — disabled placeholder; OpEx fallback)
+const projectId      = ref('')
+const isOpEx         = ref(true)
+
+// Σενάριο (Scenario)
+const scenario       = ref('BASELINE')   // BASELINE / OPTIMISTIC / PESSIMISTIC
+
+// Βεβαιότητα (Confidence)
+const confidence     = ref(100)
+
+// Παρατηρήσεις (Notes — kept in description; this is just a UX helper field
+// for the PLANNED variant. Submitted concatenated into description.)
+const plannedNotes   = ref('')
+
+// Reset day_of_month/day_of_week sensibly when frequency changes
+watch(frequency, (newFreq) => {
+  if (newFreq === 'WEEKLY' && (!dayOfWeek.value || dayOfWeek.value < 1)) {
+    dayOfWeek.value = 1
+  }
+  if (['MONTHLY','QUARTERLY','YEARLY'].includes(newFreq)) {
+    if (!dayOfMonth.value || dayOfMonth.value < 1) dayOfMonth.value = 1
+  }
+})
+
+// When mode switches to PLANNED, default startDate to docDate
+watch(entryMode, (newMode) => {
+  if (newMode === 'PLANNED') {
+    // PLANNED never has a paymentMethod/bank picked yet
+    method.value = ''
+    isPending.value = false
+    isUrgent.value = false
+    docStatus.value = ''
+    if (!startDate.value) startDate.value = docDate.value
+  }
+})
+
+// ── Autocomplete ──
 const suggestions     = ref([])
 const showSuggestions = ref(false)
 let autocompleteTimer = null
@@ -88,12 +136,11 @@ function applySuggestion(t) {
   if (t.category)      category.value    = t.category
   if (t.paymentMethod) method.value      = t.paymentMethod
   if (t.type)          type.value        = t.type
-  // subcategory ΜΕΤΑ το category (nextTick) για να μην το καθαρίσει το watch
   if (t.account) nextTick(() => { subcategory.value = t.account })
   showSuggestions.value = false
 }
 
-// ── Subcategories filtered by category ──────────────────────────────
+// Subcategories filtered by category
 const subcategories = computed(() => {
   if (!category.value) return []
   return allSubcats.value.filter(s => s.parentKey === category.value)
@@ -101,7 +148,7 @@ const subcategories = computed(() => {
 
 watch(category, () => { subcategory.value = '' })
 
-// ── Next transaction ID ─────────────────────────────────────────────
+// Next transaction ID
 async function loadNextId() {
   try {
     const res = await api.get('/api/transactions/next-number', {
@@ -114,19 +161,18 @@ async function loadNextId() {
   } catch (e) { console.error('loadNextId error:', e) }
 }
 
-// ── Frequent entries ────────────────────────────────────────────────
-const frequentEntries = ['ΕNOIKIO', 'MICROSOFT AZURE', 'ΠΑΠΑΚΙ', 'ΚΙΝΗΤΟ', 'ΜΑΛΑΜΙΤΣΗΣ', 'ΤΑΛΙΑΔΩΡΟΣ']
+// Frequent entries
+const frequentEntries = ['ΕΝΟΙΚΙΟ', 'MICROSOFT AZURE', 'ΠΑΠΑΝΙ', 'ΜΙΧΗΤΑ', 'ΜΑΛΑΜΙΤΣΗΣ', 'ΤΑΛΙΑΔΩΡΟΣ']
 
 function applyFrequent(f) {
   description.value = nextId.value + ' - ' + f
 }
 
-// ── Multi-file upload (Phase 56-A) ────────────────────────────────────────
-const uploadedFiles = ref([])      // Array<File>
-const driveFileNames = ref([])     // Array<string>, parallel index
+// Multi-file upload (Phase 56-A)
+const uploadedFiles = ref([])
+const driveFileNames = ref([])
 
 function buildDefaultName(file, indexAmongAll) {
-  // Pattern: <description>.<ext> for first, <description> (2).<ext>, (3).<ext> ...
   const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : ''
   const baseDesc = (description.value || '').trim() || String(nextId.value)
   if (indexAmongAll === 0) return baseDesc + ext
@@ -136,7 +182,6 @@ function buildDefaultName(file, indexAmongAll) {
 function onFileChange(e) {
   const incoming = Array.from(e.target.files || [])
   if (incoming.length === 0) return
-  // Auto-fill description from first file (preserves legacy UX for first upload only)
   if (uploadedFiles.value.length === 0 && incoming.length > 0 && !description.value) {
     const firstName = incoming[0].name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
     description.value = nextId.value + ' - ' + firstName
@@ -146,7 +191,6 @@ function onFileChange(e) {
     uploadedFiles.value.push(file)
     driveFileNames.value.push(buildDefaultName(file, idx))
   }
-  // Reset input so selecting same file again triggers change
   try { e.target.value = '' } catch (_) {}
 }
 
@@ -155,65 +199,153 @@ function removeFile(idx) {
   driveFileNames.value.splice(idx, 1)
 }
 
-// ── Save ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Save — handles both ACTUAL (legacy) and PLANNED (new F2)
+// ─────────────────────────────────────────────────────────────
 async function save() {
   errorMsg.value = ''; successMsg.value = ''
   if (!category.value)  { errorMsg.value = 'Επιλέξτε Κατηγορία'; return }
   if (!amount.value || Number(amount.value) <= 0) { errorMsg.value = 'Συμπληρώστε Ποσό'; return }
 
+  // PLANNED-specific validation
+  if (entryMode.value === 'PLANNED') {
+    if (isRecurring.value) {
+      if (!startDate.value) { errorMsg.value = 'Συμπληρώστε Ημ/νία Έναρξης επανάληψης'; return }
+      if (!isOpenEnded.value && endDate.value && endDate.value < startDate.value) {
+        errorMsg.value = 'Η Λήξη πρέπει να είναι μετά την Έναρξη'; return
+      }
+      if (frequency.value === 'WEEKLY' && (dayOfWeek.value < 1 || dayOfWeek.value > 7)) {
+        errorMsg.value = 'Ημέρα εβδομάδας πρέπει να είναι 1-7'; return
+      }
+      if (['MONTHLY','QUARTERLY','YEARLY'].includes(frequency.value)
+          && (dayOfMonth.value < 1 || dayOfMonth.value > 31)) {
+        errorMsg.value = 'Ημέρα μήνα πρέπει να είναι 1-31'; return
+      }
+    }
+    if (confidence.value < 0 || confidence.value > 100) {
+      errorMsg.value = 'Βεβαιότητα πρέπει να είναι 0-100'; return
+    }
+  }
+
   saving.value = true
   try {
+    // ── Step 1: For PLANNED + recurring, create RecurrencePattern first ──
+    let recurrencePatternId = null
+    if (entryMode.value === 'PLANNED' && isRecurring.value) {
+      const patternPayload = {
+        frequency:      frequency.value,
+        intervalCount:  Number(intervalCount.value) || 1,
+        startDate:      startDate.value,
+        timezone:       'Europe/Athens',
+      }
+      if (frequency.value === 'WEEKLY') {
+        patternPayload.dayOfWeek = Number(dayOfWeek.value)
+      } else if (['MONTHLY','QUARTERLY','YEARLY'].includes(frequency.value)) {
+        patternPayload.dayOfMonth = Number(dayOfMonth.value)
+      }
+      if (!isOpenEnded.value && endDate.value) {
+        patternPayload.endDate = endDate.value
+      }
+      try {
+        const patternRes = await api.post(
+          '/api/recurrence-patterns',
+          patternPayload,
+          { params: { entityId: entityId.value } }
+        )
+        if (patternRes.data.success && patternRes.data.data && patternRes.data.data.id) {
+          recurrencePatternId = patternRes.data.data.id
+        } else {
+          errorMsg.value = 'Σφάλμα δημιουργίας pattern επανάληψης'
+          saving.value = false
+          return
+        }
+      } catch (pe) {
+        const apiErr = pe.response && pe.response.data && pe.response.data.error
+        errorMsg.value = 'Σφάλμα pattern: ' + (apiErr || pe.message || '')
+        saving.value = false
+        return
+      }
+    }
+
+    // ── Step 2: Build transaction payload ──
+    // For PLANNED, paymentMethod is always blank (no bank yet) and status is unpaid.
+    const isPlanned = entryMode.value === 'PLANNED'
+
+    // Description: for PLANNED, append notes if provided
+    let finalDescription = description.value
+    if (isPlanned && plannedNotes.value && plannedNotes.value.trim()) {
+      finalDescription = (finalDescription || '') + '\n[Σημ.] ' + plannedNotes.value.trim()
+    }
+
     const payload = {
       entityId:      entityId.value,
       type:          type.value,
-      docDate:       docDate.value,
-      paymentDate:   payDate.value || docDate.value,
+      docDate:       isPlanned && isRecurring.value && startDate.value ? startDate.value : docDate.value,
+      paymentDate:   isPlanned ? null : (payDate.value || docDate.value),
       category:      category.value,
       account:       subcategory.value,
       subcategory:   subcategory.value,
       amount:        Number(amount.value),
-      paymentMethod: method.value,
-      description:   description.value,
-      docStatus:     docStatus.value,
-      paymentStatus: isPending.value ? (isUrgent.value ? 'urgent' : 'unpaid') : 'paid',
-      amountPaid:    isPending.value ? 0 : Number(amount.value),
-      amountRemaining: isPending.value ? Number(amount.value) : 0,
+      paymentMethod: isPlanned ? null : method.value,
+      description:   finalDescription,
+      docStatus:     isPlanned ? null : docStatus.value,
+      paymentStatus: isPlanned
+                      ? 'unpaid'
+                      : (isPending.value ? (isUrgent.value ? 'urgent' : 'unpaid') : 'paid'),
+      amountPaid:    isPlanned ? 0 : (isPending.value ? 0 : Number(amount.value)),
+      amountRemaining: isPlanned
+                        ? Number(amount.value)
+                        : (isPending.value ? Number(amount.value) : 0),
       recordStatus:  'active',
       // Phase 1-F1: entry mode
       entryMode:     entryMode.value,
     }
 
+    // Phase 1-F2: extra fields for PLANNED
+    if (isPlanned) {
+      payload.isRecurring          = isRecurring.value
+      payload.recurrencePatternId  = recurrencePatternId   // null if not recurring
+      payload.projectId            = isOpEx.value ? null : (projectId.value || null)
+      payload.confidencePct        = Number(confidence.value) || 100
+      // scenarioId is left null for now (Phase 2 — needs forecast_scenarios table)
+      // We just store the chosen label in description suffix for future migration.
+    }
+
     const res = await api.post('/api/transactions', payload)
     if (res.data.success) {
       const newId = res.data.id
-      if (uploadedFiles.value.length > 0) {
+
+      // Attachments are not supported in PLANNED mode (per spec section 5.3).
+      if (!isPlanned && uploadedFiles.value.length > 0) {
         let uploadFailures = 0
         for (let i = 0; i < uploadedFiles.value.length; i++) {
-        try {
-          saving.value = true
-          const file = uploadedFiles.value[i]
-          const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : ''
-          let fileName = (driveFileNames.value[i] || '').trim()
-          if (!fileName) fileName = newId + ' - ' + (description.value.replace(/^\d+\s*-\s*/, '').substring(0,50)) + '.' + ext
-          if (fileName && !fileName.toLowerCase().endsWith('.' + ext)) fileName += '.' + ext
-          const formData = new FormData()
-          formData.append('file', file)
-          formData.append('entityId', entityId.value)
-          formData.append('transactionId', newId)
-          formData.append('customFileName', fileName)
-          await api.post('/api/documents/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
-          successMsg.value = '✅ Καταχωρήθηκε + αρχείο! ID: #' + newId
-        } catch (fe) {
-          console.warn('File upload failed for ' + (file && file.name) + ':', fe)
-          uploadFailures++
-          successMsg.value = '✅ Καταχωρήθηκε! ID: #' + newId + ' (αρχείο απέτυχε)'
+          try {
+            saving.value = true
+            const file = uploadedFiles.value[i]
+            const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : ''
+            let fileName = (driveFileNames.value[i] || '').trim()
+            if (!fileName) fileName = newId + ' - ' + (description.value.replace(/^\d+\s*-\s*/, '').substring(0,50)) + '.' + ext
+            if (fileName && !fileName.toLowerCase().endsWith('.' + ext)) fileName += '.' + ext
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('entityId', entityId.value)
+            formData.append('transactionId', newId)
+            formData.append('customFileName', fileName)
+            await api.post('/api/documents/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
+            successMsg.value = '✅ Καταχωρήθηκε + αρχείο! ID: #' + newId
+          } catch (fe) {
+            console.warn('File upload failed for ' + (file && file.name) + ':', fe)
+            uploadFailures++
+            successMsg.value = '✅ Καταχωρήθηκε! ID: #' + newId + ' (αρχείο απέτυχε)'
+          }
         }
-        } // end for-loop over files
         if (uploadFailures > 0) {
-          alert('\u03a0\u03c1\u03bf\u03c3\u03bf\u03c7\u03ae: ' + uploadFailures + ' \u03b1\u03c1\u03c7\u03b5\u03af\u03b1 \u03b4\u03b5\u03bd \u03b1\u03bd\u03ad\u03b2\u03b7\u03ba\u03b1\u03bd. \u0397 \u03c3\u03c5\u03bd\u03b1\u03bb\u03bb\u03b1\u03b3\u03ae \u03b4\u03b7\u03bc\u03b9\u03bf\u03c5\u03c1\u03b3\u03ae\u03b8\u03b7\u03ba\u03b5 \u03ba\u03b1\u03bd\u03bf\u03bd\u03b9\u03ba\u03ac.')
+          alert('Προσοχή: ' + uploadFailures + ' αρχεία δεν ανέβηκαν. Η συναλλαγή δημιουργήθηκε κανονικά.')
         }
       } else {
-        successMsg.value = '✅ Καταχωρήθηκε επιτυχώς! ID: #' + newId
+        successMsg.value = isPlanned
+          ? '✅ Καταχωρήθηκε προγραμματισμένη! ID: #' + newId + (isRecurring.value ? ' (επαναλαμβανόμενη)' : '')
+          : '✅ Καταχωρήθηκε επιτυχώς! ID: #' + newId
       }
       reset()
       await loadNextId()
@@ -237,6 +369,20 @@ function reset() {
   isUrgent.value = false; description.value = ''; docStatus.value = ''
   uploadedFiles.value = []; driveFileNames.value = []; suggestions.value = []; showSuggestions.value = false
   entryMode.value = 'ACTUAL'  // Phase 1-F1: reset to default
+  // Phase 1-F2 PLANNED state reset
+  isRecurring.value = false
+  frequency.value = 'MONTHLY'
+  dayOfMonth.value = 1
+  dayOfWeek.value = 1
+  intervalCount.value = 1
+  startDate.value = new Date().toISOString().split('T')[0]
+  endDate.value = ''
+  isOpenEnded.value = true
+  projectId.value = ''
+  isOpEx.value = true
+  scenario.value = 'BASELINE'
+  confidence.value = 100
+  plannedNotes.value = ''
 }
 
 const docStatuses = [
@@ -244,6 +390,31 @@ const docStatuses = [
   { value: 'receipt', label: 'Απόδειξη' },
   { value: 'cash',    label: 'Μετρητά' },
   { value: '',        label: 'Χωρίς' }
+]
+
+// Phase 1-F2: frequency options for PLANNED form
+const frequencyOptions = [
+  { value: 'DAILY',     label: 'Καθημερινά' },
+  { value: 'WEEKLY',    label: 'Εβδομαδιαία' },
+  { value: 'MONTHLY',   label: 'Μηνιαία' },
+  { value: 'QUARTERLY', label: 'Τριμηνιαία' },
+  { value: 'YEARLY',    label: 'Ετήσια' },
+]
+
+const dayOfWeekOptions = [
+  { value: 1, label: 'Δευτέρα' },
+  { value: 2, label: 'Τρίτη' },
+  { value: 3, label: 'Τετάρτη' },
+  { value: 4, label: 'Πέμπτη' },
+  { value: 5, label: 'Παρασκευή' },
+  { value: 6, label: 'Σάββατο' },
+  { value: 7, label: 'Κυριακή' },
+]
+
+const scenarioOptions = [
+  { value: 'BASELINE',    label: 'Baseline',    color: '#3b82f6' },
+  { value: 'OPTIMISTIC',  label: 'Optimistic',  color: '#10b981' },
+  { value: 'PESSIMISTIC', label: 'Pessimistic', color: '#ef4444' },
 ]
 
 onMounted(async () => {
@@ -286,7 +457,7 @@ onMounted(async () => {
         </div>
         <div class="entry-meta">
           <div class="meta-badge">
-            <div class="meta-label">ΑΡ. ΚΑΤΑΧΩΡΙΣΗΣ</div>
+            <div class="meta-label">ΑΡ. ΚΑΤΑΧΩΡΗΣΗΣ</div>
             <div class="meta-value">#{{ nextId }}</div>
           </div>
           <div class="meta-badge">
@@ -315,10 +486,11 @@ onMounted(async () => {
       <!-- Dates -->
       <div class="form-row">
         <div class="form-group">
-          <label>Ημ/νία Παραστατικού <span class="req">*</span></label>
+          <label v-if="entryMode==='PLANNED'">Ημ/νία (μελλοντική) <span class="req">*</span></label>
+          <label v-else>Ημ/νία Παραστατικού <span class="req">*</span></label>
           <input v-model="docDate" type="date" class="form-input" />
         </div>
-        <div class="form-group">
+        <div class="form-group" v-if="entryMode==='ACTUAL'">
           <label>{{ type === 'income' ? 'Ημ/νία Είσπραξης' : 'Ημ/νία Πληρωμής' }}</label>
           <input v-model="payDate" type="date" class="form-input" />
           <span class="hint">Κενή = ίδια με παραστατικού</span>
@@ -343,13 +515,13 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Amount & Method -->
+      <!-- Amount & Method (Method hidden in PLANNED mode) -->
       <div class="form-row">
         <div class="form-group">
           <label>Ποσό (€) <span class="req">*</span></label>
           <input v-model="amount" type="number" step="0.01" min="0" placeholder="0.00" class="form-input" />
         </div>
-        <div class="form-group">
+        <div class="form-group" v-if="entryMode==='ACTUAL'">
           <label>Μέθοδος Πληρωμής</label>
           <select v-model="method" class="form-input">
             <option value="">— Επιλέξτε —</option>
@@ -358,22 +530,160 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Pending -->
-      <div class="pending-row" v-if="type !== 'income'">
+      <!-- ═════════════════════════════════════════════════════ -->
+      <!--   PLANNED-ONLY SECTIONS (Phase 1-F2)                  -->
+      <!-- ═════════════════════════════════════════════════════ -->
+      <div v-if="entryMode==='PLANNED'" class="planned-sections">
+
+        <!-- Επανάληψη -->
+        <div class="planned-block">
+          <label class="block-checkbox">
+            <input type="checkbox" v-model="isRecurring" />
+            <span class="block-title">🔁 Είναι επαναλαμβανόμενη</span>
+          </label>
+
+          <div v-if="isRecurring" class="block-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Συχνότητα</label>
+                <select v-model="frequency" class="form-input">
+                  <option v-for="f in frequencyOptions" :key="f.value" :value="f.value">{{ f.label }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Κάθε</label>
+                <div class="interval-row">
+                  <input v-model.number="intervalCount" type="number" min="1" max="12" class="form-input interval-input" />
+                  <span class="interval-suffix">
+                    {{ frequency==='DAILY' ? 'ημέρες'
+                       : frequency==='WEEKLY' ? 'εβδομάδες'
+                       : frequency==='MONTHLY' ? 'μήνες'
+                       : frequency==='QUARTERLY' ? 'τρίμηνα'
+                       : 'χρόνια' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row" v-if="frequency==='WEEKLY'">
+              <div class="form-group">
+                <label>Ημέρα εβδομάδας</label>
+                <select v-model.number="dayOfWeek" class="form-input">
+                  <option v-for="d in dayOfWeekOptions" :key="d.value" :value="d.value">{{ d.label }}</option>
+                </select>
+              </div>
+              <div class="form-group"></div>
+            </div>
+
+            <div class="form-row" v-if="['MONTHLY','QUARTERLY','YEARLY'].includes(frequency)">
+              <div class="form-group">
+                <label>Ημέρα μήνα (1-31)</label>
+                <input v-model.number="dayOfMonth" type="number" min="1" max="31" class="form-input" />
+                <span class="hint">Αν δεν υπάρχει στον μήνα (πχ 31 στο Φεβ.) αυτόματα γίνεται η τελευταία μέρα</span>
+              </div>
+              <div class="form-group"></div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Έναρξη <span class="req">*</span></label>
+                <input v-model="startDate" type="date" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label>Λήξη</label>
+                <input v-model="endDate" type="date" class="form-input" :disabled="isOpenEnded" />
+                <label class="checkbox-label" style="margin-top:6px">
+                  <input type="checkbox" v-model="isOpenEnded" />
+                  <span>Αόριστη (χωρίς λήξη)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Project -->
+        <div class="planned-block">
+          <div class="block-title-row">
+            <span class="block-title">🎯 Project</span>
+            <span class="phase2-tag">Phase 2</span>
+          </div>
+          <div class="block-body">
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="isOpEx" />
+              <span>Αυτό είναι γενικό έξοδο εταιρείας (OpEx)</span>
+            </label>
+            <div class="form-group" style="margin-top:10px" v-if="!isOpEx">
+              <label>Project</label>
+              <select v-model="projectId" class="form-input" disabled>
+                <option value="">— Διαθέσιμο σε Phase 2 —</option>
+              </select>
+              <span class="hint">Το dropdown θα ενεργοποιηθεί όταν δημιουργηθεί ο πίνακας projects (Phase 2). Προς το παρόν όλες οι προγραμματισμένες θεωρούνται OpEx.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Σενάριο -->
+        <div class="planned-block">
+          <div class="block-title-row">
+            <span class="block-title">🎬 Σενάριο</span>
+          </div>
+          <div class="block-body">
+            <div class="scenario-options">
+              <button
+                v-for="s in scenarioOptions"
+                :key="s.value"
+                type="button"
+                :class="['scenario-btn', {active: scenario===s.value}]"
+                :style="scenario===s.value ? {borderColor: s.color, background: s.color + '22', color: s.color} : {}"
+                @click="scenario=s.value">
+                {{ s.label }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Βεβαιότητα -->
+        <div class="planned-block">
+          <div class="block-title-row">
+            <span class="block-title">📈 Βεβαιότητα</span>
+            <span class="confidence-display">{{ confidence }}%</span>
+          </div>
+          <div class="block-body">
+            <input v-model.number="confidence" type="range" min="0" max="100" step="5" class="confidence-slider" />
+            <span class="hint">100% = σίγουρο πάγιο, χαμηλότερο = πιθανή συναλλαγή</span>
+          </div>
+        </div>
+
+        <!-- Παρατηρήσεις -->
+        <div class="planned-block">
+          <div class="block-title-row">
+            <span class="block-title">ℹ️ Παρατηρήσεις</span>
+          </div>
+          <div class="block-body">
+            <textarea v-model="plannedNotes" class="form-input textarea" rows="2"
+              placeholder="Προαιρετικά: σχόλια, υποθέσεις, follow-up..."></textarea>
+          </div>
+        </div>
+
+      </div>
+      <!-- END PLANNED SECTIONS -->
+
+      <!-- Pending (ACTUAL only) -->
+      <div class="pending-row" v-if="entryMode==='ACTUAL' && type !== 'income'">
         <label class="checkbox-label">
           <input type="checkbox" v-model="isPending" />
           <span>Εκκρεμεί πληρωμή</span>
           <span class="hint-small">(θα εμφανιστεί στις Υποχρεώσεις)</span>
         </label>
         <div class="status-btns" v-if="isPending">
-          <button :class="['status-btn', {active: !isUrgent}]" @click="isUrgent=false">ΑΠΛΗΡΩΤΗ</button>
-          <button :class="['status-btn', 'orange', {active: isUrgent}]" @click="isUrgent=true">⏵ Εκκρεμής</button>
+          <button :class="['status-btn', {active: !isUrgent}]" @click="isUrgent=false">ΑΠΛΗ ΕΩΣ</button>
+          <button :class="['status-btn', 'orange', {active: isUrgent}]" @click="isUrgent=true">⏳ Εκκρεμής</button>
         </div>
       </div>
 
       <!-- Description with autocomplete -->
       <div class="form-group" style="position:relative">
-        <label>Περιγραφή <span class="frequent-label">★ Συχνές</span></label>
+        <label>Περιγραφή <span class="frequent-label">✓ Συχνές</span></label>
         <textarea v-model="description" class="form-input textarea"
           placeholder=""
           @input="onDescriptionInput"
@@ -393,8 +703,8 @@ onMounted(async () => {
         <button v-for="f in frequentEntries" :key="f" class="frequent-btn" @click="applyFrequent(f)">{{ f }}</button>
       </div>
 
-      <!-- File upload (multi-file - Phase 56-A) -->
-      <div class="form-group">
+      <!-- File upload (ACTUAL only) -->
+      <div class="form-group" v-if="entryMode==='ACTUAL'">
         <label>Συνημμένα</label>
         <label class="upload-area">
           <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png" @change="onFileChange" style="display:none" />
@@ -421,8 +731,8 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Doc status -->
-      <div class="doc-status-btns">
+      <!-- Doc status (ACTUAL only) -->
+      <div class="doc-status-btns" v-if="entryMode==='ACTUAL'">
         <button v-for="s in docStatuses" :key="s.value"
           :class="['doc-btn', {active: docStatus===s.value}]" @click="docStatus=s.value">
           {{ s.label }}
@@ -524,4 +834,23 @@ onMounted(async () => {
 .mode-btn.mode-planned.active { background: rgba(245, 158, 11, .15); border-color: #f59e0b; }
 .mode-btn.mode-planned.active .mode-btn-title { color: #f59e0b; }
 .planned-badge { display: inline-flex; align-items: center; gap: 4px; background: rgba(245, 158, 11, .15); color: #f59e0b; border: 1px solid #f59e0b; padding: 2px 10px; border-radius: 12px; font-size: .72rem; font-weight: 600; margin-left: 10px; vertical-align: middle; }
+
+/* ─── Phase 1-F2: PLANNED form blocks ─── */
+.planned-sections { background: rgba(245, 158, 11, .04); border: 1px dashed rgba(245, 158, 11, .35); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 18px; }
+.planned-block { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 10px; }
+.planned-block:last-child { margin-bottom: 0; }
+.block-checkbox { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.block-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.block-title { font-size: .92rem; font-weight: 700; color: var(--text-primary); }
+.phase2-tag { background: rgba(107, 114, 128, .15); color: var(--text-muted); border: 1px solid var(--border); padding: 1px 8px; border-radius: 10px; font-size: .65rem; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.block-body { margin-top: 10px; }
+.interval-row { display: flex; align-items: center; gap: 8px; }
+.interval-input { max-width: 80px; }
+.interval-suffix { font-size: .85rem; color: var(--text-muted); }
+.scenario-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.scenario-btn { flex: 1; min-width: 110px; padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); cursor: pointer; font-size: .85rem; font-weight: 600; font-family: var(--font); transition: all .2s; }
+.scenario-btn:hover { color: var(--text-primary); }
+.scenario-btn.active { font-weight: 700; }
+.confidence-display { font-size: 1rem; font-weight: 700; color: #f59e0b; font-family: var(--font-mono); }
+.confidence-slider { width: 100%; accent-color: #f59e0b; cursor: pointer; }
 </style>
