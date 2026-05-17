@@ -96,11 +96,11 @@ watch(frequency, (newFreq) => {
   }
 })
 
-// When mode switches to PLANNED, default startDate to docDate
+// When mode switches to PLANNED, default startDate to docDate.
+// We preserve paymentMethod (forecasted bank account is essential info)
+// but clear pending/docStatus which are ACTUAL-specific concepts.
 watch(entryMode, (newMode) => {
   if (newMode === 'PLANNED') {
-    // PLANNED never has a paymentMethod/bank picked yet
-    method.value = ''
     isPending.value = false
     isUrgent.value = false
     docStatus.value = ''
@@ -268,7 +268,8 @@ async function save() {
     }
 
     // ── Step 2: Build transaction payload ──
-    // For PLANNED, paymentMethod is always blank (no bank yet) and status is unpaid.
+    // For PLANNED, paymentMethod IS still meaningful (which bank we plan to pay from)
+    // — it powers per-account forecasts. Status remains unpaid for PLANNED.
     const isPlanned = entryMode.value === 'PLANNED'
 
     // Description: for PLANNED, append notes if provided
@@ -286,7 +287,7 @@ async function save() {
       account:       subcategory.value,
       subcategory:   subcategory.value,
       amount:        Number(amount.value),
-      paymentMethod: isPlanned ? null : method.value,
+      paymentMethod: method.value || null,
       description:   finalDescription,
       docStatus:     isPlanned ? null : docStatus.value,
       paymentStatus: isPlanned
@@ -521,8 +522,9 @@ onMounted(async () => {
           <label>Ποσό (€) <span class="req">*</span></label>
           <input v-model="amount" type="number" step="0.01" min="0" placeholder="0.00" class="form-input" />
         </div>
-        <div class="form-group" v-if="entryMode==='ACTUAL'">
-          <label>Μέθοδος Πληρωμής</label>
+        <div class="form-group">
+          <label v-if="entryMode==='PLANNED'">Μέθοδος Πληρωμής <span class="hint-inline">(προβλεπόμενη)</span></label>
+          <label v-else>Μέθοδος Πληρωμής</label>
           <select v-model="method" class="form-input">
             <option value="">— Επιλέξτε —</option>
             <option v-for="b in bankAccounts" :key="b.id" :value="b.accountLabel">{{ b.accountLabel }}</option>
@@ -776,6 +778,7 @@ onMounted(async () => {
 .form-input:disabled { opacity:.5; cursor:not-allowed; }
 .textarea { min-height:80px; resize:vertical; }
 .hint { display:block; font-size:.72rem; color:var(--text-muted); margin-top:4px; }
+.hint-inline { font-size:.7rem; color:#f59e0b; font-weight:500; margin-left:6px; }
 .req { color:var(--danger); }
 .pending-row { display:flex; align-items:center; justify-content:space-between; background:var(--bg-input); border-radius:var(--radius-md); padding:12px 16px; margin-bottom:14px; border:1px solid var(--border); flex-wrap:wrap; gap:8px; }
 .checkbox-label { display:flex; align-items:center; gap:8px; color:var(--text-primary); font-size:.9rem; cursor:pointer; }
