@@ -26,6 +26,10 @@ const dateFrom      = ref('')
 const dateTo        = ref('')
 const selectedType  = ref('')
 const selectedStatus = ref('')
+// Phase 1-F2.1: entry mode filter — default to ACTUAL so PLANNED business
+// plan entries do not pollute the day-to-day cash flow view.
+// Values: 'ACTUAL' (default) | 'PLANNED' | 'ALL'
+const selectedMode  = ref(localStorage.getItem('n2c_tx_mode') || 'ACTUAL')
 const page    = ref(0)
 const perPage = ref(25)
 const total   = ref(0)
@@ -50,6 +54,12 @@ function closeFilterMenu() {
   filterMenuSearch.value = ''
 }
 let searchDebounceTimer = null
+
+// Phase 1-F2.1: persist mode selection per user so it survives refresh
+watch(selectedMode, (m) => {
+  try { localStorage.setItem('n2c_tx_mode', m || 'ACTUAL') } catch (_) {}
+  page.value = 0  // reset to first page when mode changes
+})
 
 // --- Phase 4 / Step 4.2: Bank accounts for edit modal dropdown -----
 // Loaded on mount + when entityId changes. Generic methods are kept
@@ -521,6 +531,9 @@ function resetFilters() {
   filterCategory.value = []
   filterSubcategory.value = []
   filterMethod.value = []
+  // Phase 1-F2.1: selectedMode is intentionally NOT reset — it's a persistent
+  // user view preference (Real vs Planned vs All), not a filter. Reset clears
+  // the search filters, not the lens through which the user views transactions.
   closeFilterMenu()
   page.value = 0
 }
@@ -825,6 +838,16 @@ function filteredOptions(allOptions) {
 
 const filteredTransactions = computed(() => {
   let list = transactions.value
+  // Phase 1-F2.1: entry_mode filter — first thing, ensures PLANNED rows
+  // never appear in the default cash flow view. Virtual payment rows
+  // inherit their parent's entryMode so they follow the same gating.
+  const mode = (selectedMode.value || 'ACTUAL').toUpperCase()
+  if (mode !== 'ALL') {
+    list = list.filter(t => {
+      const tm = (t.entryMode || 'ACTUAL').toUpperCase()
+      return tm === mode
+    })
+  }
   // Date range filter (against docDate, which for virtual rows = paymentDate)
   if (dateFrom.value) {
     list = list.filter(t => t.docDate && t.docDate >= dateFrom.value)
@@ -882,8 +905,11 @@ function clearSearch() {
 }
 
 const kpis = computed(() => {
-  // Exclude payment rows from KPI totals (avoid double-counting)
-  const txns = transactions.value.filter(t => !t._isPaymentRow)
+  // Phase 1-F2.1: KPIs follow the same mode filter as the table.
+  // We use filteredTransactions so totals reflect what the user is viewing
+  // — otherwise the "ΣΥΝΟΛΟ ΚΙΝΗΣΕΩΝ" badge would lie when PLANNED rows
+  // are hidden from the rows below.
+  const txns = filteredTransactions.value.filter(t => !t._isPaymentRow)
   const income  = txns.filter(t => t.type === 'income').reduce((s,t) => s + Number(t.amount||0), 0)
   const expense = txns.filter(t => t.type === 'expense').reduce((s,t) => s + Number(t.amount||0), 0)
   const unpaid  = txns.filter(t => t.paymentStatus === 'unpaid' || t.paymentStatus === 'urgent').length
@@ -995,6 +1021,11 @@ onUnmounted(() => {
       </div>
       <input v-model="dateFrom" type="date" class="f-input" />
       <input v-model="dateTo"   type="date" class="f-input" />
+      <select v-model="selectedMode" class="f-select f-select-mode" :class="'mode-' + selectedMode.toLowerCase()">
+        <option value="ACTUAL">💰 Πραγματικές</option>
+        <option value="PLANNED">📋 Προγραμματισμένες</option>
+        <option value="ALL">📊 Όλες</option>
+      </select>
       <select v-model="selectedType" class="f-select">
         <option value="">Όλοι τύποι</option>
         <option value="income">Έσοδο</option>
@@ -1121,8 +1152,11 @@ onUnmounted(() => {
             </td>
           </tr>
           <tr v-for="t in paginatedTransactions" :key="t.id"
-              :class="[t.paymentStatus === 'urgent' ? 'row-urgent' : '', t._isPaymentRow ? 'row-payment' : '']">
-            <td class="id-col">#{{ t.entityNumber ?? t.id }}</td>
+              :class="[t.paymentStatus === 'urgent' ? 'row-urgent' : '', t._isPaymentRow ? 'row-payment' : '', (t.entryMode === 'PLANNED' ? 'row-planned' : '')]">
+            <td class="id-col">
+              #{{ t.entityNumber ?? t.id }}
+              <span v-if="t.entryMode === 'PLANNED'" class="planned-pill" title="Προγραμματισμένη — δεν είναι πραγματική κίνηση">📋</span>
+            </td>
             <td class="date-col">{{ fmtDate(t.docDate) }}</td>
             <td class="desc-col" :title="t.description">{{ (t.description || '—').substring(0,40) }}</td>
             <td><span class="cat-badge">{{ t.category || '—' }}</span></td>
@@ -1954,4 +1988,40 @@ td.actions { vertical-align: middle; }
   cursor: pointer;
 }
 .fm-btn-apply:hover { background: #6dd1b3; }
+
+/* ── Phase 1-F2.1: Mode-aware filter & PLANNED row visuals ── */
+.f-select-mode {
+  font-weight: 600;
+  border-width: 1.5px;
+  transition: all .2s;
+}
+.f-select-mode.mode-actual {
+  border-color: rgba(16, 185, 129, .45);
+  color: #10b981;
+  background: rgba(16, 185, 129, .06);
+}
+.f-select-mode.mode-planned {
+  border-color: #f59e0b;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, .1);
+}
+.f-select-mode.mode-all {
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+.planned-pill {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: .78rem;
+  vertical-align: middle;
+  cursor: help;
+}
+.row-planned {
+  background: rgba(245, 158, 11, .035) !important;
+  border-left: 3px solid #f59e0b !important;
+}
+.row-planned td.id-col {
+  color: #f59e0b;
+  font-weight: 700;
+}
 </style>
