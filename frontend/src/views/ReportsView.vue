@@ -15,7 +15,11 @@ const projectsList = ref([])
 
 async function loadProjects() {
   try {
-    const res = await api.get('/api/projects')
+    // S77-PATCH-APPLIED: entity-scoped — pass current entity so backend filters properly
+    const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
+    const entityId = ENTITY_MAP[entityKey] || null
+    const params = entityId ? { entityId } : {}
+    const res = await api.get('/api/projects', { params })
     const data = res.data?.data || res.data || []
     projectsList.value = (Array.isArray(data) ? data : [])
       .filter(p => p.isActive !== false)
@@ -485,8 +489,8 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
           <span class="select-arrow">▾</span>
         </div>
 
-        <!-- S76: Project filter -->
-        <div class="select-wrap">
+        <!-- S76: Project filter — S77-PATCH-APPLIED: hidden when entity has no projects -->
+        <div class="select-wrap" v-if="projectsList.length > 0">
           <select v-model="selectedProject" class="filter-select">
             <option value="all">🎯 Όλα τα projects</option>
             <option value="opex">📊 Γενικό OpEx</option>

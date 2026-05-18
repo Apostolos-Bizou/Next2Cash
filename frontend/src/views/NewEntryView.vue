@@ -37,7 +37,12 @@ async function loadConfig() {
 async function loadProjects() {
   loadingProjects.value = true
   try {
-    const res = await api.get('/api/projects', { params: { activeOnly: true } })
+    // S77-PATCH-APPLIED: entity-scoped — pass current entity so backend filters properly
+    const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
+    const entityId = ENTITY_MAP[entityKey] || null
+    const params = { activeOnly: true }
+    if (entityId) params.entityId = entityId
+    const res = await api.get('/api/projects', { params })
     if (res.data && res.data.success) {
       projects.value = Array.isArray(res.data.data) ? res.data.data : []
     } else {
@@ -624,8 +629,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Project (S71-C: live dropdown) -->
-        <div class="planned-block">
+        <!-- Project (S71-C: live dropdown, S77-PATCH-APPLIED: hidden when empty) -->
+        <div class="planned-block" v-if="projects.length > 0">
           <div class="block-title-row">
             <span class="block-title">🎯 Project</span>
           </div>

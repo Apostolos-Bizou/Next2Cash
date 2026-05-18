@@ -135,8 +135,11 @@ async function loadProjects() {
   error.value = null
   try {
     // Backend supports activeOnly=false to include inactive
+    // S77-PATCH-APPLIED: entity-scoped — pass current entity so backend filters properly
+    const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
+    const entityIdForQuery = ENTITY_MAP[entityKey] || null
     const res = await api.get('/api/projects', {
-      params: { activeOnly: showInactive.value ? false : true },
+      params: { entityId: entityIdForQuery, activeOnly: showInactive.value ? false : true },
     })
     if (res.data && res.data.success) {
       projects.value = Array.isArray(res.data.data) ? res.data.data : []
