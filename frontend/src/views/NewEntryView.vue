@@ -33,6 +33,24 @@ async function loadConfig() {
   } catch (e) { console.error('Config error:', e) }
 }
 
+// S71-C: Load active projects for dropdown
+async function loadProjects() {
+  loadingProjects.value = true
+  try {
+    const res = await api.get('/api/projects', { params: { activeOnly: true } })
+    if (res.data && res.data.success) {
+      projects.value = Array.isArray(res.data.data) ? res.data.data : []
+    } else {
+      projects.value = []
+    }
+  } catch (e) {
+    console.error('Projects load error:', e)
+    projects.value = []
+  } finally {
+    loadingProjects.value = false
+  }
+}
+
 // Form state
 const type        = ref('expense')
 // Phase 1-F1: entry mode (ACTUAL = past/today, PLANNED = future/budget)
@@ -72,9 +90,11 @@ const startDate      = ref(new Date().toISOString().split('T')[0])
 const endDate        = ref('')
 const isOpenEnded    = ref(true)         // true => endDate ignored
 
-// Project (Phase 2 dependency — disabled placeholder; OpEx fallback)
-const projectId      = ref('')
-const isOpEx         = ref(true)
+// Project (S71-C: live dropdown from /api/projects)
+const projectId        = ref('')
+const isOpEx           = ref(true)
+const projects         = ref([])
+const loadingProjects  = ref(false)
 
 // Σενάριο (Scenario)
 const scenario       = ref('BASELINE')   // BASELINE / OPTIMISTIC / PESSIMISTIC
@@ -420,6 +440,7 @@ const scenarioOptions = [
 
 onMounted(async () => {
   await loadConfig()
+  await loadProjects()
   await loadNextId()
   window.addEventListener('entity-changed', async () => {
     selectedEntity.value = localStorage.getItem('n2c_entity') || 'next2me'
@@ -603,11 +624,10 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Project -->
+        <!-- Project (S71-C: live dropdown) -->
         <div class="planned-block">
           <div class="block-title-row">
             <span class="block-title">🎯 Project</span>
-            <span class="phase2-tag">Phase 2</span>
           </div>
           <div class="block-body">
             <label class="checkbox-label">
@@ -616,10 +636,11 @@ onMounted(async () => {
             </label>
             <div class="form-group" style="margin-top:10px" v-if="!isOpEx">
               <label>Project</label>
-              <select v-model="projectId" class="form-input" disabled>
-                <option value="">— Διαθέσιμο σε Phase 2 —</option>
+              <select v-model="projectId" class="form-input" :disabled="loadingProjects">
+                <option value="">— Χωρίς project (γενικό OpEx) —</option>
+                <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
-              <span class="hint">Το dropdown θα ενεργοποιηθεί όταν δημιουργηθεί ο πίνακας projects (Phase 2). Προς το παρόν όλες οι προγραμματισμένες θεωρούνται OpEx.</span>
+              <span v-if="loadingProjects" class="hint">Φόρτωση projects…</span>
             </div>
           </div>
         </div>
