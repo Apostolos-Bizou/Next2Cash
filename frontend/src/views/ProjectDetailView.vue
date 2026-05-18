@@ -236,9 +236,10 @@
 </template>
 
 <script setup>
+// S75-HOTFIX-API-CLIENT
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import axios from 'axios'
+import api from '@/api'
 
 const route = useRoute()
 const projectId = computed(() => route.params.id)
@@ -248,18 +249,13 @@ const error = ref(null)
 const detail = ref(null)
 const entities = ref([])
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
-
 // ----- Fetch detail -------------------------------------------------
 async function loadDetail() {
   loading.value = true
   error.value = null
   try {
-    const token = localStorage.getItem('n2c_token')
-    const headers = token ? { Authorization: 'Bearer ' + token } : {}
-
-    // Fetch project detail
-    const res = await axios.get(API_BASE + '/api/projects/' + projectId.value + '/detail', { headers })
+    // Fetch project detail (api client auto-injects Authorization + baseURL)
+    const res = await api.get('/api/projects/' + projectId.value + '/detail')
     if (res.data && res.data.success) {
       detail.value = res.data.data
     } else {
@@ -268,7 +264,7 @@ async function loadDetail() {
 
     // Fetch entities for owner name lookup (best-effort, not blocking)
     try {
-      const entRes = await axios.get(API_BASE + '/api/entities', { headers })
+      const entRes = await api.get('/api/entities')
       if (entRes.data && Array.isArray(entRes.data.data)) {
         entities.value = entRes.data.data
       } else if (Array.isArray(entRes.data)) {
