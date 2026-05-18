@@ -6,6 +6,8 @@ import api from '@/api'
 const selectedYear   = ref('all')
 const selectedReport = ref('subcategory')
 const selectedType   = ref('all')
+// S68: PLANNED mode toggle — values: 'actual' | 'planned' | 'all'
+const selectedMode = ref(localStorage.getItem('reportsViewMode') || 'actual')
 
 const allYears = ['2017','2018','2019','2020','2021','2022','2023','2024','2025','2026']
 const years = allYears  // used in yearly/budget tables
@@ -74,9 +76,21 @@ async function loadTransactions() {
 }
 
 // ── Active transactions for selected year ─────────────────────────
+// S68: mode-aware base — single source of truth for all downstream reports
+// 'actual' (default) excludes PLANNED, 'planned' shows only PLANNED, 'all' shows both
+const modeFilteredTransactions = computed(() => {
+  const mode = selectedMode.value
+  if (mode === 'all') return allTransactions.value
+  if (mode === 'planned') {
+    return allTransactions.value.filter(t => (t.entryMode || 'ACTUAL').toUpperCase() === 'PLANNED')
+  }
+  // default: actual
+  return allTransactions.value.filter(t => (t.entryMode || 'ACTUAL').toUpperCase() === 'ACTUAL')
+})
+
 const yearTransactions = computed(() => {
-  if (selectedYear.value === 'all') return allTransactions.value.filter(t => !!t.docDate)
-  return allTransactions.value.filter(t => {
+  if (selectedYear.value === 'all') return modeFilteredTransactions.value.filter(t => !!t.docDate)
+  return modeFilteredTransactions.value.filter(t => {
     if (!t.docDate) return false
     return t.docDate.substring(0, 4) === selectedYear.value
   })
@@ -126,7 +140,7 @@ const categoryData = computed(() => {
 // ── REPORT 3: Yearly Category Data (all years) ─────────────────
 const yearlyCategoryData = computed(() => {
   const map = {}
-  allTransactions.value.forEach(t => {
+  modeFilteredTransactions.value.forEach(t => {
     if (!t.docDate || t.type !== 'expense') return
     const cat = t.category || 'N/A'
     const yr = t.docDate.substring(0, 4)
@@ -175,7 +189,7 @@ const monthlyData = computed(() => {
 const budgetCategories = computed(() => {
   const map = {}
   let colorIdx = 0
-  allTransactions.value.forEach(t => {
+  modeFilteredTransactions.value.forEach(t => {
     if (!t.docDate || t.type !== 'expense') return
     const cat = t.category || 'N/A'
     const yr = t.docDate.substring(0, 4)
@@ -195,7 +209,7 @@ const budgetCategories = computed(() => {
 const budgetIncome = computed(() => {
   const result = { years: {}, total: 0 }
   years.forEach(y => { result.years[y] = 0 })
-  allTransactions.value.forEach(t => {
+  modeFilteredTransactions.value.forEach(t => {
     if (!t.docDate || t.type !== 'income') return
     const yr = t.docDate.substring(0, 4)
     const amt = Number(t.amount) || 0
@@ -384,17 +398,26 @@ onMounted(() => {
   })
 })
 
+// S68: persist mode choice across reloads
+watch(selectedMode, (val) => {
+  try { localStorage.setItem('reportsViewMode', val) } catch (e) { /* ignore */ }
+})
+
 // Also reload when year changes (not strictly needed since yearTransactions is computed, but good UX)
 // Entity switch within same tab uses custom event
 window.addEventListener('entity-changed', () => { loadTransactions() })
 </script>
 
 <template>
-  <div class="reports-page">
+  <div class="reports-page" :class="{ 'mode-planned-active': selectedMode === 'planned' }">
 
     <!-- ── Top Bar ── -->
     <div class="top-bar">
-      <h1 class="page-title">Αναφορές</h1>
+      <h1 class="page-title">
+        Αναφορές
+        <!-- S68: PLANNED mode badge -->
+        <span v-if="selectedMode === 'planned'" class="mode-pill mode-pill-planned" title="Προβλεπόμενα δεδομένα">📋 Προγραμματισμένες</span>
+      </h1>
 
       <div class="filters-row">
         <!-- Year -->
@@ -418,6 +441,16 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
         <div class="select-wrap">
           <select v-model="selectedType" class="filter-select">
             <option v-for="t in types" :key="t.value" :value="t.value">{{ t.label }}</option>
+          </select>
+          <span class="select-arrow">▾</span>
+        </div>
+
+        <!-- S68: Mode toggle (Actual / Planned / All) -->
+        <div class="select-wrap">
+          <select v-model="selectedMode" class="filter-select" :class="{ 'mode-planned': selectedMode === 'planned' }">
+            <option value="actual">💰 Πραγματικές</option>
+            <option value="planned">📋 Προγραμματισμένες</option>
+            <option value="all">📊 Όλες</option>
           </select>
           <span class="select-arrow">▾</span>
         </div>
@@ -1050,4 +1083,34 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
 
 /* Pivot table */
 .pivot-table th, .pivot-table td { white-space: nowrap; }
+
+/* S68: mode toggle styles */
+.mode-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.55em;
+  vertical-align: middle;
+  margin-left: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.mode-pill-planned {
+  background: rgba(255, 152, 0, 0.18);
+  color: #ffb74d;
+  border: 1px solid rgba(255, 152, 0, 0.4);
+}
+.filter-select.mode-planned {
+  background-color: rgba(255, 152, 0, 0.12);
+  border-color: rgba(255, 152, 0, 0.5);
+  color: #ffb74d;
+}
+.reports-page.mode-planned-active .top-bar {
+  background: linear-gradient(180deg, rgba(255, 152, 0, 0.06), transparent);
+  border-bottom: 1px solid rgba(255, 152, 0, 0.18);
+}
+.reports-page.mode-planned-active .page-title {
+  color: #ffb74d;
+}
 </style>
