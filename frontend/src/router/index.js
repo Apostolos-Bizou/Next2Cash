@@ -15,6 +15,7 @@ const router = createRouter({
     { path: '/reports',        component: () => import('@/views/ReportsView.vue'),       meta: { section: 'reports', title: 'Αναφορές' } },
     { path: '/report-builder', component: () => import('@/views/ReportBuilderView.vue'), meta: { section: 'report-builder', title: 'Report Builder' } },
     { path: '/ai-analysis',    component: () => import('@/views/AiAnalysisView.vue'),    meta: { section: 'ai-analysis', title: 'AI Ανάλυση' } },
+    { path: '/projects',       component: () => import('@/views/ProjectsView.vue'),       meta: { section: 'projects', title: 'Projects' } },
     { path: '/admin',          component: () => import('@/views/AdminView.vue'),         meta: { section: 'admin', title: 'Admin Panel' } },
   ]
 })
@@ -32,13 +33,14 @@ const SECTION_TO_ROUTE = {
   'reports': '/reports',
   'report-builder': '/report-builder',
   'ai-analysis': '/ai-analysis',
+  'projects': '/projects',
   'admin': '/admin',
   'admin-categories': '/admin',
   'admin-accounts': '/admin',
   'admin-banks': '/admin',
   'admin-audit': '/admin',
 }
-const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'report-builder', 'ai-analysis', 'zip-export', 'admin']
+const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'report-builder', 'ai-analysis', 'projects', 'zip-export', 'admin']
 
 function firstAllowedRoute(allowed) {
   if (!Array.isArray(allowed) || allowed.length === 0) return '/dashboard'

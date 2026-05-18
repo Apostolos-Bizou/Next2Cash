@@ -24,6 +24,7 @@ const SECTION_TO_ROUTE = {
   'reports': '/reports',
   'report-builder': '/report-builder',
   'ai-analysis': '/ai-analysis',
+  'projects': '/projects',
   'admin': '/admin',
   'admin-categories': '/admin',
   'admin-accounts': '/admin',
@@ -31,7 +32,7 @@ const SECTION_TO_ROUTE = {
   'admin-audit': '/admin',
 }
 // Preferred landing order when user has multiple allowed sections
-const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'report-builder', 'ai-analysis', 'zip-export', 'admin']
+const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'report-builder', 'ai-analysis', 'projects', 'zip-export', 'admin']
 function resolveLandingRoute(user) {
   if (!user || !user.allowedSections) return '/dashboard'
   let allowed = null
