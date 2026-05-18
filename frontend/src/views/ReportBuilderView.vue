@@ -34,6 +34,10 @@ const itemFilterTab = ref('all')
 const selectedItems = ref([])
 const isPanelOpen = ref(true)
 
+// S69: Mode toggle for right panel only (actual/planned/all)
+// Sections already built remain untouched when mode changes
+const selectedEntryMode = ref(localStorage.getItem('reportBuilderViewMode') || 'actual')
+
 // Display mode options
 const displayModes = [
   { value: 'both',    label: 'Έσοδα + Έξοδα' },
@@ -140,6 +144,20 @@ const panelItems = computed(() => {
   } else if (displayMode.value === 'expense') {
     items = items.filter(i => i.type === 'expense')
   }
+
+  // S69: Apply entry mode filter (actual/planned/all) on right panel only
+  if (selectedEntryMode.value === 'actual') {
+    items = items.filter(i => {
+      const t = allTransactions.value.find(tx => tx.id === i.id)
+      return !t || (t.entryMode || 'ACTUAL').toUpperCase() === 'ACTUAL'
+    })
+  } else if (selectedEntryMode.value === 'planned') {
+    items = items.filter(i => {
+      const t = allTransactions.value.find(tx => tx.id === i.id)
+      return t && (t.entryMode || '').toUpperCase() === 'PLANNED'
+    })
+  }
+  // 'all' = no filter
 
   // Sort by date desc
   items.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
@@ -501,6 +519,10 @@ onMounted(async () => {
   })
   window.addEventListener('entity-changed', () => { loadTransactions(); loadConfig() })
 })
+// S69: Persist entry mode choice to localStorage
+watch(selectedEntryMode, (v) => {
+  try { localStorage.setItem('reportBuilderViewMode', v) } catch (e) { /* ignore */ }
+})
 </script>
 
 <template>
@@ -557,7 +579,14 @@ onMounted(async () => {
         </div>
 
         <div class="form-group">
-          <label>Εμφάνιση</label>
+          <label>Κινήσεις</label>
+        <select v-model="selectedEntryMode" :class="['rb-select', selectedEntryMode === 'planned' ? 'mode-planned' : '']">
+          <option value="actual">💰 Πραγματικές</option>
+          <option value="planned">📋 Προγραμματισμένες</option>
+          <option value="all">📊 Όλες</option>
+        </select>
+
+        <label>Εμφάνιση</label>
           <select v-model="displayMode" class="rb-select">
             <option v-for="d in displayModes" :key="d.value" :value="d.value">{{ d.label }}</option>
           </select>
@@ -927,4 +956,11 @@ onMounted(async () => {
 .btn-add-to-report:hover { background: #3dab8a; }
 .btn-add-to-report.disabled { background: #2a4a6a; color: #8899aa; cursor: not-allowed; }
 .btn-add-to-report.disabled:hover { background: #2a4a6a; }
+
+/* S69: Mode toggle visual cue */
+.rb-select.mode-planned {
+  background-color: #3a2818;
+  border-color: #ff8c42;
+  color: #ffb380;
+}
 </style>
