@@ -41,6 +41,179 @@ const statusFilter = ref('all')
 const sortBy = ref('name')
 const showInactive = ref(false)
 
+// S78-PROJECTS-CRUD-APPLIED: admin state + modal state
+function getCurrentUserFromStorage() {
+  try {
+    const raw = localStorage.getItem('n2c_user');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+const currentUser = ref(getCurrentUserFromStorage());
+const isAdmin = computed(() => {
+  const u = currentUser.value;
+  return !!(u && (u.role === 'admin' || u.role === 'ADMIN'));
+});
+
+// Project edit modal state
+const showProjectModal = ref(false);
+const modalMode = ref('create');
+const modalSaving = ref(false);
+const modalError = ref(null);
+const modalForm = ref({
+  id: null,
+  name: '',
+  description: '',
+  ownerEntityId: '',
+  status: 'PLANNING',
+  totalBudget: 0,
+  expectedMonthlyRevenue: 0,
+  startDate: '',
+  targetCompletionDate: '',
+  color: '#4A9EFF',
+  isActive: true,
+});
+
+const ENTITY_OPTIONS_S78 = [
+  { id: '58202b71-4ddb-45c9-8e3c-39e816bde972', name: 'Next2Me' },
+  { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', name: 'House' },
+  { id: '50317f44-9961-4fb4-add0-7a118e32dc14', name: 'Next2Me Group' },
+];
+const STATUS_OPTIONS_S78 = [
+  { value: 'PLANNING',    label: '\u03A3\u03c7\u03b5\u03b4\u03b9\u03b1\u03c3\u03bc\u03cc\u03c2' },
+  { value: 'ACTIVE',      label: '\u0395\u03bd\u03b5\u03c1\u03b3\u03cc' },
+  { value: 'IN_DEV',      label: '\u03a3\u03b5 \u03b1\u03bd\u03ac\u03c0\u03c4\u03c5\u03be\u03b7' },
+  { value: 'COMPLETED',   label: '\u039f\u03bb\u03bf\u03ba\u03bb\u03b7\u03c1\u03c9\u03bc\u03ad\u03bd\u03bf' },
+  { value: 'ARCHIVED',    label: '\u0391\u03c1\u03c7\u03b5\u03b9\u03bf\u03b8\u03b5\u03c4\u03b7\u03bc\u03ad\u03bd\u03bf' },
+];
+
+function resetForm() {
+  modalForm.value = {
+    id: null,
+    name: '',
+    description: '',
+    ownerEntityId: ENTITY_OPTIONS_S78[0].id,
+    status: 'PLANNING',
+    totalBudget: 0,
+    expectedMonthlyRevenue: 0,
+    startDate: '',
+    targetCompletionDate: '',
+    color: '#4A9EFF',
+    isActive: true,
+  };
+  modalError.value = null;
+}
+
+function openCreateModal() {
+  resetForm();
+  modalMode.value = 'create';
+  showProjectModal.value = true;
+}
+
+function openEditModal(p) {
+  resetForm();
+  modalMode.value = 'edit';
+  modalForm.value = {
+    id: p.id,
+    name: p.name || '',
+    description: p.description || '',
+    ownerEntityId: p.ownerEntityId || ENTITY_OPTIONS_S78[0].id,
+    status: p.status || 'PLANNING',
+    totalBudget: Number(p.totalBudget || 0),
+    expectedMonthlyRevenue: Number(p.expectedMonthlyRevenue || 0),
+    startDate: p.startDate || '',
+    targetCompletionDate: p.targetCompletionDate || '',
+    color: p.color || '#4A9EFF',
+    isActive: p.isActive !== false,
+  };
+  showProjectModal.value = true;
+}
+
+function closeProjectModal() {
+  if (modalSaving.value) return;
+  showProjectModal.value = false;
+}
+
+async function saveProject() {
+  modalError.value = null;
+  if (!modalForm.value.name || !modalForm.value.name.trim()) {
+    modalError.value = '\u03A4\u03bf \u03cc\u03bd\u03bf\u03bc\u03b1 \u03b5\u03af\u03bd\u03b1\u03b9 \u03c5\u03c0\u03bf\u03c7\u03c1\u03b5\u03c9\u03c4\u03b9\u03ba\u03cc.';
+    return;
+  }
+  if (!modalForm.value.ownerEntityId) {
+    modalError.value = '\u0395\u03c0\u03b9\u03bb\u03ad\u03be\u03c4\u03b5 \u03b5\u03c4\u03b1\u03b9\u03c1\u03b5\u03af\u03b1.';
+    return;
+  }
+  modalSaving.value = true;
+  try {
+    const payload = {
+      name: modalForm.value.name.trim(),
+      description: modalForm.value.description || null,
+      ownerEntityId: modalForm.value.ownerEntityId,
+      status: modalForm.value.status,
+      totalBudget: Number(modalForm.value.totalBudget) || 0,
+      expectedMonthlyRevenue: Number(modalForm.value.expectedMonthlyRevenue) || 0,
+      startDate: modalForm.value.startDate || null,
+      targetCompletionDate: modalForm.value.targetCompletionDate || null,
+      color: modalForm.value.color || '#4A9EFF',
+      isActive: !!modalForm.value.isActive,
+    };
+    let res;
+    if (modalMode.value === 'create') {
+      res = await api.post('/api/projects', payload);
+    } else {
+      res = await api.put('/api/projects/' + modalForm.value.id, payload);
+    }
+    if (res.data && res.data.success) {
+      showProjectModal.value = false;
+      await loadProjects();
+    } else {
+      modalError.value = (res.data && res.data.error) || '\u03A3\u03c6\u03ac\u03bb\u03bc\u03b1 \u03b1\u03c0\u03bf\u03b8\u03ae\u03ba\u03b5\u03c5\u03c3\u03b7\u03c2.';
+    }
+  } catch (e) {
+    console.error('saveProject error:', e);
+    if (e.response && e.response.status === 403) {
+      modalError.value = '\u0394\u03b5\u03bd \u03ad\u03c7\u03b5\u03c4\u03b5 \u03b4\u03b9\u03ba\u03b1\u03af\u03c9\u03bc\u03b1.';
+    } else {
+      modalError.value = (e.response && e.response.data && e.response.data.error) || e.message || '\u03A3\u03c6\u03ac\u03bb\u03bc\u03b1.';
+    }
+  } finally {
+    modalSaving.value = false;
+  }
+}
+
+async function deactivateProject(p) {
+  if (!isAdmin.value) return;
+  const msg = '\u0391\u03c0\u03b5\u03bd\u03b5\u03c1\u03b3\u03bf\u03c0\u03bf\u03af\u03b7\u03c3\u03b7 \u03c4\u03bf\u03c5 project "' + p.name + '";';
+  if (!window.confirm(msg)) return;
+  try {
+    const payload = {
+      name: p.name,
+      description: p.description || null,
+      ownerEntityId: p.ownerEntityId,
+      status: p.status,
+      totalBudget: Number(p.totalBudget || 0),
+      expectedMonthlyRevenue: Number(p.expectedMonthlyRevenue || 0),
+      startDate: p.startDate || null,
+      targetCompletionDate: p.targetCompletionDate || null,
+      color: p.color || '#4A9EFF',
+      isActive: false,
+    };
+    const res = await api.put('/api/projects/' + p.id, payload);
+    if (res.data && res.data.success) {
+      await loadProjects();
+    } else {
+      window.alert((res.data && res.data.error) || '\u03A3\u03c6\u03ac\u03bb\u03bc\u03b1.');
+    }
+  } catch (e) {
+    console.error('deactivateProject error:', e);
+    window.alert((e.response && e.response.data && e.response.data.error) || e.message || '\u03A3\u03c6\u03ac\u03bb\u03bc\u03b1.');
+  }
+}
+// END S78-PROJECTS-CRUD-APPLIED
+
 // ── Computed: filtered + sorted projects ────────────────────────────
 const filteredProjects = computed(() => {
   let list = projects.value.slice()
@@ -205,6 +378,10 @@ onMounted(loadProjects)
         </button>
       </div>
       <div class="filter-spacer"></div>
+      <!-- S78-PROJECTS-CRUD-APPLIED: new project button (admin only) -->
+      <button v-if="isAdmin" class="btn-new-project-s78" @click="openCreateModal">
+        + Νέο Project
+      </button>
       <button class="btn-reload" @click="loadProjects" :disabled="loading">
         ↻ Ανανέωση
       </button>
@@ -258,6 +435,11 @@ onMounted(loadProjects)
             <h3 class="card-title">{{ p.name }}</h3>
           </div>
           <span class="status-badge" :style="statusBadgeStyle(p.status)">{{ statusLabel(p.status) }}</span>
+          <!-- S78-PROJECTS-CRUD-APPLIED: admin actions -->
+          <span v-if="isAdmin" class="card-admin-actions-s78" @click.stop>
+            <button class="card-action-btn-s78" title="Επεξεργασία" @click.stop="openEditModal(p)">✏️</button>
+            <button class="card-action-btn-s78 danger" title="Απενεργοποίηση" @click.stop="deactivateProject(p)" :disabled="!p.isActive">🚫</button>
+          </span>
         </div>
 
         <!-- Description -->
@@ -311,7 +493,80 @@ onMounted(loadProjects)
       </div>
     </div>
   </div>
-</template>
+
+    <!-- S78-PROJECTS-CRUD-APPLIED: Project create/edit modal -->
+    <div v-if="showProjectModal" class="proj-modal-backdrop-s78" @click.self="closeProjectModal">
+      <div class="proj-modal-s78">
+        <div class="proj-modal-header-s78">
+          <h2>{{ modalMode === 'create' ? '+ Νέο Project' : '✏️ Επεξεργασία Project' }}</h2>
+          <button class="proj-modal-close-s78" @click="closeProjectModal" :disabled="modalSaving">×</button>
+        </div>
+        <div class="proj-modal-body-s78">
+          <div class="proj-field-s78">
+            <label>Όνομα *</label>
+            <input v-model="modalForm.name" type="text" class="proj-input-s78" maxlength="120" />
+          </div>
+          <div class="proj-field-s78">
+            <label>Περιγραφή</label>
+            <textarea v-model="modalForm.description" class="proj-input-s78" rows="2"></textarea>
+          </div>
+          <div class="proj-field-row-s78">
+            <div class="proj-field-s78">
+              <label>Εταιρεία *</label>
+              <select v-model="modalForm.ownerEntityId" class="proj-input-s78">
+                <option v-for="e in ENTITY_OPTIONS_S78" :key="e.id" :value="e.id">{{ e.name }}</option>
+              </select>
+            </div>
+            <div class="proj-field-s78">
+              <label>Κατάσταση</label>
+              <select v-model="modalForm.status" class="proj-input-s78">
+                <option v-for="s in STATUS_OPTIONS_S78" :key="s.value" :value="s.value">{{ s.label }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="proj-field-row-s78">
+            <div class="proj-field-s78">
+              <label>Total Budget (€)</label>
+              <input v-model.number="modalForm.totalBudget" type="number" step="0.01" min="0" class="proj-input-s78" />
+            </div>
+            <div class="proj-field-s78">
+              <label>Expected Monthly Revenue (€)</label>
+              <input v-model.number="modalForm.expectedMonthlyRevenue" type="number" step="0.01" min="0" class="proj-input-s78" />
+            </div>
+          </div>
+          <div class="proj-field-row-s78">
+            <div class="proj-field-s78">
+              <label>Ημ/νία Έναρξης</label>
+              <input v-model="modalForm.startDate" type="date" class="proj-input-s78" />
+            </div>
+            <div class="proj-field-s78">
+              <label>Στόχος Ολοκλήρωσης</label>
+              <input v-model="modalForm.targetCompletionDate" type="date" class="proj-input-s78" />
+            </div>
+          </div>
+          <div class="proj-field-row-s78">
+            <div class="proj-field-s78">
+              <label>Χρώμα</label>
+              <input v-model="modalForm.color" type="color" class="proj-input-s78" />
+            </div>
+            <div class="proj-field-s78 proj-field-check-s78">
+              <label>
+                <input v-model="modalForm.isActive" type="checkbox" />
+                Ενεργό
+              </label>
+            </div>
+          </div>
+          <div v-if="modalError" class="proj-modal-error-s78">{{ modalError }}</div>
+        </div>
+        <div class="proj-modal-footer-s78">
+          <button class="proj-btn-secondary-s78" @click="closeProjectModal" :disabled="modalSaving">Άκυρο</button>
+          <button class="proj-btn-primary-s78" @click="saveProject" :disabled="modalSaving">
+            {{ modalSaving ? 'Αποθήκευση...' : 'Αποθήκευση' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
 
 <style scoped>
 .projects-page {
@@ -694,4 +949,161 @@ onMounted(loadProjects)
     gap: 8px;
   }
 }
+
+/* S78-PROJECTS-CRUD-APPLIED: admin CRUD styles */
+.btn-new-project-s78 {
+  background: linear-gradient(135deg, #4A9EFF 0%, #2563eb 100%);
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  margin-right: 8px;
+  transition: opacity 0.15s;
+}
+.btn-new-project-s78:hover { opacity: 0.9; }
+
+.card-admin-actions-s78 {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+.card-action-btn-s78 {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.card-action-btn-s78:hover { background: rgba(255, 255, 255, 0.12); }
+.card-action-btn-s78.danger:hover { background: rgba(239, 68, 68, 0.25); }
+.card-action-btn-s78:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.proj-modal-backdrop-s78 {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.proj-modal-s78 {
+  background: #1a1f2e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  color: #e6e8eb;
+}
+.proj-modal-header-s78 {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.proj-modal-header-s78 h2 { margin: 0; font-size: 18px; }
+.proj-modal-close-s78 {
+  background: transparent;
+  color: #e6e8eb;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  line-height: 1;
+}
+.proj-modal-body-s78 {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.proj-field-row-s78 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.proj-field-s78 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.proj-field-s78 label {
+  font-size: 12px;
+  color: #9aa3b2;
+  font-weight: 500;
+}
+.proj-field-check-s78 {
+  justify-content: flex-end;
+}
+.proj-field-check-s78 label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #e6e8eb;
+  cursor: pointer;
+}
+.proj-input-s78 {
+  background: #0f1420;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #e6e8eb;
+  font-size: 14px;
+  font-family: inherit;
+}
+.proj-input-s78:focus {
+  outline: none;
+  border-color: #4A9EFF;
+}
+.proj-modal-error-s78 {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.proj-modal-footer-s78 {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.proj-btn-primary-s78,
+.proj-btn-secondary-s78 {
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+.proj-btn-primary-s78 {
+  background: linear-gradient(135deg, #4A9EFF 0%, #2563eb 100%);
+  color: #fff;
+}
+.proj-btn-primary-s78:disabled { opacity: 0.6; cursor: not-allowed; }
+.proj-btn-secondary-s78 {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e6e8eb;
+}
+/* END S78-PROJECTS-CRUD-APPLIED */
 </style>
