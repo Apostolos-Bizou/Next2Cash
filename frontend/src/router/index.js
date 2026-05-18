@@ -16,6 +16,7 @@ const router = createRouter({
     { path: '/report-builder', component: () => import('@/views/ReportBuilderView.vue'), meta: { section: 'report-builder', title: 'Report Builder' } },
     { path: '/ai-analysis',    component: () => import('@/views/AiAnalysisView.vue'),    meta: { section: 'ai-analysis', title: 'AI Ανάλυση' } },
     { path: '/projects',       component: () => import('@/views/ProjectsView.vue'),       meta: { section: 'projects', title: 'Projects' } },
+    { path: '/projects/:id',   component: () => import('@/views/ProjectDetailView.vue'), meta: { section: 'projects', title: 'Project Detail' } },
     { path: '/admin',          component: () => import('@/views/AdminView.vue'),         meta: { section: 'admin', title: 'Admin Panel' } },
   ]
 })

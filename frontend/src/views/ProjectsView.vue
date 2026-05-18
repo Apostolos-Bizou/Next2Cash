@@ -295,9 +295,10 @@ onMounted(loadProjects)
 
         <!-- Footer: actions -->
         <div class="card-footer">
-          <button class="btn-details" disabled title="Διαθέσιμο στην επόμενη φάση (S71-D)">
+          <!-- S75-MARKER-DETAILS-LINK -->
+          <router-link class="btn-details btn-details-active" :to="`/projects/${p.id}`">
             Λεπτομέρειες →
-          </button>
+          </router-link>
         </div>
       </div>
     </div>
