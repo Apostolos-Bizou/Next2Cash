@@ -1,13 +1,21 @@
 package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.dto.ProjectDTO;
+import com.next2me.next2cash.dto.ProjectDetailDTO;
 import com.next2me.next2cash.model.Project;
+import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.repository.ProjectRepository;
+import com.next2me.next2cash.repository.TransactionRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +30,9 @@ public class ProjectController {
 
     @Autowired
     private ProjectRepository projectRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> listProjects(
@@ -45,6 +56,132 @@ public class ProjectController {
         response.put("success", true);
         response.put("data", dtos);
         response.put("count", dtos.size());
+        return ResponseEntity.ok(response);
+    }
+
+
+    /**
+     * GET /api/projects/{id}/detail — Project Deep-Dive aggregations.
+     *
+     * Returns:
+     *  - project: full project object
+     *  - budgetBreakdown: per-category spent (only ACTUAL expenses)
+     *  - totals: planned (project.totalBudget), spent, remaining, progressPct
+     *  - linkedTransactions: 50 most recent linked transactions
+     *  - revenueStreams: single entry from project.expectedMonthlyRevenue
+     *  - weightedMonthlyRevenue
+     *  - roi: derived calculations or null if expectedMonthlyRevenue is zero
+     *
+     * Spec ref: CashPlanning TechSpec v1.0 section 5.6
+     */
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<Map<String, Object>> getProjectDetail(@PathVariable UUID id) {
+        Map<String, Object> response = new HashMap<>();
+        Optional<Project> opt = projectRepository.findById(id);
+        if (opt.isEmpty()) {
+            response.put("success", false);
+            response.put("error", "Project not found");
+            return ResponseEntity.status(404).body(response);
+        }
+        Project project = opt.get();
+
+        // Budget breakdown per category (ACTUAL expenses only)
+        List<Object[]> rawBreakdown = transactionRepository.sumActualExpenseByProjectGroupByCategory(id);
+        List<ProjectDetailDTO.CategorySpent> breakdown = new ArrayList<>();
+        for (Object[] row : rawBreakdown) {
+            ProjectDetailDTO.CategorySpent cs = new ProjectDetailDTO.CategorySpent();
+            cs.category = (String) row[0];
+            cs.planned = null; // No per-category planned data until Phase 2-E
+            cs.spent = row[1] != null ? (BigDecimal) row[1] : BigDecimal.ZERO;
+            cs.remaining = null;
+            cs.progressPct = null;
+            breakdown.add(cs);
+        }
+
+        // Totals
+        BigDecimal totalSpent = transactionRepository.sumActualExpenseByProject(id);
+        if (totalSpent == null) totalSpent = BigDecimal.ZERO;
+        BigDecimal totalPlanned = project.getTotalBudget() != null ? project.getTotalBudget() : BigDecimal.ZERO;
+        BigDecimal totalRemaining = totalPlanned.subtract(totalSpent);
+        BigDecimal progressPct = null;
+        if (totalPlanned.compareTo(BigDecimal.ZERO) > 0) {
+            progressPct = totalSpent.multiply(new BigDecimal("100"))
+                .divide(totalPlanned, 2, RoundingMode.HALF_UP);
+        }
+
+        ProjectDetailDTO.Totals totals = new ProjectDetailDTO.Totals();
+        totals.planned = totalPlanned;
+        totals.spent = totalSpent;
+        totals.remaining = totalRemaining;
+        totals.progressPct = progressPct;
+
+        // Linked transactions (50 most recent)
+        Pageable top50 = PageRequest.of(0, 50);
+        List<Transaction> linked = transactionRepository.findLinkedToProject(id, top50);
+        List<ProjectDetailDTO.LinkedTransaction> linkedDtos = new ArrayList<>();
+        for (Transaction t : linked) {
+            ProjectDetailDTO.LinkedTransaction lt = new ProjectDetailDTO.LinkedTransaction();
+            lt.id = t.getId();
+            lt.entityNumber = t.getEntityNumber();
+            lt.docDate = t.getDocDate();
+            lt.description = t.getDescription();
+            lt.category = t.getCategory();
+            lt.counterparty = t.getCounterparty();
+            lt.type = t.getType();
+            lt.amount = t.getAmount();
+            lt.entryMode = t.getEntryMode() != null ? t.getEntryMode() : "ACTUAL";
+            lt.paymentStatus = t.getPaymentStatus();
+            linkedDtos.add(lt);
+        }
+
+        // Revenue streams (single entry until multi-row table added)
+        List<ProjectDetailDTO.RevenueStream> revenueStreams = new ArrayList<>();
+        BigDecimal expectedMonthly = project.getExpectedMonthlyRevenue() != null
+            ? project.getExpectedMonthlyRevenue() : BigDecimal.ZERO;
+        if (expectedMonthly.compareTo(BigDecimal.ZERO) > 0) {
+            ProjectDetailDTO.RevenueStream rs = new ProjectDetailDTO.RevenueStream();
+            rs.source = "Expected Monthly Revenue";
+            rs.amount = expectedMonthly;
+            rs.confidencePct = 100;
+            revenueStreams.add(rs);
+        }
+
+        // ROI calculations (null if no expected revenue or no budget)
+        ProjectDetailDTO.RoiAnalysis roi = null;
+        if (expectedMonthly.compareTo(BigDecimal.ZERO) > 0 && totalPlanned.compareTo(BigDecimal.ZERO) > 0) {
+            roi = new ProjectDetailDTO.RoiAnalysis();
+            roi.totalInvestment = totalPlanned;
+            roi.monthlyRevenueWeighted = expectedMonthly;
+            roi.monthlyRevenueBestCase = expectedMonthly.multiply(new BigDecimal("1.37"))
+                .setScale(2, RoundingMode.HALF_UP);
+            roi.breakEvenMonthsWeighted = totalPlanned
+                .divide(expectedMonthly, 2, RoundingMode.HALF_UP);
+            roi.breakEvenMonthsBest = totalPlanned
+                .divide(roi.monthlyRevenueBestCase, 2, RoundingMode.HALF_UP);
+            BigDecimal twelveMonthRevWeighted = expectedMonthly.multiply(new BigDecimal("12"));
+            BigDecimal twelveMonthRevBest = roi.monthlyRevenueBestCase.multiply(new BigDecimal("12"));
+            roi.twelveMonthRoiWeightedPct = twelveMonthRevWeighted.subtract(totalPlanned)
+                .multiply(new BigDecimal("100"))
+                .divide(totalPlanned, 2, RoundingMode.HALF_UP);
+            roi.twelveMonthRoiBestPct = twelveMonthRevBest.subtract(totalPlanned)
+                .multiply(new BigDecimal("100"))
+                .divide(totalPlanned, 2, RoundingMode.HALF_UP);
+        }
+
+        // Assemble response
+        ProjectDetailDTO detail = new ProjectDetailDTO();
+        detail.project = ProjectDTO.fromEntity(project);
+        detail.budgetBreakdown = breakdown;
+        detail.totals = totals;
+        detail.linkedTransactions = new ProjectDetailDTO.LinkedTransactionsBlock();
+        detail.linkedTransactions.count = linkedDtos.size();
+        detail.linkedTransactions.transactions = linkedDtos;
+        detail.revenueStreams = revenueStreams;
+        detail.weightedMonthlyRevenue = expectedMonthly;
+        detail.roi = roi;
+
+        response.put("success", true);
+        response.put("data", detail);
         return ResponseEntity.ok(response);
     }
 

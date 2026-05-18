@@ -230,4 +230,44 @@ public interface TransactionRepository extends JpaRepository<Transaction, Intege
         @Param("entityId") UUID entityId,
         @Param("validLabels") java.util.Collection<String> validLabels,
         @Param("openingDate") LocalDate openingDate);
+
+    // ═══════════════════════════════════════════════════════════════
+    // Session #74 (S71-D) — Project Deep-Dive aggregations
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Sum of ACTUAL expense transactions linked to a specific project,
+     * grouped by category. Returns rows of [category, totalAmount].
+     *
+     * PLANNED transactions excluded (architectural principle: PLANNED != Actual).
+     * Only expenses included (type = 'expense').
+     */
+    @Query("SELECT COALESCE(t.category, '(χωρίς κατηγορία)') as category, " +
+           "COALESCE(SUM(t.amount), 0) as total " +
+           "FROM Transaction t " +
+           "WHERE t.projectId = :projectId AND t.recordStatus = 'active' " +
+           "AND t.type = 'expense' " +
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL) " +
+           "GROUP BY t.category " +
+           "ORDER BY total DESC")
+    List<Object[]> sumActualExpenseByProjectGroupByCategory(@Param("projectId") UUID projectId);
+
+    /**
+     * Total ACTUAL expense for a project (used for top-level totals).
+     */
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
+           "WHERE t.projectId = :projectId AND t.recordStatus = 'active' " +
+           "AND t.type = 'expense' " +
+           "AND (t.entryMode = 'ACTUAL' OR t.entryMode IS NULL)")
+    BigDecimal sumActualExpenseByProject(@Param("projectId") UUID projectId);
+
+    /**
+     * Linked transactions for a project, most recent first.
+     * Includes both ACTUAL and PLANNED — frontend decides display.
+     * Limited via Pageable (typically 50).
+     */
+    @Query("SELECT t FROM Transaction t " +
+           "WHERE t.projectId = :projectId AND t.recordStatus = 'active' " +
+           "ORDER BY t.docDate DESC, t.id DESC")
+    List<Transaction> findLinkedToProject(@Param("projectId") UUID projectId, Pageable pageable);
 }
