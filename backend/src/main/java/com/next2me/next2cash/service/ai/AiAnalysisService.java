@@ -53,16 +53,17 @@ public class AiAnalysisService {
         DateRange range = resolveDateRange(req);
         List<UUID> entityIds = resolveEntityIds(req.getEntityScope());
         String tier = decideTier(range);
+        String entryMode = resolveEntryMode(req.getEntryMode());
 
         String contextJson;
         int rowsAnalyzed;
         if (tier.equals("tier1_summary")) {
-            Map<String, Object> summary = fetchSummary(entityIds, range);
+            Map<String, Object> summary = fetchSummary(entityIds, range, entryMode);
             contextJson = toJson(summary);
             Object totalObj = summary.get("total_rows");
             rowsAnalyzed = totalObj == null ? 0 : ((Number) totalObj).intValue();
         } else {
-            List<Map<String, Object>> rows = fetchRawRows(entityIds, range);
+            List<Map<String, Object>> rows = fetchRawRows(entityIds, range, entryMode);
             Map<String, Object> ctx = new LinkedHashMap<>();
             ctx.put("transactions", rows);
             ctx.put("total_rows", rows.size());
@@ -75,11 +76,11 @@ public class AiAnalysisService {
             rowsAnalyzed = rows.size();
         }
 
-        String systemPrompt = buildSystemPrompt(req.getAnalysisType(), range, req.getEntityScope());
+        String systemPrompt = buildSystemPrompt(req.getAnalysisType(), range, req.getEntityScope(), entryMode);
         String userMessage = buildUserMessage(req.getQuestion(), contextJson);
 
-        log.info("AI analysis: tier={}, rows={}, promptLength={}",
-                tier, rowsAnalyzed, userMessage.length());
+        log.info("AI analysis: tier={}, rows={}, promptLength={}, entryMode={}",
+                tier, rowsAnalyzed, userMessage.length(), entryMode);
 
         AnthropicClient.ClaudeResult claude = anthropicClient.createMessage(
                 systemPrompt, userMessage, maxTokens);
@@ -154,6 +155,32 @@ public class AiAnalysisService {
         }
     }
 
+    /**
+     * Normalise the incoming entryMode value.
+     * null/blank/unknown => "ACTUAL" (safe default).
+     * Added by S70.
+     */
+    private String resolveEntryMode(String requested) {
+        if (requested == null) return "ACTUAL";
+        String v = requested.trim().toUpperCase();
+        if (v.equals("ACTUAL") || v.equals("PLANNED") || v.equals("ALL")) {
+            return v;
+        }
+        return "ACTUAL";
+    }
+
+    /**
+     * Returns the SQL fragment that filters by entry_mode.
+     * Caller is expected to append it to a WHERE clause that already ends with a space.
+     * Added by S70.
+     */
+    private String entryModeSqlFragment(String mode) {
+        if ("ALL".equals(mode)) return "";
+        if ("PLANNED".equals(mode)) return "AND t.entry_mode = 'PLANNED' ";
+        // ACTUAL (default)
+        return "AND (t.entry_mode = 'ACTUAL' OR t.entry_mode IS NULL) ";
+    }
+
     private List<UUID> resolveEntityIds(String scope) {
         if (scope == null) scope = "all";
         switch (scope) {
@@ -174,7 +201,8 @@ public class AiAnalysisService {
     }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> fetchRawRows(List<UUID> entityIds, DateRange range) {
+    private List<Map<String, Object>> fetchRawRows(List<UUID> entityIds, DateRange range, String entryMode) {
+        String entryModeFilter = entryModeSqlFragment(entryMode);
         StringBuilder csv = new StringBuilder();
         for (int i = 0; i < entityIds.size(); i++) {
             if (i > 0) csv.append(",");
@@ -187,6 +215,7 @@ public class AiAnalysisService {
                 "WHERE t.entity_id IN (" + csv.toString() + ") " +
                 "AND t.doc_date BETWEEN :from AND :to " +
                 "AND t.record_status = 'active' " +
+                entryModeFilter +
                 "ORDER BY t.doc_date DESC, t.id DESC";
 
         List<Object[]> results = em.createNativeQuery(sql)
@@ -216,7 +245,8 @@ public class AiAnalysisService {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> fetchSummary(List<UUID> entityIds, DateRange range) {
+    private Map<String, Object> fetchSummary(List<UUID> entityIds, DateRange range, String entryMode) {
+        String entryModeFilter = entryModeSqlFragment(entryMode);
         StringBuilder csv = new StringBuilder();
         for (int i = 0; i < entityIds.size(); i++) {
             if (i > 0) csv.append(",");
@@ -228,6 +258,7 @@ public class AiAnalysisService {
                 "WHERE t.entity_id IN (" + csv.toString() + ") " +
                 "AND t.doc_date BETWEEN :from AND :to " +
                 "AND t.record_status = 'active' " +
+                entryModeFilter +
                 "GROUP BY month, t.type, t.category " +
                 "ORDER BY month, t.type, t.category";
 
@@ -257,7 +288,18 @@ public class AiAnalysisService {
         return out;
     }
 
-    private String buildSystemPrompt(String analysisType, DateRange range, String scope) {
+    private String buildSystemPrompt(String analysisType, DateRange range, String scope, String entryMode) {
+        String modeNote;
+        if ("PLANNED".equals(entryMode)) {
+            // "Τα δεδομένα είναι ΠΡΟΓΡΑΜΜΑΤΙΣΜΕΝΕΣ (budget/forecast) συναλλαγές που ΔΕΝ έχουν συμβεί ακόμα."
+            modeNote = "\u03a4\u03b1 \u03b4\u03b5\u03b4\u03bf\u03bc\u03ad\u03bd\u03b1 \u03b5\u03af\u03bd\u03b1\u03b9 \u03a0\u03a1\u039f\u0393\u03a1\u0391\u039c\u039c\u0391\u03a4\u0399\u03a3\u039c\u0395\u039d\u0395\u03a3 (budget/forecast) \u03c3\u03c5\u03bd\u03b1\u03bb\u03bb\u03b1\u03b3\u03ad\u03c2 \u03c0\u03bf\u03c5 \u0394\u0395\u039d \u03ad\u03c7\u03bf\u03c5\u03bd \u03c3\u03c5\u03bc\u03b2\u03b5\u03af \u03b1\u03ba\u03cc\u03bc\u03b1. ";
+        } else if ("ALL".equals(entryMode)) {
+            // "Τα δεδομένα περιλαμβάνουν ΚΑΙ πραγματικές ΚΑΙ προγραμματισμένες συναλλαγές. Διαχώρισέ τες αναλόγως."
+            modeNote = "\u03a4\u03b1 \u03b4\u03b5\u03b4\u03bf\u03bc\u03ad\u03bd\u03b1 \u03c0\u03b5\u03c1\u03b9\u03bb\u03b1\u03bc\u03b2\u03ac\u03bd\u03bf\u03c5\u03bd \u039a\u0391\u0399 \u03c0\u03c1\u03b1\u03b3\u03bc\u03b1\u03c4\u03b9\u03ba\u03ad\u03c2 \u039a\u0391\u0399 \u03c0\u03c1\u03bf\u03b3\u03c1\u03b1\u03bc\u03bc\u03b1\u03c4\u03b9\u03c3\u03bc\u03ad\u03bd\u03b5\u03c2 \u03c3\u03c5\u03bd\u03b1\u03bb\u03bb\u03b1\u03b3\u03ad\u03c2. \u0394\u03b9\u03b1\u03c7\u03ce\u03c1\u03b9\u03c3\u03ad \u03c4\u03b5\u03c2 \u03b1\u03bd\u03b1\u03bb\u03cc\u03b3\u03c9\u03c2. ";
+        } else {
+            // ACTUAL (default): "Τα δεδομένα είναι ΠΡΑΓΜΑΤΙΚΕΣ συναλλαγές που έχουν συμβεί."
+            modeNote = "\u03a4\u03b1 \u03b4\u03b5\u03b4\u03bf\u03bc\u03ad\u03bd\u03b1 \u03b5\u03af\u03bd\u03b1\u03b9 \u03a0\u03a1\u0391\u0393\u039c\u0391\u03a4\u0399\u039a\u0395\u03a3 \u03c3\u03c5\u03bd\u03b1\u03bb\u03bb\u03b1\u03b3\u03ad\u03c2 \u03c0\u03bf\u03c5 \u03ad\u03c7\u03bf\u03c5\u03bd \u03c3\u03c5\u03bc\u03b2\u03b5\u03af. ";
+        }
         String scopeDesc;
         if ("all".equals(scope)) scopeDesc = "όλες τις εταιρείες (next2me + house)";
         else if ("next2me".equals(scope)) scopeDesc = "την εταιρεία next2me";
@@ -267,6 +309,7 @@ public class AiAnalysisService {
                "Απαντάς ΠΑΝΤΑ στα Ελληνικά με επαγγελματικό αλλά κατανοητό ύφος. " +
                "Ο τύπος ανάλυσης που σου ζητείται: " + analysisType + ". " +
                "Περίοδος: " + range.from + " έως " + range.to + ". " +
+               modeNote +
                "Δεδομένα: " + scopeDesc + ". " +
                "Ο χρήστης είναι ο CEO. Δώσε καθαρές, δομημένες, με αριθμούς απαντήσεις. " +
                "Χρησιμοποίησε Markdown για headings, λίστες και έμφαση. " +

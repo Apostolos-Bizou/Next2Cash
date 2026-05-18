@@ -7,6 +7,21 @@ const userQuestion = ref('')
 const isLoading = ref(false)
 const chatHistory = ref([])
 
+// S70: entry-mode toggle (ACTUAL/PLANNED/ALL) with localStorage persistence
+const selectedEntryMode = ref(localStorage.getItem('aiAnalysisViewMode') || 'actual')
+
+// S70: smart default mode per analysis type (English keys only, mapped at use)
+function smartDefaultModeForType(typeLabel) {
+  // Budget Forecast forces PLANNED
+  if (typeLabel === 'Budget Forecast') return 'planned'
+  // Forward-looking presets default to ALL
+  // (forecast / trends / full / obligations / board brief)
+  if (typeLabel.indexOf('Cash Flow') === 0) return 'all'
+  if (typeLabel.indexOf('Board') === 0) return 'all'
+  // Default fallback - lets per-keyword logic catch the Greek ones below
+  return 'actual'
+}
+
 // Filters (date range + entity scope)
 const dateRange = ref('ytd')
 const entityScope = ref('all')
@@ -33,6 +48,7 @@ const analysisTypes = [
   'Board Meeting Brief',
   'Investor Report',
   'Λογιστική Ανάλυση',
+  'Budget Forecast',
 ]
 
 const quickTabs = [
@@ -45,6 +61,7 @@ const quickTabs = [
   { label: 'Board',        icon: '👥' },
   { label: 'Investor',     icon: '🎯' },
   { label: 'Λογιστής',     icon: '📋' },
+  { label: 'Budget',      icon: '💸' },
 ]
 
 // ── Simple markdown renderer ──
@@ -198,7 +215,8 @@ const sendQuestion = async () => {
       question: q,
       analysisType: selectedAnalysis.value,
       entityScope: entityScope.value,
-      dateRange: resolveDateRange()
+      dateRange: resolveDateRange(),
+      entryMode: selectedEntryMode.value.toUpperCase()
     })
 
     if (res.data && res.data.success) {
@@ -240,6 +258,7 @@ const selectTab = (tab) => {
     'Cash Flow':    'Cash Flow Πρόβλεψη',
     'Board':        'Board Meeting Brief',
     'Λογιστής':     'Λογιστική Ανάλυση',
+    'Budget':       'Budget Forecast',
   }
   selectedAnalysis.value = map[tab.label] || tab.label
 }
@@ -248,6 +267,17 @@ const runAnalysis = () => {
   userQuestion.value = 'Εκτέλεσε: ' + selectedAnalysis.value
   sendQuestion()
 }
+
+// S70: persist mode selection to localStorage
+import { watch } from 'vue'
+watch(selectedEntryMode, (v) => {
+  try { localStorage.setItem('aiAnalysisViewMode', v) } catch (e) { /* ignore quota errors */ }
+})
+
+// S70: when analysis type changes, apply smart-default mode
+watch(selectedAnalysis, (newType) => {
+  selectedEntryMode.value = smartDefaultModeForType(newType)
+})
 </script>
 
 <template>
@@ -267,6 +297,16 @@ const runAnalysis = () => {
           <div class="select-wrap">
             <select v-model="selectedAnalysis" class="analysis-select">
               <option v-for="a in analysisTypes" :key="a">{{ a }}</option>
+            </select>
+          </div>
+          <div class="filter-wrap">
+            <select v-model="selectedEntryMode" class="filter-select mode-select"
+                    :class="{ 'mode-planned': selectedEntryMode === 'planned' }"
+                    :disabled="selectedAnalysis === 'Budget Forecast'"
+                    :title="selectedAnalysis === 'Budget Forecast' ? 'Locked: Budget Forecast uses planned data only' : 'Mode'">
+              <option value="actual">💰 Actual</option>
+              <option value="planned">📋 Planned</option>
+              <option value="all">📊 All</option>
             </select>
           </div>
           <div class="filter-wrap">
@@ -463,5 +503,8 @@ const runAnalysis = () => {
 .filter-date { background: #152538; border: 1px solid #2a4a6a; color: #c8d8e8; padding: 7px 10px; border-radius: 8px; font-size: 0.82rem; outline: none; font-family: inherit; }
 .filter-date:focus { border-color: #4FC3A1; }
 .filter-dash { color: #8899aa; font-size: 0.9rem; }
+/* S70: mode toggle visual cue */
+.mode-select.mode-planned { background: #3a2818; border-color: #ff8c42; color: #ffb380; }
+.mode-select:disabled { opacity: 0.6; cursor: not-allowed; }
 .cost-warning { background: rgba(255, 193, 7, 0.12); border: 1px solid rgba(255, 193, 7, 0.35); color: #ffd54f; padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; margin-top: 8px; }
 </style>

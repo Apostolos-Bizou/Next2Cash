@@ -27,4 +27,13 @@ public class AiAnalysisRequest {
     /** Only used when dateRange == 'custom' (YYYY-MM-DD). */
     private String customFrom;
     private String customTo;
+
+    /**
+     * Entry-mode filter for the dataset given to the AI:
+     *   "ACTUAL"  - only real transactions (default if null)
+     *   "PLANNED" - only budget / forecast transactions
+     *   "ALL"     - both (no entry_mode filter)
+     * Added by S70 (May 2026).
+     */
+    private String entryMode;
 }
