@@ -37,11 +37,9 @@ async function loadConfig() {
 async function loadProjects() {
   loadingProjects.value = true
   try {
-    // S77-PATCH-APPLIED: entity-scoped — pass current entity so backend filters properly
-    const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
-    const entityId = ENTITY_MAP[entityKey] || null
+    // S77-PATCH-APPLIED S77-HOTFIX-APPLIED: entity-scoped — use existing entityId computed
     const params = { activeOnly: true }
-    if (entityId) params.entityId = entityId
+    if (entityId.value) params.entityId = entityId.value
     const res = await api.get('/api/projects', { params })
     if (res.data && res.data.success) {
       projects.value = Array.isArray(res.data.data) ? res.data.data : []

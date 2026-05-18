@@ -135,9 +135,14 @@ async function loadProjects() {
   error.value = null
   try {
     // Backend supports activeOnly=false to include inactive
-    // S77-PATCH-APPLIED: entity-scoped — pass current entity so backend filters properly
+    // S77-PATCH-APPLIED S77-HOTFIX-APPLIED: inline ENTITY_MAP (this file does not import it)
+    const ENTITY_MAP_S77 = {
+      next2me:      '58202b71-4ddb-45c9-8e3c-39e816bde972',
+      house:        'dea1f32c-7b30-4981-b625-633da9dbe71e',
+      next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
+    }
     const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
-    const entityIdForQuery = ENTITY_MAP[entityKey] || null
+    const entityIdForQuery = ENTITY_MAP_S77[entityKey] || null
     const res = await api.get('/api/projects', {
       params: { entityId: entityIdForQuery, activeOnly: showInactive.value ? false : true },
     })
