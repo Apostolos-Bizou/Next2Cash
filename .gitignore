@@ -218,3 +218,6 @@ application-local.properties.bak.*
 logs.zip
 
 backend/src/main/resources/application-localinit.properties
+
+# Vite per-machine env overrides
+frontend/.env.local
