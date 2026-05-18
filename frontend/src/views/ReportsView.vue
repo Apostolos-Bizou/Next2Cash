@@ -9,6 +9,23 @@ const selectedType   = ref('all')
 // S68: PLANNED mode toggle — values: 'actual' | 'planned' | 'all'
 const selectedMode = ref(localStorage.getItem('reportsViewMode') || 'actual')
 
+// S76: Project filter — UUID of project, 'all' (default), or 'opex' (projectId IS NULL)
+const selectedProject = ref(localStorage.getItem('reportsViewProject') || 'all')
+const projectsList = ref([])
+
+async function loadProjects() {
+  try {
+    const res = await api.get('/api/projects')
+    const data = res.data?.data || res.data || []
+    projectsList.value = (Array.isArray(data) ? data : [])
+      .filter(p => p.isActive !== false)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'el'))
+  } catch (err) {
+    console.error('Reports: failed to load projects', err)
+    projectsList.value = []
+  }
+}
+
 const allYears = ['2017','2018','2019','2020','2021','2022','2023','2024','2025','2026']
 const years = allYears  // used in yearly/budget tables
 const reports = [
@@ -79,13 +96,20 @@ async function loadTransactions() {
 // S68: mode-aware base — single source of truth for all downstream reports
 // 'actual' (default) excludes PLANNED, 'planned' shows only PLANNED, 'all' shows both
 const modeFilteredTransactions = computed(() => {
+  // S76: First mode filter, then project filter
+  let result = allTransactions.value
   const mode = selectedMode.value
-  if (mode === 'all') return allTransactions.value
   if (mode === 'planned') {
-    return allTransactions.value.filter(t => (t.entryMode || 'ACTUAL').toUpperCase() === 'PLANNED')
+    result = result.filter(t => (t.entryMode || 'ACTUAL').toUpperCase() === 'PLANNED')
+  } else if (mode !== 'all') {
+    // default: actual
+    result = result.filter(t => (t.entryMode || 'ACTUAL').toUpperCase() === 'ACTUAL')
   }
-  // default: actual
-  return allTransactions.value.filter(t => (t.entryMode || 'ACTUAL').toUpperCase() === 'ACTUAL')
+  // S76: Apply project filter
+  const proj = selectedProject.value
+  if (proj === 'all') return result
+  if (proj === 'opex') return result.filter(t => !t.projectId)
+  return result.filter(t => t.projectId === proj)
 })
 
 const yearTransactions = computed(() => {
@@ -391,6 +415,7 @@ const currentMonthLabel = new Intl.DateTimeFormat('el-GR', { month: 'long', year
 
 // ── Lifecycle ─────────────────────────────────────────────────────
 onMounted(() => {
+  loadProjects()
   loadTransactions()
   // Listen for entity changes (same pattern as AdminView)
   window.addEventListener('storage', (e) => {
@@ -401,6 +426,11 @@ onMounted(() => {
 // S68: persist mode choice across reloads
 watch(selectedMode, (val) => {
   try { localStorage.setItem('reportsViewMode', val) } catch (e) { /* ignore */ }
+})
+
+// S76: Persist project selection across sessions
+watch(selectedProject, (val) => {
+  try { localStorage.setItem('reportsViewProject', val) } catch (e) { /* ignore */ }
 })
 
 // Also reload when year changes (not strictly needed since yearTransactions is computed, but good UX)
@@ -451,6 +481,16 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
             <option value="actual">💰 Πραγματικές</option>
             <option value="planned">📋 Προγραμματισμένες</option>
             <option value="all">📊 Όλες</option>
+          </select>
+          <span class="select-arrow">▾</span>
+        </div>
+
+        <!-- S76: Project filter -->
+        <div class="select-wrap">
+          <select v-model="selectedProject" class="filter-select">
+            <option value="all">🎯 Όλα τα projects</option>
+            <option value="opex">📊 Γενικό OpEx</option>
+            <option v-for="p in projectsList" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
           <span class="select-arrow">▾</span>
         </div>
