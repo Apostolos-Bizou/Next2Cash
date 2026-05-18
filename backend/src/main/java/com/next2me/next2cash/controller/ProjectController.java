@@ -6,6 +6,8 @@ import com.next2me.next2cash.model.Project;
 import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.repository.ProjectRepository;
 import com.next2me.next2cash.repository.TransactionRepository;
+import com.next2me.next2cash.model.User;
+import com.next2me.next2cash.service.UserAccessService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -34,18 +37,50 @@ public class ProjectController {
     @Autowired
     private TransactionRepository transactionRepository;
 
+    // S77: Entity-scoped access control
+    @Autowired
+    private UserAccessService userAccessService;
+
+    /**
+     * S77: Entity-scoped project listing.
+     *
+     * Behavior:
+     *  - If entityId param is given: assert user can access it, return projects of that entity.
+     *  - Otherwise: return projects across user's accessible entities (intersection).
+     *
+     * Pattern mirrors BankAccountController.getBankAccounts() (Session #6 / Phase D).
+     */
     @GetMapping
     public ResponseEntity<Map<String, Object>> listProjects(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam(value = "entityId", required = false) UUID entityId,
             @RequestParam(value = "activeOnly", defaultValue = "true") boolean activeOnly,
             @RequestParam(value = "status", required = false) String status) {
 
-        List<Project> projects;
-        if (status != null && !status.isBlank()) {
-            projects = projectRepository.findByStatus(status.toUpperCase());
-        } else if (activeOnly) {
-            projects = projectRepository.findAllActive();
+        User currentUser = userAccessService.getCurrentUser(authHeader);
+
+        // Determine the set of entity IDs to query against
+        Set<UUID> queryEntities;
+        if (entityId != null) {
+            // Single-entity request: guard, then use just this one
+            userAccessService.assertCanAccessEntity(currentUser, entityId);
+            queryEntities = new java.util.HashSet<>();
+            queryEntities.add(entityId);
         } else {
-            projects = projectRepository.findAllOrdered();
+            // Aggregate request: use everything the user can access
+            queryEntities = userAccessService.getAccessibleEntityIds(currentUser);
+        }
+
+        List<Project> projects;
+        if (queryEntities.isEmpty()) {
+            // User has no accessible entities (e.g., new accountant with no assignments)
+            projects = new ArrayList<>();
+        } else if (status != null && !status.isBlank()) {
+            projects = projectRepository.findByStatusAndOwnerEntityIdIn(status.toUpperCase(), queryEntities);
+        } else if (activeOnly) {
+            projects = projectRepository.findActiveByOwnerEntityIdIn(queryEntities);
+        } else {
+            projects = projectRepository.findByOwnerEntityIdIn(queryEntities);
         }
 
         List<ProjectDTO> dtos = projects.stream()
@@ -75,7 +110,10 @@ public class ProjectController {
      * Spec ref: CashPlanning TechSpec v1.0 section 5.6
      */
     @GetMapping("/{id}/detail")
-    public ResponseEntity<Map<String, Object>> getProjectDetail(@PathVariable UUID id) {
+    public ResponseEntity<Map<String, Object>> getProjectDetail(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id) {
+        User currentUser = userAccessService.getCurrentUser(authHeader);
         Map<String, Object> response = new HashMap<>();
         Optional<Project> opt = projectRepository.findById(id);
         if (opt.isEmpty()) {
@@ -84,6 +122,8 @@ public class ProjectController {
             return ResponseEntity.status(404).body(response);
         }
         Project project = opt.get();
+        // S77: Enforce entity-level access
+        userAccessService.assertCanAccessEntity(currentUser, project.getOwnerEntityId());
 
         // Budget breakdown per category (ACTUAL expenses only)
         List<Object[]> rawBreakdown = transactionRepository.sumActualExpenseByProjectGroupByCategory(id);
@@ -186,7 +226,10 @@ public class ProjectController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> getProject(@PathVariable UUID id) {
+    public ResponseEntity<Map<String, Object>> getProject(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id) {
+        User currentUser = userAccessService.getCurrentUser(authHeader);
         Optional<Project> opt = projectRepository.findById(id);
         Map<String, Object> response = new HashMap<>();
         if (opt.isEmpty()) {
@@ -194,6 +237,8 @@ public class ProjectController {
             response.put("error", "Project not found");
             return ResponseEntity.status(404).body(response);
         }
+        // S77: Enforce entity-level access
+        userAccessService.assertCanAccessEntity(currentUser, opt.get().getOwnerEntityId());
         response.put("success", true);
         response.put("data", ProjectDTO.fromEntity(opt.get()));
         return ResponseEntity.ok(response);
@@ -201,7 +246,10 @@ public class ProjectController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, Object>> createProject(@RequestBody ProjectDTO dto) {
+    public ResponseEntity<Map<String, Object>> createProject(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestBody ProjectDTO dto) {
+        User currentUser = userAccessService.getCurrentUser(authHeader);
         Map<String, Object> response = new HashMap<>();
         if (dto.name == null || dto.name.isBlank()) {
             response.put("success", false);
@@ -213,6 +261,8 @@ public class ProjectController {
             response.put("error", "ownerEntityId is required");
             return ResponseEntity.badRequest().body(response);
         }
+        // S77: Admin must have access to the target entity to create a project there
+        userAccessService.assertCanAccessEntity(currentUser, dto.ownerEntityId);
         if (projectRepository.findByName(dto.name).isPresent()) {
             response.put("success", false);
             response.put("error", "Project with this name already exists");
@@ -240,7 +290,11 @@ public class ProjectController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, Object>> updateProject(@PathVariable UUID id, @RequestBody ProjectDTO dto) {
+    public ResponseEntity<Map<String, Object>> updateProject(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id,
+            @RequestBody ProjectDTO dto) {
+        User currentUser = userAccessService.getCurrentUser(authHeader);
         Map<String, Object> response = new HashMap<>();
         Optional<Project> opt = projectRepository.findById(id);
         if (opt.isEmpty()) {
@@ -249,6 +303,12 @@ public class ProjectController {
             return ResponseEntity.status(404).body(response);
         }
         Project p = opt.get();
+        // S77: Admin must have access to the project's current owner entity
+        userAccessService.assertCanAccessEntity(currentUser, p.getOwnerEntityId());
+        // S77: If reassigning, must also have access to the target entity
+        if (dto.ownerEntityId != null && !dto.ownerEntityId.equals(p.getOwnerEntityId())) {
+            userAccessService.assertCanAccessEntity(currentUser, dto.ownerEntityId);
+        }
         if (dto.name != null && !dto.name.isBlank()) p.setName(dto.name);
         if (dto.description != null) p.setDescription(dto.description);
         if (dto.ownerEntityId != null) p.setOwnerEntityId(dto.ownerEntityId);

@@ -1,6 +1,7 @@
 package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.BaseIntegrationTest;
+import com.next2me.next2cash.model.CompanyEntity;
 import com.next2me.next2cash.model.Project;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.ProjectRepository;
@@ -54,10 +55,12 @@ class ProjectDetailControllerTest extends BaseIntegrationTest {
     void getProjectDetail_existingProjectWithNoRevenue_returns200WithNullRoi() throws Exception {
         User admin = tdb.createAdmin("apostolos");
         String bearer = tdb.bearerToken(admin);
+        // S77: Project must belong to an entity admin can access
+        CompanyEntity testEntity = tdb.createEntity("TESTENT1", "Test Entity 1");
 
         Project p = new Project();
         p.setName("Test Project S74");
-        p.setOwnerEntityId(UUID.randomUUID());
+        p.setOwnerEntityId(testEntity.getId());
         p.setStatus("PLANNING");
         p.setTotalBudget(new BigDecimal("50000"));
         p.setExpectedMonthlyRevenue(BigDecimal.ZERO);
@@ -83,10 +86,12 @@ class ProjectDetailControllerTest extends BaseIntegrationTest {
     void getProjectDetail_existingProjectWithRevenue_returnsRoiCalculations() throws Exception {
         User admin = tdb.createAdmin("apostolos");
         String bearer = tdb.bearerToken(admin);
+        // S77: Project must belong to an entity admin can access
+        CompanyEntity testEntity = tdb.createEntity("TESTENT2", "Test Entity 2");
 
         Project p = new Project();
         p.setName("Test Project With ROI");
-        p.setOwnerEntityId(UUID.randomUUID());
+        p.setOwnerEntityId(testEntity.getId());
         p.setStatus("ACTIVE");
         p.setTotalBudget(new BigDecimal("80000"));
         p.setExpectedMonthlyRevenue(new BigDecimal("10000"));
