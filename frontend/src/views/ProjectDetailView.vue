@@ -64,7 +64,42 @@
         </div>
       </div>
 
-      <!-- ===== Section 2: Budget Breakdown ===== -->
+      <!-- S75-REORDER-ROI-TOP -->
+      <!-- ===== Section 2: ROI Analysis (moved to top per CEO request) ===== -->
+      <div class="detail-section">
+        <h2 class="section-title">
+          <span class="section-icon">💡</span>
+          ROI Analysis
+        </h2>
+        <div v-if="detail.roi" class="roi-grid">
+          <div class="roi-card">
+            <div class="roi-label">Total Investment</div>
+            <div class="roi-value">{{ fmtMoney(detail.roi.totalInvestment) }}</div>
+          </div>
+          <div class="roi-card">
+            <div class="roi-label">Monthly Revenue (weighted)</div>
+            <div class="roi-value">{{ fmtMoney(detail.roi.monthlyRevenueWeighted) }}</div>
+            <div class="roi-sub">Best case: {{ fmtMoney(detail.roi.monthlyRevenueBestCase) }}</div>
+          </div>
+          <div class="roi-card">
+            <div class="roi-label">Break-even (weighted)</div>
+            <div class="roi-value">{{ fmtBreakEven(detail.roi.breakEvenMonthsWeighted) }}</div>
+            <div class="roi-sub">Best case: {{ fmtBreakEven(detail.roi.breakEvenMonthsBest) }}</div>
+          </div>
+          <div class="roi-card">
+            <div class="roi-label">12-month ROI (weighted)</div>
+            <div class="roi-value" :class="roiClass(detail.roi.twelveMonthRoiWeightedPct)">
+              {{ fmtSignedPct(detail.roi.twelveMonthRoiWeightedPct) }}
+            </div>
+            <div class="roi-sub">Best case: {{ fmtSignedPct(detail.roi.twelveMonthRoiBestPct) }}</div>
+          </div>
+        </div>
+        <div v-else class="empty-state">
+          <p>Δεν υπάρχουν στοιχεία αναμενόμενων εσόδων για υπολογισμό ROI.</p>
+        </div>
+      </div>
+
+      <!-- ===== Section 3: Budget Breakdown ===== -->
       <div class="detail-section">
         <h2 class="section-title">
           <span class="section-icon">💸</span>
@@ -112,7 +147,7 @@
         </div>
       </div>
 
-      <!-- ===== Section 3: Linked Transactions ===== -->
+      <!-- ===== Section 4: Linked Transactions ===== -->
       <div class="detail-section">
         <h2 class="section-title">
           <span class="section-icon">📋</span>
@@ -161,7 +196,7 @@
         </div>
       </div>
 
-      <!-- ===== Section 4: Expected Revenue Streams ===== -->
+      <!-- ===== Section 5: Expected Revenue Streams ===== -->
       <div class="detail-section">
         <h2 class="section-title">
           <span class="section-icon">📈</span>
@@ -197,39 +232,6 @@
         </div>
       </div>
 
-      <!-- ===== Section 5: ROI Analysis ===== -->
-      <div class="detail-section">
-        <h2 class="section-title">
-          <span class="section-icon">💡</span>
-          ROI Analysis
-        </h2>
-        <div v-if="detail.roi" class="roi-grid">
-          <div class="roi-card">
-            <div class="roi-label">Total Investment</div>
-            <div class="roi-value">{{ fmtMoney(detail.roi.totalInvestment) }}</div>
-          </div>
-          <div class="roi-card">
-            <div class="roi-label">Monthly Revenue (weighted)</div>
-            <div class="roi-value">{{ fmtMoney(detail.roi.monthlyRevenueWeighted) }}</div>
-            <div class="roi-sub">Best case: {{ fmtMoney(detail.roi.monthlyRevenueBestCase) }}</div>
-          </div>
-          <div class="roi-card">
-            <div class="roi-label">Break-even (weighted)</div>
-            <div class="roi-value">{{ fmtBreakEven(detail.roi.breakEvenMonthsWeighted) }}</div>
-            <div class="roi-sub">Best case: {{ fmtBreakEven(detail.roi.breakEvenMonthsBest) }}</div>
-          </div>
-          <div class="roi-card">
-            <div class="roi-label">12-month ROI (weighted)</div>
-            <div class="roi-value" :class="roiClass(detail.roi.twelveMonthRoiWeightedPct)">
-              {{ fmtSignedPct(detail.roi.twelveMonthRoiWeightedPct) }}
-            </div>
-            <div class="roi-sub">Best case: {{ fmtSignedPct(detail.roi.twelveMonthRoiBestPct) }}</div>
-          </div>
-        </div>
-        <div v-else class="empty-state">
-          <p>Δεν υπάρχουν στοιχεία αναμενόμενων εσόδων για υπολογισμό ROI.</p>
-        </div>
-      </div>
 
     </div>
   </div>
