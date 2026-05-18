@@ -81,12 +81,10 @@ const ENTITY_OPTIONS_S78 = [
   { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', name: 'House' },
   { id: '50317f44-9961-4fb4-add0-7a118e32dc14', name: 'Next2Me Group' },
 ];
+// S78-HOTFIX-STATUS-APPLIED: only PLANNING + LIVE are accepted by backend
 const STATUS_OPTIONS_S78 = [
-  { value: 'PLANNING',    label: '\u03A3\u03c7\u03b5\u03b4\u03b9\u03b1\u03c3\u03bc\u03cc\u03c2' },
-  { value: 'ACTIVE',      label: '\u0395\u03bd\u03b5\u03c1\u03b3\u03cc' },
-  { value: 'IN_DEV',      label: '\u03a3\u03b5 \u03b1\u03bd\u03ac\u03c0\u03c4\u03c5\u03be\u03b7' },
-  { value: 'COMPLETED',   label: '\u039f\u03bb\u03bf\u03ba\u03bb\u03b7\u03c1\u03c9\u03bc\u03ad\u03bd\u03bf' },
-  { value: 'ARCHIVED',    label: '\u0391\u03c1\u03c7\u03b5\u03b9\u03bf\u03b8\u03b5\u03c4\u03b7\u03bc\u03ad\u03bd\u03bf' },
+  { value: 'PLANNING', label: 'Σχεδιασμός' },
+  { value: 'LIVE',     label: 'Σε Παραγωγή' },
 ];
 
 function resetForm() {
@@ -120,7 +118,7 @@ function openEditModal(p) {
     name: p.name || '',
     description: p.description || '',
     ownerEntityId: p.ownerEntityId || ENTITY_OPTIONS_S78[0].id,
-    status: p.status || 'PLANNING',
+    status: (p.status === 'PLANNING' || p.status === 'LIVE') ? p.status : 'PLANNING', // S78-HOTFIX-STATUS-APPLIED
     totalBudget: Number(p.totalBudget || 0),
     expectedMonthlyRevenue: Number(p.expectedMonthlyRevenue || 0),
     startDate: p.startDate || '',
