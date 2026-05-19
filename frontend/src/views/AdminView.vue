@@ -78,6 +78,7 @@ const ALL_SECTIONS = [
   { key: 'payments',       label: 'Πληρωμές' },
   { key: 'obligations',    label: 'Υποχρεώσεις' },
   { key: 'karteles',       label: 'Καρτέλες' },
+  { key: 'recurring',      label: 'Επαναλαμβανόμενες' },
   { key: 'zip-export',     label: 'ZIP Export' },
   { key: 'reports',        label: 'Αναφορές' },
   { key: 'report-builder', label: 'Report Builder' },

@@ -133,6 +133,7 @@ const navSections = [
       { to: '/payments', section: 'payments',      label: 'Πληρωμές',         icon: 'M2 8h20M2 12h20M5 16h4M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z' },
       { to: '/obligations', section: 'obligations',   label: 'Υποχρεώσεις',      icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z' },
       { to: '/karteles', section: 'karteles',      label: 'Καρτέλες',         icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6' },
+      { to: '/recurring', section: 'recurring',     label: 'Επαναλαμβανόμενες',      icon: 'M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5' },
     ]
   },
   {

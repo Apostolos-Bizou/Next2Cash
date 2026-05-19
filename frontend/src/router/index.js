@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/payments',       component: () => import('@/views/PaymentsView.vue'),      meta: { section: 'payments', title: 'Πληρωμές' } },
     { path: '/obligations',    component: () => import('@/views/ObligationsView.vue'),   meta: { section: 'obligations', title: 'Υποχρεώσεις' } },
     { path: '/karteles',       component: () => import('@/views/KartelesView.vue'),      meta: { section: 'karteles', title: 'Καρτέλες' } },
+  { path: '/recurring',     component: () => import('@/views/RecurringView.vue'),    meta: { section: 'recurring', title: 'Επαναλαμβανόμενες' } },
     { path: '/documents',    component: () => import('@/views/DocumentsView.vue'),    meta: { section: 'zip-export', title: 'Παραστατικά' } },
     { path: '/reports',        component: () => import('@/views/ReportsView.vue'),       meta: { section: 'reports', title: 'Αναφορές' } },
     { path: '/report-builder', component: () => import('@/views/ReportBuilderView.vue'), meta: { section: 'report-builder', title: 'Report Builder' } },
