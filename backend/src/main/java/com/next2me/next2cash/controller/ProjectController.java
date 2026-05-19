@@ -4,6 +4,7 @@ import com.next2me.next2cash.dto.ProjectDTO;
 import com.next2me.next2cash.dto.ProjectDetailDTO;
 import com.next2me.next2cash.model.Project;
 import com.next2me.next2cash.model.Transaction;
+import com.next2me.next2cash.model.ProjectStatus;
 import com.next2me.next2cash.repository.ProjectRepository;
 import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.model.User;
@@ -268,6 +269,15 @@ public class ProjectController {
             response.put("error", "Project with this name already exists");
             return ResponseEntity.status(409).body(response);
         }
+        // S80: proactive status whitelist check (before hitting DB CHECK constraint)
+        if (dto.status != null && !dto.status.isBlank()) {
+            String requested = dto.status.toUpperCase();
+            if (!ProjectStatus.isValid(requested)) {
+                throw new IllegalArgumentException(
+                    "Invalid value '" + dto.status + "' for field 'status'. Allowed: "
+                        + ProjectStatus.validValuesAsString());
+            }
+        }
 
         Project p = new Project();
         p.setName(dto.name);
@@ -312,7 +322,16 @@ public class ProjectController {
         if (dto.name != null && !dto.name.isBlank()) p.setName(dto.name);
         if (dto.description != null) p.setDescription(dto.description);
         if (dto.ownerEntityId != null) p.setOwnerEntityId(dto.ownerEntityId);
-        if (dto.status != null && !dto.status.isBlank()) p.setStatus(dto.status.toUpperCase());
+        // S80: proactive status whitelist check (before hitting DB CHECK constraint)
+        if (dto.status != null && !dto.status.isBlank()) {
+            String requested = dto.status.toUpperCase();
+            if (!ProjectStatus.isValid(requested)) {
+                throw new IllegalArgumentException(
+                    "Invalid value '" + dto.status + "' for field 'status'. Allowed: "
+                        + ProjectStatus.validValuesAsString());
+            }
+            p.setStatus(requested);
+        }
         if (dto.startDate != null) p.setStartDate(dto.startDate);
         if (dto.targetCompletionDate != null) p.setTargetCompletionDate(dto.targetCompletionDate);
         if (dto.actualCompletionDate != null) p.setActualCompletionDate(dto.actualCompletionDate);
