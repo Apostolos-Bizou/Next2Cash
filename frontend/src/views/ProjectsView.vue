@@ -83,8 +83,12 @@ const ENTITY_OPTIONS_S78 = [
 ];
 // S78-HOTFIX-STATUS-APPLIED: only PLANNING + LIVE are accepted by backend
 const STATUS_OPTIONS_S78 = [
-  { value: 'PLANNING', label: 'Σχεδιασμός' },
-  { value: 'LIVE',     label: 'Σε Παραγωγή' },
+  { value: 'PLANNING',       label: 'Σχεδιασμός' },
+  { value: 'IN_DEVELOPMENT', label: 'Υπό Ανάπτυξη' },
+  { value: 'TESTING',        label: 'Δοκιμές' },
+  { value: 'LIVE',           label: 'Σε Παραγωγή' },
+  { value: 'PAUSED',         label: 'Σε Παύση' },
+  { value: 'CANCELLED',      label: 'Ακυρώθηκε' },
 ];
 
 function resetForm() {
