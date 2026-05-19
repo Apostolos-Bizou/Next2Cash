@@ -27,6 +27,9 @@ const PROJECT_COLORS = [
 ]
 const OPEX_COLOR = '#f59e0b'
 
+// S83: Allocation rule "by Role not by Time" — active projects only
+const ACTIVE_PROJECT_STATUSES = ['LIVE', 'IN_DEVELOPMENT']
+
 const loading        = ref(false)
 const error          = ref(null)
 const recurringTxns  = ref([])
@@ -34,6 +37,12 @@ const patterns       = ref([])
 const projects       = ref([])
 const entityKey      = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const scope          = ref('group')
+
+// S83: cost view mode — 'raw' = direct only, 'loaded' = direct + allocated OpEx share
+const recurringMode  = ref(localStorage.getItem('n2c_recurring_mode') || 'raw')
+watch(recurringMode, (v) => {
+  localStorage.setItem('n2c_recurring_mode', v)
+})
 
 const cashOnHand = ref(Number(localStorage.getItem('n2c_cash_on_hand')) || 0)
 watch(cashOnHand, (v) => {
@@ -137,6 +146,45 @@ const filteredTxns = computed(() => {
   return enrichedTxns.value
 })
 
+// S83: Allocation rule — list of projects eligible for OpEx share
+// Active = status LIVE or IN_DEVELOPMENT. PLANNING/TESTING/PAUSED/CANCELLED excluded.
+// IMPORTANT: a project must also appear in the current entity's recurring data
+// (i.e. have at least one tracked txn) to receive a share. This keeps allocation
+// scoped to projects this entity actually funds, not the whole portfolio.
+const activeProjects = computed(() => {
+  const projectIdsWithTxns = new Set(
+    enrichedTxns.value.filter(t => !t.isOpEx && t.projectId).map(t => t.projectId)
+  )
+  return projects.value.filter(p =>
+    p && p.id &&
+    ACTIVE_PROJECT_STATUSES.includes(p.status) &&
+    projectIdsWithTxns.has(p.id)
+  )
+})
+
+// S83: Total OpEx burn (entity-wide, ignores current scope filter)
+const totalOpExBurn = computed(() => {
+  let total = 0
+  for (const t of enrichedTxns.value) {
+    if (t.isOpEx && t.type === 'expense') total += t.monthly
+  }
+  return total
+})
+
+// S83: Equal-split allocation. 0 active projects → 0 share (no division by zero).
+const opExSharePerProject = computed(() => {
+  const n = activeProjects.value.length
+  if (n === 0) return 0
+  return totalOpExBurn.value / n
+})
+
+// S83: Helper — does a given group (key) receive an OpEx share in loaded mode?
+function groupReceivesShare(key, isOpEx) {
+  if (recurringMode.value !== 'loaded') return false
+  if (isOpEx) return false
+  return activeProjects.value.some(p => p.id === key)
+}
+
 const kpis = computed(() => {
   let burn = 0, mrr = 0, burnCount = 0, mrrCount = 0
   for (const t of filteredTxns.value) {
@@ -187,15 +235,23 @@ const perProject = computed(() => {
   }
   if (groups.get(opExKey).burn === 0 && groups.get(opExKey).mrr === 0) groups.delete(opExKey)
   let idx = 0
+  // S83: precompute share once
+  const share = opExSharePerProject.value
+  const activeIds = new Set(activeProjects.value.map(p => p.id))
   const arr = Array.from(groups.values()).map(g => {
-    const net = g.mrr - g.burn
+    // S83: directBurn is always the raw value; allocatedOpEx added only in loaded mode
+    const directBurn = g.burn
+    const receivesShare = recurringMode.value === 'loaded' && !g.isOpEx && activeIds.has(g.key)
+    const allocatedOpEx = receivesShare ? share : 0
+    const totalBurn = directBurn + allocatedOpEx
+    const net = g.mrr - totalBurn
     let status, statusBg, statusFg
     if (g.isOpEx) { status = 'Πάγιο'; statusBg = '#2c2c2a'; statusFg = '#b4b2a9' }
     else if (g.mrr === 0) { status = 'Επένδυση'; statusBg = '#412402'; statusFg = '#FAC775' }
     else if (net >= 0) { status = 'Κερδοφόρο'; statusBg = '#04342C'; statusFg = '#5DCAA5' }
-    else if (g.mrr / g.burn >= 0.5) { status = 'Σε ανάπτυξη'; statusBg = '#1a1633'; statusFg = '#AFA9EC' }
+    else if (totalBurn > 0 && g.mrr / totalBurn >= 0.5) { status = 'Σε ανάπτυξη'; statusBg = '#1a1633'; statusFg = '#AFA9EC' }
     else { status = 'Επένδυση'; statusBg = '#412402'; statusFg = '#FAC775' }
-    return { ...g, net, status, statusBg, statusFg, color: colorForGroup(g.key, idx++) }
+    return { ...g, directBurn, allocatedOpEx, burn: totalBurn, receivesShare, net, status, statusBg, statusFg, color: colorForGroup(g.key, idx++) }
   })
   arr.sort((a, b) => {
     if (a.isOpEx && !b.isOpEx) return -1
@@ -399,6 +455,44 @@ onMounted(loadAll)
         <span class="scope-dot" :style="{ background: g.color }"></span>
         {{ g.label }}
       </button>
+
+      <!-- S83: Cost view mode toggle (right-aligned) -->
+      <div class="mode-toggle-wrap">
+        <span class="mode-toggle-lbl">COST VIEW <span class="lbl-sub">(τρόπος προβολής)</span></span>
+        <div class="mode-toggle">
+          <button
+            class="mode-btn"
+            :class="{ active: recurringMode === 'raw' }"
+            @click="recurringMode = 'raw'"
+            title="Άμεσα κόστη μόνο — όπως καταχωρήθηκαν">
+            <i class="fas fa-bolt"></i> Raw burn
+          </button>
+          <button
+            class="mode-btn"
+            :class="{ active: recurringMode === 'loaded' }"
+            @click="recurringMode = 'loaded'"
+            title="Άμεσα κόστη + κατανεμημένα OpEx (equal split σε active projects)">
+            <i class="fas fa-layer-group"></i> Fully Loaded
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- S83: Allocation banner — shown only in Fully Loaded mode -->
+    <div v-if="recurringTxns.length > 0 && recurringMode === 'loaded'" class="alloc-banner">
+      <i class="fas fa-info-circle"></i>
+      <span v-if="activeProjects.length > 0">
+        <strong>Fully Loaded mode:</strong>
+        OpEx pool <strong>{{ fmtMoney(totalOpExBurn) }}/μήνα</strong>
+        ÷ <strong>{{ activeProjects.length }} active projects</strong>
+        = <strong>{{ fmtMoney(opExSharePerProject) }}/μήνα ανά project</strong>
+        <span class="alloc-sub">(equal split σε projects με status «Σε Παραγωγή» ή «Σε Ανάπτυξη»)</span>
+      </span>
+      <span v-else>
+        <strong>Fully Loaded mode:</strong>
+        Δεν υπάρχουν active projects (LIVE ή IN_DEVELOPMENT) με recurring transactions —
+        η κατανομή OpEx δεν εφαρμόζεται.
+      </span>
     </div>
 
     <div v-if="error" class="err-bar"><i class="fas fa-exclamation-triangle"></i> {{ error }}</div>
@@ -478,14 +572,26 @@ onMounted(loadAll)
         <div class="panel-card">
           <div class="panel-hdr">
             <span class="ptitle">
-              <i class="fas fa-chart-column"></i> Burn vs MRR ανά Project
-              <span class="ptitle-sub">(πόσα κοστίζει vs πόσα φέρνει)</span>
+              <i class="fas fa-chart-column"></i>
+              <span v-if="recurringMode === 'loaded'">Total Cost vs MRR ανά Project</span>
+              <span v-else>Burn vs MRR ανά Project</span>
+              <span class="ptitle-sub" v-if="recurringMode === 'loaded'">(direct + allocated OpEx vs έσοδα)</span>
+              <span class="ptitle-sub" v-else>(πόσα κοστίζει vs πόσα φέρνει)</span>
             </span>
             <span class="pbadge">{{ perProject.length }} groups</span>
           </div>
           <table class="pp-table">
             <thead>
-              <tr>
+              <tr v-if="recurringMode === 'loaded'">
+                <th>PROJECT</th>
+                <th class="num">DIRECT</th>
+                <th class="num">+ ALLOCATED</th>
+                <th class="num">= TOTAL</th>
+                <th class="num">MRR</th>
+                <th class="num">NET</th>
+                <th class="center">STATUS</th>
+              </tr>
+              <tr v-else>
                 <th>PROJECT</th>
                 <th class="num">BURN</th>
                 <th class="num">MRR</th>
@@ -499,7 +605,17 @@ onMounted(loadAll)
                   <span class="proj-dot" :style="{ background: g.color }"></span>
                   {{ g.label }}
                 </td>
-                <td class="num neg">{{ fmtMoney(g.burn) }}</td>
+                <template v-if="recurringMode === 'loaded'">
+                  <td class="num neg">{{ fmtMoney(g.directBurn) }}</td>
+                  <td class="num" :class="g.receivesShare ? 'alloc' : 'muted'">
+                    <span v-if="g.receivesShare">+ {{ fmtMoney(g.allocatedOpEx) }}</span>
+                    <span v-else>—</span>
+                  </td>
+                  <td class="num neg strong">{{ fmtMoney(g.burn) }}</td>
+                </template>
+                <template v-else>
+                  <td class="num neg">{{ fmtMoney(g.burn) }}</td>
+                </template>
                 <td class="num pos" v-if="g.mrr > 0">{{ fmtMoney(g.mrr) }}</td>
                 <td class="num muted" v-else>—</td>
                 <td class="num strong" :style="{ color: g.net >= 0 ? '#10b981' : '#ef4444' }">
@@ -715,6 +831,49 @@ onMounted(loadAll)
 }
 .scope-divider { width: 1px; height: 18px; background: #30363d; margin: 0 4px; }
 
+/* S83: Cost view mode toggle */
+.mode-toggle-wrap {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 8px;
+}
+.mode-toggle-lbl {
+  font-size: 10px; color: #8b949e; letter-spacing: 0.5px;
+  text-transform: uppercase; font-weight: 500;
+}
+.mode-toggle {
+  display: inline-flex; gap: 0;
+  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+  padding: 2px;
+}
+.mode-btn {
+  background: transparent; color: #8b949e;
+  border: none; padding: 5px 10px; border-radius: 4px;
+  font-size: 11px; cursor: pointer; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: all 0.15s;
+}
+.mode-btn:hover { color: #e4e6eb; }
+.mode-btn.active {
+  background: #06b6d4; color: #fff;
+}
+.mode-btn i { font-size: 10px; }
+
+/* S83: Allocation banner (shown in Fully Loaded mode) */
+.alloc-banner {
+  background: rgba(6,182,212,0.08);
+  border: 1px solid rgba(6,182,212,0.3);
+  color: #79c0ff;
+  border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;
+  font-size: 12px; display: flex; align-items: center; gap: 10px;
+  line-height: 1.5;
+}
+.alloc-banner i { color: #06b6d4; font-size: 14px; flex-shrink: 0; }
+.alloc-banner strong { color: #e4e6eb; font-weight: 600; }
+.alloc-sub {
+  display: block; font-size: 11px; color: #8b949e;
+  font-style: italic; margin-top: 2px;
+}
+
 .err-bar {
   background: #3d1a1a; color: #ff8a80;
   border: 1px solid #5c2626; border-radius: 8px;
@@ -801,6 +960,8 @@ onMounted(loadAll)
 .pp-table td.pos { color: #10b981; }
 .pp-table td.muted { color: #5f7d9a; }
 .pp-table td.strong { font-weight: 600; }
+/* S83: allocated OpEx column */
+.pp-table td.alloc { color: #f59e0b; font-weight: 500; }
 .proj-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
 .status-pill { font-size: 10px; padding: 2px 8px; border-radius: 4px; }
 
