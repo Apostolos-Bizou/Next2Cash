@@ -266,7 +266,7 @@ async function loadDetail() {
 
     // Fetch entities for owner name lookup (best-effort, not blocking)
     try {
-      const entRes = await api.get('/api/entities')
+      const entRes = await api.get('/api/config/entities')
       if (entRes.data && Array.isArray(entRes.data.data)) {
         entities.value = entRes.data.data
       } else if (Array.isArray(entRes.data)) {
