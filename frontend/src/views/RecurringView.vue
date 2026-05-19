@@ -478,20 +478,26 @@ onMounted(loadAll)
       </div>
     </div>
 
-    <!-- S83: Allocation banner — shown only in Fully Loaded mode -->
-    <div v-if="recurringTxns.length > 0 && recurringMode === 'loaded'" class="alloc-banner">
+    <!-- S83 fix: Allocation banner — always shown in Fully Loaded mode (regardless of data) -->
+    <div v-if="recurringMode === 'loaded'" class="alloc-banner">
       <i class="fas fa-info-circle"></i>
-      <span v-if="activeProjects.length > 0">
+      <span v-if="activeProjects.length === 0">
+        <strong>Fully Loaded mode:</strong>
+        Δεν υπάρχουν active projects (LIVE ή IN_DEVELOPMENT) με recurring transactions —
+        η κατανομή OpEx δεν εφαρμόζεται.
+      </span>
+      <span v-else-if="totalOpExBurn === 0">
+        <strong>Fully Loaded mode:</strong>
+        OpEx pool = <strong>0 €/μήνα</strong> — όλα τα κόστη είναι ήδη project-specific,
+        δεν υπάρχει κάτι για κατανομή.
+        <span class="alloc-sub">({{ activeProjects.length }} active projects)</span>
+      </span>
+      <span v-else>
         <strong>Fully Loaded mode:</strong>
         OpEx pool <strong>{{ fmtMoney(totalOpExBurn) }}/μήνα</strong>
         ÷ <strong>{{ activeProjects.length }} active projects</strong>
         = <strong>{{ fmtMoney(opExSharePerProject) }}/μήνα ανά project</strong>
         <span class="alloc-sub">(equal split σε projects με status «Σε Παραγωγή» ή «Σε Ανάπτυξη»)</span>
-      </span>
-      <span v-else>
-        <strong>Fully Loaded mode:</strong>
-        Δεν υπάρχουν active projects (LIVE ή IN_DEVELOPMENT) με recurring transactions —
-        η κατανομή OpEx δεν εφαρμόζεται.
       </span>
     </div>
 
