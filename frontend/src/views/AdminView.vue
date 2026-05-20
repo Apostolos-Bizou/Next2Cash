@@ -84,6 +84,7 @@ const ALL_SECTIONS = [
   { key: 'report-builder', label: 'Report Builder' },
   { key: 'ai-analysis',    label: 'AI Ανάλυση' },
   { key: 'projects',       label: 'Projects Portfolio' },
+  { key: 'investor-reports', label: '\uD83D\uDC8E Investor Reports' },
   { key: 'admin',          label: 'Admin Panel' },
   { key: 'admin-categories', label: 'Κατηγορίες (Admin)' },
   { key: 'admin-accounts',   label: 'Λογαριασμοί (Admin)' },

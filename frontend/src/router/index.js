@@ -19,6 +19,7 @@ const router = createRouter({
     { path: '/projects',       component: () => import('@/views/ProjectsView.vue'),       meta: { section: 'projects', title: 'Projects' } },
     { path: '/projects/:id',   component: () => import('@/views/ProjectDetailView.vue'), meta: { section: 'projects', title: 'Project Detail' } },
     { path: '/admin',          component: () => import('@/views/AdminView.vue'),         meta: { section: 'admin', title: 'Admin Panel' } },
+    { path: '/investor-reports', component: () => import('@/views/ForecastView.vue'),   meta: { section: 'investor-reports', title: 'Investor Reports' } },
   ]
 })
 
@@ -37,12 +38,13 @@ const SECTION_TO_ROUTE = {
   'ai-analysis': '/ai-analysis',
   'projects': '/projects',
   'admin': '/admin',
+  'investor-reports': '/investor-reports',
   'admin-categories': '/admin',
   'admin-accounts': '/admin',
   'admin-banks': '/admin',
   'admin-audit': '/admin',
 }
-const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'report-builder', 'ai-analysis', 'projects', 'zip-export', 'admin']
+const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'report-builder', 'ai-analysis', 'projects', 'investor-reports', 'zip-export', 'admin']
 
 function firstAllowedRoute(allowed) {
   if (!Array.isArray(allowed) || allowed.length === 0) return '/dashboard'
