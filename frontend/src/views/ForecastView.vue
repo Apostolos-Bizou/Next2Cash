@@ -37,6 +37,7 @@ const entityKey = ref(localStorage.getItem('n2c_entity') || 'next2megroup')
 watch(entityKey, (v) => {
   localStorage.setItem('n2c_entity', v)
   loadForecast()
+  loadProjects()
 })
 
 const HORIZON_OPTIONS = [
@@ -150,6 +151,20 @@ async function loadForecast() {
     forecast.value = null
   } finally {
     loading.value = false
+  }
+}
+
+/* Load projects for current entity to surface LIVE projects with zero entries in breakdown */
+const projects = ref([])
+async function loadProjects() {
+  try {
+    const res = await api.get('/api/projects', {
+      params: { entityId: currentEntityId.value }
+    })
+    const list = Array.isArray(res.data) ? res.data : (res.data?.data || [])
+    projects.value = list
+  } catch (e) {
+    projects.value = []
   }
 }
 
@@ -316,9 +331,33 @@ const projectBreakdown = computed(() => {
     else row.expense += amt
     row.entries += 1
   }
+
+  // Surface LIVE projects that have no entries yet (visibility for investors)
+  for (const p of projects.value) {
+    const status = String(p.status || '').toUpperCase()
+    if (status !== 'LIVE') continue
+    if (map.has(p.id)) continue
+    map.set(p.id, {
+      key: p.id,
+      name: p.name || 'Unnamed Project',
+      status: 'LIVE',
+      color: p.color || '#10b981',
+      income: 0,
+      expense: 0,
+      entries: 0,
+      isOpex: false,
+    })
+  }
+
+  // Sort: LIVE projects first, then by absolute net (descending)
   return Array.from(map.values())
     .map(r => ({ ...r, net: r.income - r.expense }))
-    .sort((a, b) => b.expense - a.expense)
+    .sort((a, b) => {
+      const aLive = a.status === 'LIVE' ? 1 : 0
+      const bLive = b.status === 'LIVE' ? 1 : 0
+      if (aLive !== bLive) return bLive - aLive
+      return Math.abs(b.net) - Math.abs(a.net)
+    })
 })
 
 /* ----------------------------------------------------------------
@@ -352,7 +391,7 @@ onMounted(async () => {
   if (!entities.value.find(e => e.key === entityKey.value)) {
     entityKey.value = entities.value[0]?.key || 'next2megroup'
   }
-  await loadForecast()
+  await Promise.all([loadForecast(), loadProjects()])
 })
 </script>
 
