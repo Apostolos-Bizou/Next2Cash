@@ -150,6 +150,7 @@ const navSections = [
       { to: '/ai-analysis', section: 'ai-analysis',    label: 'AI Ανάλυση',      icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3', badge: 'NEW' },
       { to: '/projects', section: 'projects',       label: 'Projects',        icon: 'M3 7h18M3 12h18M3 17h18M7 4v16M17 4v16', badge: 'NEW' },
       { to: '/investor-reports', section: 'investor-reports', label: '\uD83D\uDC8E Investor Reports', icon: 'M6 3h12l4 6-10 13L2 9z', badge: 'NEW' },
+      { to: '/pricing-calculator', section: 'pricing-calculator', label: '\uD83D\uDCB0 Pricing Calculator', icon: 'M12 8v8M9 12h6M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', badge: 'NEW' },
     ]
   },
   {
