@@ -4,6 +4,7 @@
 // Spent/progress calculations are intentional placeholders until S71-D backend aggregation.
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api'
+import { isViewer } from '@/stores/entityScope'
 
 // ── State ───────────────────────────────────────────────────────────
 const loading = ref(false)
@@ -39,7 +40,8 @@ const SORT_OPTIONS = [
 
 const statusFilter = ref('all')
 const sortBy = ref('name')
-const showInactive = ref(false)
+const isViewerProjectsRO = computed(() => isViewer())
+const showInactive = ref(false)  // viewers can never toggle this on
 
 // S78-PROJECTS-CRUD-APPLIED: admin state + modal state
 function getCurrentUserFromStorage() {
@@ -340,6 +342,7 @@ async function loadProjects() {
 
 // Reload when showInactive toggle changes
 async function toggleInactive() {
+  if (isViewerProjectsRO.value) return  // viewers cannot toggle
   showInactive.value = !showInactive.value
   await loadProjects()
 }
@@ -375,7 +378,7 @@ onMounted(loadProjects)
         </select>
       </div>
       <div class="filter-group">
-        <button class="toggle-btn" :class="{ active: showInactive }" @click="toggleInactive">
+        <button v-if="!isViewerProjectsRO" class="toggle-btn" :class="{ active: showInactive }" @click="toggleInactive">
           {{ showInactive ? '✓ ' : '' }}Συμπερίληψη ανενεργών
         </button>
       </div>
