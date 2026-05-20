@@ -426,21 +426,21 @@ onMounted(async () => {
       <div class="kpi-grid">
         <div class="kpi-card kpi-card--income">
           <div class="kpi-card__label">TOTAL INCOME</div>
-          <div class="kpi-card__sublabel"><em>(σύνολο αναμενόμενων εσόδων στο horizon)</em></div>
+          <div class="kpi-card__sublabel"><em>(σύνολο αναμενόμενων εσόδων στον ορίζοντα)</em></div>
           <div class="kpi-card__value">{{ fmtEur(totalIncome) }}</div>
           <div class="kpi-card__hint">~ {{ fmtEur(monthlyMrr) }} / month (MRR)</div>
         </div>
 
         <div class="kpi-card kpi-card--expense">
           <div class="kpi-card__label">TOTAL EXPENSES</div>
-          <div class="kpi-card__sublabel"><em>(σύνολο αναμενόμενων εξόδων στο horizon)</em></div>
+          <div class="kpi-card__sublabel"><em>(σύνολο αναμενόμενων εξόδων στον ορίζοντα)</em></div>
           <div class="kpi-card__value">{{ fmtEur(totalExpenses) }}</div>
           <div class="kpi-card__hint">~ {{ fmtEur(monthlyBurn) }} / month (burn)</div>
         </div>
 
         <div class="kpi-card" :class="'kpi-card--' + netStatus.cls">
           <div class="kpi-card__label">NET CASH FLOW</div>
-          <div class="kpi-card__sublabel"><em>(income - expenses)</em></div>
+          <div class="kpi-card__sublabel"><em>(έσοδα μείον έξοδα)</em></div>
           <div class="kpi-card__value">{{ fmtEurSigned(netCashFlow) }}</div>
           <div class="kpi-card__hint">{{ netStatus.label }}</div>
         </div>
@@ -800,52 +800,48 @@ onMounted(async () => {
 .forecast__table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 15px;
-  color: #ffffff;
+  font-size: 14px;
 }
 .forecast__table thead th {
   text-align: left;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 13px;
-  font-weight: 700;
-  color: #ffffff;
-  padding: 12px 14px;
-  border-bottom: 2px solid #475569;
-  background: #0f172a;
+  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  padding: 10px 12px;
+  border-bottom: 1px solid #334155;
 }
 .forecast__table tbody td {
-  padding: 11px 14px;
-  border-bottom: 1px solid #334155;
-  color: #ffffff;
-  font-weight: 500;
+  padding: 10px 12px;
+  border-bottom: 1px solid #1e293b;
+  color: #e2e8f0;
 }
 .forecast__table tbody tr:hover { background: #0f172a; }
 .text-right { text-align: right; }
-.muted { color: #cbd5e1; font-weight: 500; }
-.income { color: #34d399; font-weight: 600; }
-.expense { color: #f87171; font-weight: 600; }
+.muted { color: #94a3b8; }
+.income { color: #10b981; }
+.expense { color: #ef4444; }
 
 .dot {
   display: inline-block;
-  width: 12px; height: 12px;
+  width: 10px; height: 10px;
   border-radius: 50%;
 }
 .status-pill {
   display: inline-block;
-  margin-left: 10px;
-  padding: 4px 10px;
-  background: #047857;
-  color: #ffffff;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #134e4a;
+  color: #6ee7b7;
   border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .status-pill--opex {
-  background: #b45309;
-  color: #ffffff;
+  background: #78350f;
+  color: #fcd34d;
 }
 
 .forecast__filters {
