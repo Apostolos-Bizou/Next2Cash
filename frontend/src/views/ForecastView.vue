@@ -819,6 +819,9 @@ onMounted(async () => {
 }
 .forecast__table tbody tr:hover { background: #0f172a; }
 .text-right { text-align: right; }
+.forecast__table tbody td.muted { color: #94a3b8; }
+.forecast__table tbody td.income { color: #10b981; }
+.forecast__table tbody td.expense { color: #ef4444; }
 .muted { color: #94a3b8; }
 .income { color: #10b981; }
 .expense { color: #ef4444; }
