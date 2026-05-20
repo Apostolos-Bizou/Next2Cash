@@ -4,14 +4,14 @@
     <!-- ===== Loading State ===== -->
     <div v-if="loading" class="state-block">
       <div class="spinner"></div>
-      <p>Ξ¦ΟΟΟ„Ο‰ΟƒΞ· Ξ»ΞµΟ€Ο„ΞΏΞΌΞµΟΞµΞΉΟΞ½β€¦</p>
+      <p>Φόρτωση λεπτομερειών…</p>
     </div>
 
     <!-- ===== Error State ===== -->
     <div v-else-if="error" class="state-block error">
-      <p>β  {{ error }}</p>
+      <p>⚠ {{ error }}</p>
       <router-link to="/projects" class="btn-back">
-        β† Ξ•Ο€ΞΉΟƒΟ„ΟΞΏΟ†Ξ® ΟƒΟ„Ξ± Projects
+        ← Επιστροφή στα Projects
       </router-link>
     </div>
 
@@ -22,12 +22,12 @@
       <div class="detail-header">
         <div class="header-top">
           <router-link to="/projects" class="btn-back">
-            β† Ξ•Ο€ΞΉΟƒΟ„ΟΞΏΟ†Ξ®
+            ← Επιστροφή
           </router-link>
         </div>
         <div class="header-main">
           <div class="header-title">
-            <span class="header-icon">π“</span>
+            <span class="header-icon">📁</span>
             <h1>{{ detail.project.name }}</h1>
             <span class="status-badge" :class="statusClass(detail.project.status)">
               {{ statusLabel(detail.project.status) }}
@@ -38,23 +38,23 @@
           </div>
           <div class="header-meta">
             <div class="meta-item">
-              <span class="meta-label">ΞΞ½ΞΏΞΌΞ± Ξ•Ο„Ξ±ΞΉΟΞµΞ―Ξ±Ο‚:</span>
+              <span class="meta-label">Όνομα Εταιρείας:</span>
               <span class="meta-value">{{ ownerEntityName }}</span>
             </div>
             <div class="meta-item">
-              <span class="meta-label">ΞΞ½Ξ±ΟΞΎΞ·:</span>
+              <span class="meta-label">Έναρξη:</span>
               <span class="meta-value">{{ fmtDate(detail.project.startDate) }}</span>
             </div>
             <div class="meta-item">
-              <span class="meta-label">Ξ£Ο„ΟΟ‡ΞΏΟ‚ ΞΞ»ΞΏΞΊΞ»Ξ®ΟΟ‰ΟƒΞ·Ο‚:</span>
+              <span class="meta-label">Στόχος Ολοκλήρωσης:</span>
               <span class="meta-value">{{ fmtDate(detail.project.targetCompletionDate) }}</span>
             </div>
           </div>
           <div v-if="detail.totals.progressPct !== null" class="progress-block">
             <div class="progress-label">
-              {{ fmtPct(detail.totals.progressPct) }} ΟƒΟ€Ξ±Ο„Ξ±Ξ»Ξ·ΞΌΞ­Ξ½ΞΏ
+              {{ fmtPct(detail.totals.progressPct) }} σπαταλημένο
               <span v-if="timelinePct !== null" class="progress-secondary">
-                / {{ timelinePct }}% Ο„ΞΏΟ… Ο‡ΟΞΏΞ½ΞΏΞ΄ΞΉΞ±Ξ³ΟΞ¬ΞΌΞΌΞ±Ο„ΞΏΟ‚
+                / {{ timelinePct }}% του χρονοδιαγράμματος
               </span>
             </div>
             <div class="progress-bar">
@@ -68,7 +68,7 @@
       <!-- ===== Section 2: ROI Analysis (moved to top per CEO request) ===== -->
       <div class="detail-section">
         <h2 class="section-title">
-          <span class="section-icon">π’΅</span>
+          <span class="section-icon">💡</span>
           ROI Analysis
         </h2>
         <div v-if="detail.roi" class="roi-grid">
@@ -95,21 +95,21 @@
           </div>
         </div>
         <div v-else class="empty-state">
-          <p>Ξ”ΞµΞ½ Ο…Ο€Ξ¬ΟΟ‡ΞΏΟ…Ξ½ ΟƒΟ„ΞΏΞΉΟ‡ΞµΞ―Ξ± Ξ±Ξ½Ξ±ΞΌΞµΞ½ΟΞΌΞµΞ½Ο‰Ξ½ ΞµΟƒΟΞ΄Ο‰Ξ½ Ξ³ΞΉΞ± Ο…Ο€ΞΏΞ»ΞΏΞ³ΞΉΟƒΞΌΟ ROI.</p>
+          <p>Δεν υπάρχουν στοιχεία αναμενόμενων εσόδων για υπολογισμό ROI.</p>
         </div>
       </div>
 
       <!-- ===== Section 3: Budget Breakdown ===== -->
       <div class="detail-section">
         <h2 class="section-title">
-          <span class="section-icon">π’Έ</span>
+          <span class="section-icon">💸</span>
           Budget Breakdown
         </h2>
         <div v-if="detail.budgetBreakdown && detail.budgetBreakdown.length > 0" class="table-wrap">
           <table class="data-table">
             <thead>
               <tr>
-                <th>ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±</th>
+                <th>Κατηγορία</th>
                 <th class="num">Planned</th>
                 <th class="num">Spent</th>
                 <th class="num">Remaining</th>
@@ -119,30 +119,30 @@
             <tbody>
               <tr v-for="row in detail.budgetBreakdown" :key="row.category">
                 <td>{{ row.category }}</td>
-                <td class="num">{{ row.planned === null ? 'β€”' : fmtMoney(row.planned) }}</td>
+                <td class="num">{{ row.planned === null ? '—' : fmtMoney(row.planned) }}</td>
                 <td class="num">{{ fmtMoney(row.spent) }}</td>
-                <td class="num">{{ row.remaining === null ? 'β€”' : fmtMoney(row.remaining) }}</td>
+                <td class="num">{{ row.remaining === null ? '—' : fmtMoney(row.remaining) }}</td>
                 <td class="num">
-                  <span v-if="row.progressPct === null">β€”</span>
+                  <span v-if="row.progressPct === null">—</span>
                   <span v-else>{{ fmtPct(row.progressPct) }}</span>
                 </td>
               </tr>
             </tbody>
             <tfoot>
               <tr class="totals-row">
-                <td><strong>Ξ£Ξ¥ΞΞΞ›Ξ</strong></td>
-                <td class="num"><strong>{{ detail.totals.planned === null ? 'β€”' : fmtMoney(detail.totals.planned) }}</strong></td>
+                <td><strong>ΣΥΝΟΛΟ</strong></td>
+                <td class="num"><strong>{{ detail.totals.planned === null ? '—' : fmtMoney(detail.totals.planned) }}</strong></td>
                 <td class="num"><strong>{{ fmtMoney(detail.totals.spent) }}</strong></td>
-                <td class="num"><strong>{{ detail.totals.remaining === null ? 'β€”' : fmtMoney(detail.totals.remaining) }}</strong></td>
-                <td class="num"><strong>{{ detail.totals.progressPct === null ? 'β€”' : fmtPct(detail.totals.progressPct) }}</strong></td>
+                <td class="num"><strong>{{ detail.totals.remaining === null ? '—' : fmtMoney(detail.totals.remaining) }}</strong></td>
+                <td class="num"><strong>{{ detail.totals.progressPct === null ? '—' : fmtPct(detail.totals.progressPct) }}</strong></td>
               </tr>
             </tfoot>
           </table>
         </div>
         <div v-else class="empty-state">
-          <p>Ξ”ΞµΞ½ Ξ­Ο‡ΞΏΟ…Ξ½ ΟƒΟ…Ξ½Ξ΄ΞµΞΈΞµΞ― ACTUAL Ξ­ΞΎΞΏΞ΄Ξ± ΟƒΞµ Ξ±Ο…Ο„Ο Ο„ΞΏ project.</p>
+          <p>Δεν έχουν συνδεθεί ACTUAL έξοδα σε αυτό το project.</p>
           <p class="hint">
-            Ξ¤ΞΏ ΟƒΟ…Ξ½ΞΏΞ»ΞΉΞΊΟ planned budget: {{ fmtMoney(detail.totals.planned) }}.
+            Το συνολικό planned budget: {{ fmtMoney(detail.totals.planned) }}.
           </p>
         </div>
       </div>
@@ -150,8 +150,8 @@
       <!-- ===== Section 4: Linked Transactions ===== -->
       <div class="detail-section">
         <h2 class="section-title">
-          <span class="section-icon">π“‹</span>
-          Ξ£Ο…Ξ½Ξ΄ΞµΞ΄ΞµΞΌΞ­Ξ½ΞµΟ‚ ΞΞΉΞ½Ξ®ΟƒΞµΞΉΟ‚
+          <span class="section-icon">📋</span>
+          Συνδεδεμένες Κινήσεις
           <span class="section-count">({{ detail.linkedTransactions.count }})</span>
         </h2>
         <div v-if="detail.linkedTransactions.count > 0" class="table-wrap">
@@ -159,11 +159,11 @@
             <thead>
               <tr>
                 <th>#</th>
-                <th>Ξ—ΞΌ/Ξ½Ξ―Ξ±</th>
-                <th>Ξ ΞµΟΞΉΞ³ΟΞ±Ο†Ξ®</th>
-                <th>ΞΞ±Ο„Ξ·Ξ³ΞΏΟΞ―Ξ±</th>
-                <th>Ξ¤ΟΟ€ΞΏΟ‚</th>
-                <th class="num">Ξ ΞΏΟƒΟ</th>
+                <th>Ημ/νία</th>
+                <th>Περιγραφή</th>
+                <th>Κατηγορία</th>
+                <th>Τύπος</th>
+                <th class="num">Ποσό</th>
               </tr>
             </thead>
             <tbody>
@@ -174,13 +174,13 @@
                 <td>{{ fmtDate(tx.docDate) }}</td>
                 <td>
                   <span v-if="tx.entryMode === 'PLANNED'" class="planned-badge"
-                        title="Ξ ΟΞΏΞ³ΟΞ±ΞΌΞΌΞ±Ο„ΞΉΟƒΞΌΞ­Ξ½Ξ· ΞΊΞ±Ο„Ξ±Ο‡ΟΟΞ·ΟƒΞ·">π“‹</span>
-                  {{ tx.description || 'β€”' }}
+                        title="Προγραμματισμένη καταχώρηση">📋</span>
+                  {{ tx.description || '—' }}
                 </td>
-                <td>{{ tx.category || 'β€”' }}</td>
+                <td>{{ tx.category || '—' }}</td>
                 <td>
                   <span class="type-badge" :class="'type-' + tx.type">
-                    {{ tx.type === 'income' ? 'ΞΟƒΞΏΞ΄ΞΏ' : 'ΞΞΎΞΏΞ΄ΞΏ' }}
+                    {{ tx.type === 'income' ? 'Έσοδο' : 'Έξοδο' }}
                   </span>
                 </td>
                 <td class="num">{{ fmtMoney(tx.amount) }}</td>
@@ -188,26 +188,26 @@
             </tbody>
           </table>
           <p v-if="detail.linkedTransactions.count >= 50" class="table-note">
-            Ξ•ΞΌΟ†Ξ±Ξ½Ξ―Ξ¶ΞΏΞ½Ο„Ξ±ΞΉ ΞΏΞΉ 50 Ο€ΞΉΟ± Ο€ΟΟΟƒΟ†Ξ±Ο„ΞµΟ‚.
+            Εμφανίζονται οι 50 πιϱ πρόσφατες.
           </p>
         </div>
         <div v-else class="empty-state">
-          <p>Ξ”ΞµΞ½ Ο…Ο€Ξ¬ΟΟ‡ΞΏΟ…Ξ½ ΟƒΟ…Ξ½Ξ΄ΞµΞ΄ΞµΞΌΞ­Ξ½ΞµΟ‚ ΞΊΞΉΞ½Ξ®ΟƒΞµΞΉΟ‚.</p>
+          <p>Δεν υπάρχουν συνδεδεμένες κινήσεις.</p>
         </div>
       </div>
 
       <!-- ===== Section 5: Expected Revenue Streams ===== -->
       <div class="detail-section">
         <h2 class="section-title">
-          <span class="section-icon">π“</span>
-          Ξ‘Ξ½Ξ±ΞΌΞµΞ½ΟΞΌΞµΞ½Ξ± ΞΟƒΞΏΞ΄Ξ±
+          <span class="section-icon">📈</span>
+          Αναμενόμενα Έσοδα
         </h2>
         <div v-if="detail.revenueStreams && detail.revenueStreams.length > 0" class="table-wrap">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Ξ Ξ·Ξ³Ξ®</th>
-                <th class="num">Ξ ΞΏΟƒΟ / ΞΌΞ®Ξ½Ξ±</th>
+                <th>Πηγή</th>
+                <th class="num">Ποσό / μήνα</th>
                 <th class="num">Confidence</th>
               </tr>
             </thead>
@@ -221,14 +221,14 @@
             <tfoot>
               <tr class="totals-row">
                 <td><strong>Weighted total</strong></td>
-                <td class="num"><strong>{{ fmtMoney(detail.weightedMonthlyRevenue) }} / ΞΌΞ®Ξ½Ξ±</strong></td>
+                <td class="num"><strong>{{ fmtMoney(detail.weightedMonthlyRevenue) }} / μήνα</strong></td>
                 <td></td>
               </tr>
             </tfoot>
           </table>
         </div>
         <div v-else class="empty-state">
-          <p>Ξ”ΞµΞ½ Ο…Ο€Ξ¬ΟΟ‡ΞΏΟ…Ξ½ ΟƒΟ„ΞΏΞΉΟ‡ΞµΞ―Ξ± Ξ±Ξ½Ξ±ΞΌΞµΞ½ΟΞΌΞµΞ½Ο‰Ξ½ ΞµΟƒΟΞ΄Ο‰Ξ½.</p>
+          <p>Δεν υπάρχουν στοιχεία αναμενόμενων εσόδων.</p>
         </div>
       </div>
 
@@ -289,16 +289,16 @@ async function loadDetail() {
 
 onMounted(loadDetail)
 
-// S87.10: reload when route param changes (component is reused across /projects/:id)
+// S87.10: reload when route param changes (Vue Router reuses the component instance)
 watch(projectId, () => { loadDetail() })
 
 // ----- Computed: owner entity name --------------------------------
 const ownerEntityName = computed(() => {
-  if (!detail.value || !detail.value.project) return 'β€”'
+  if (!detail.value || !detail.value.project) return '—'
   const eid = detail.value.project.ownerEntityId
-  if (!eid) return 'β€”'
+  if (!eid) return '—'
   const ent = entities.value.find(x => x.id === eid)
-  return ent ? (ent.name || 'β€”') : 'β€”'
+  return ent ? (ent.name || '—') : '—'
 })
 
 // ----- Computed: timeline progress percent ------------------------
@@ -316,9 +316,9 @@ const timelinePct = computed(() => {
 
 // ----- Formatting helpers -----------------------------------------
 function fmtMoney(v) {
-  if (v === null || v === undefined) return 'β€”'
+  if (v === null || v === undefined) return '—'
   const n = parseFloat(v)
-  if (!isFinite(n)) return 'β€”'
+  if (!isFinite(n)) return '—'
   return new Intl.NumberFormat('el-GR', {
     style: 'currency',
     currency: 'EUR',
@@ -328,22 +328,22 @@ function fmtMoney(v) {
 }
 
 function fmtPct(v) {
-  if (v === null || v === undefined) return 'β€”'
+  if (v === null || v === undefined) return '—'
   const n = parseFloat(v)
-  if (!isFinite(n)) return 'β€”'
+  if (!isFinite(n)) return '—'
   return n.toFixed(0) + '%'
 }
 
 function fmtSignedPct(v) {
-  if (v === null || v === undefined) return 'β€”'
+  if (v === null || v === undefined) return '—'
   const n = parseFloat(v)
-  if (!isFinite(n)) return 'β€”'
+  if (!isFinite(n)) return '—'
   const sign = n >= 0 ? '+' : ''
   return sign + n.toFixed(0) + '%'
 }
 
 function fmtDate(v) {
-  if (!v) return 'β€”'
+  if (!v) return '—'
   try {
     const d = new Date(v)
     if (isNaN(d.getTime())) return v
@@ -355,13 +355,13 @@ function fmtDate(v) {
 }
 
 function fmtBreakEven(months) {
-  if (months === null || months === undefined) return 'β€”'
+  if (months === null || months === undefined) return '—'
   const n = parseFloat(months)
-  if (!isFinite(n)) return 'β€”'
+  if (!isFinite(n)) return '—'
   // round to 1 decimal if not whole; otherwise integer
   const rounded = Math.round(n * 10) / 10
   // Use "~" prefix to indicate approximation, as in spec
-  return '~' + rounded.toFixed(rounded % 1 === 0 ? 0 : 1) + ' ΞΌΞ®Ξ½ΞµΟ‚'
+  return '~' + rounded.toFixed(rounded % 1 === 0 ? 0 : 1) + ' μήνες'
 }
 
 function clampPct(v) {
@@ -377,7 +377,7 @@ function roiClass(v) {
 }
 
 function statusLabel(s) {
-  if (!s) return 'β€”'
+  if (!s) return '—'
   const map = {
     'IN_DEVELOPMENT': 'In Development',
     'COMPLETED': 'Completed',
