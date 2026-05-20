@@ -3,6 +3,7 @@ package com.next2me.next2cash.service;
 import com.next2me.next2cash.dto.ForecastEntryDTO;
 import com.next2me.next2cash.dto.ForecastResponse;
 import com.next2me.next2cash.model.Project;
+import com.next2me.next2cash.model.ProjectStatus;
 import com.next2me.next2cash.model.RecurrencePattern;
 import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.repository.ProjectRepository;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -26,9 +28,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * ForecastService — orchestrates virtual cash flow forecasts.
+ * ForecastService -- orchestrates virtual cash flow forecasts.
  *
- * Created in S85 (Forecast Engine, May 2026). Phase A (minimal):
+ * Created in S85 (Forecast Engine, May 2026).
+ *
+ * Phase A (S85 Step A):
  *   - Loads PLANNED + isRecurring=true mother transactions for an entity
  *   - For each mother, fetches its RecurrencePattern
  *   - Calls RecurrenceEngineService.materializeForecastInstances() to expand
@@ -36,10 +40,16 @@ import java.util.UUID;
  *   - Enriches each instance with denormalized project info
  *   - Aggregates totals
  *
- * Income from project.expectedMonthlyRevenue is intentionally OUT OF SCOPE
- * for Phase A; it lands in Phase B.
+ * Phase B (S85 Step B, this session):
+ *   - Adds virtual INCOME entries from Project.expectedMonthlyRevenue
+ *   - Only LIVE projects participate (status == "LIVE")
+ *   - Income occurs monthly on the day-of-month derived from project.startDate
+ *     (or today's day if startDate is null), clamped for short months
+ *   - Generation window: max(project.startDate, today) -> today + horizonMonths
+ *   - Source-of-revenue entries carry projectId, but patternId/motherTransactionId
+ *     are null (they originate from project metadata, not a recurring mother)
  *
- * The orchestrator is read-only — it never writes to the database.
+ * The orchestrator is read-only -- it never writes to the database.
  */
 @Service
 @RequiredArgsConstructor
@@ -53,6 +63,12 @@ public class ForecastService {
 
     static final int MAX_HORIZON_MONTHS = 120;
     static final int DEFAULT_HORIZON_MONTHS = 24;
+
+    // Constants for project-revenue virtual entries (Phase B)
+    private static final String INCOME_TYPE = "income";
+    private static final String INCOME_CATEGORY = "Project Revenue";
+    private static final String INCOME_FREQUENCY = "MONTHLY";
+    private static final String INCOME_DESCRIPTION_PREFIX = "Expected revenue: ";
 
     private final TransactionRepository transactionRepository;
     private final RecurrencePatternRepository recurrencePatternRepository;
@@ -72,6 +88,7 @@ public class ForecastService {
         int months = clampHorizon(horizonMonths);
         int horizonDays = months * DAYS_PER_MONTH_UPPER;
         LocalDate asOf = LocalDate.now();
+        LocalDate horizonEnd = asOf.plusMonths(months);
 
         log.info("Forecast requested: entityId={}, horizonMonths={}, asOf={}",
                 entityId, months, asOf);
@@ -91,27 +108,25 @@ public class ForecastService {
 
         log.info("Found {} mother transactions for entity {}", mothers.size(), entityId);
 
-        if (mothers.isEmpty()) {
-            return emptyResponse(entityId, asOf, months, horizonDays);
-        }
-
-        // 2) Bulk-load needed patterns by id
-        Set<UUID> patternIds = mothers.stream()
-                .map(Transaction::getRecurrencePatternId)
-                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
-
+        // 2) Bulk-load needed patterns by id (only if we have mothers)
         Map<UUID, RecurrencePattern> patternMap = new HashMap<>();
-        for (RecurrencePattern p : recurrencePatternRepository.findAllById(patternIds)) {
-            patternMap.put(p.getId(), p);
+        if (!mothers.isEmpty()) {
+            Set<UUID> patternIds = mothers.stream()
+                    .map(Transaction::getRecurrencePatternId)
+                    .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+            for (RecurrencePattern p : recurrencePatternRepository.findAllById(patternIds)) {
+                patternMap.put(p.getId(), p);
+            }
         }
 
-        // 3) Bulk-load projects for this entity (denormalization source)
+        // 3) Bulk-load projects for this entity (used for both denormalization
+        //    in Phase A expense block AND as the source for Phase B income block)
         Map<UUID, Project> projectMap = new HashMap<>();
         for (Project p : projectRepository.findByOwnerEntityIdIn(Set.of(entityId))) {
             projectMap.put(p.getId(), p);
         }
 
-        // 4) Materialize virtual instances for each mother
+        // 4) Materialize virtual EXPENSE instances for each mother (Phase A)
         List<ForecastEntryDTO> entries = new ArrayList<>();
         BigDecimal totalExpenses = BigDecimal.ZERO;
         BigDecimal totalIncome = BigDecimal.ZERO;
@@ -145,7 +160,7 @@ public class ForecastService {
 
                 // Tally
                 BigDecimal amt = dto.amount() != null ? dto.amount() : BigDecimal.ZERO;
-                if ("income".equalsIgnoreCase(dto.type())) {
+                if (INCOME_TYPE.equalsIgnoreCase(dto.type())) {
                     totalIncome = totalIncome.add(amt);
                 } else {
                     totalExpenses = totalExpenses.add(amt);
@@ -158,7 +173,31 @@ public class ForecastService {
             }
         }
 
-        // 5) Sort chronologically (deterministic for snapshot UIs)
+        // 5) Phase B: Materialize virtual INCOME instances from LIVE projects
+        //    Each LIVE project with expectedMonthlyRevenue > 0 contributes one
+        //    income entry per month within the horizon.
+        for (Project project : projectMap.values()) {
+            if (!ProjectStatus.LIVE.equals(project.getStatus())) {
+                continue;
+            }
+            BigDecimal monthlyRevenue = project.getExpectedMonthlyRevenue();
+            if (monthlyRevenue == null || monthlyRevenue.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            List<ForecastEntryDTO> incomeEntries = generateProjectIncomeEntries(
+                    project, asOf, horizonEnd);
+            for (ForecastEntryDTO entry : incomeEntries) {
+                entries.add(entry);
+                totalIncome = totalIncome.add(entry.amount());
+                projectScoped++;
+            }
+
+            log.debug("Project {} (LIVE) contributed {} income entries",
+                    project.getName(), incomeEntries.size());
+        }
+
+        // 6) Sort chronologically (deterministic for snapshot UIs)
         entries.sort(Comparator.comparing(ForecastEntryDTO::date));
 
         BigDecimal net = totalIncome.subtract(totalExpenses);
@@ -179,13 +218,74 @@ public class ForecastService {
         );
     }
 
-    // ── helpers ────────────────────────────────────────────────────────
+    // -- helpers ---------------------------------------------------------
 
     static int clampHorizon(int requested) {
         if (requested < 1) {
             return DEFAULT_HORIZON_MONTHS;
         }
         return Math.min(requested, MAX_HORIZON_MONTHS);
+    }
+
+    /**
+     * Generate one virtual income entry per month within the horizon for a
+     * single LIVE project. Generation starts at max(project.startDate, asOf)
+     * and continues until horizonEnd. The day-of-month is derived from the
+     * project's startDate (or today's day if startDate is null), clamped to
+     * the last day of the month when the target day exceeds month length.
+     */
+    private List<ForecastEntryDTO> generateProjectIncomeEntries(Project project,
+                                                                LocalDate asOf,
+                                                                LocalDate horizonEnd) {
+        List<ForecastEntryDTO> result = new ArrayList<>();
+
+        LocalDate effectiveStart = (project.getStartDate() != null
+                && project.getStartDate().isAfter(asOf))
+                ? project.getStartDate()
+                : asOf;
+
+        int targetDay = project.getStartDate() != null
+                ? project.getStartDate().getDayOfMonth()
+                : asOf.getDayOfMonth();
+
+        // Walk month by month from effectiveStart's YearMonth until horizonEnd
+        YearMonth ym = YearMonth.from(effectiveStart);
+        YearMonth endYm = YearMonth.from(horizonEnd);
+
+        while (!ym.isAfter(endYm)) {
+            int dayInMonth = Math.min(targetDay, ym.lengthOfMonth());
+            LocalDate occurrence = ym.atDay(dayInMonth);
+
+            // Skip occurrences before effectiveStart (e.g. earlier in the
+            // first month) and after horizonEnd
+            if (!occurrence.isBefore(effectiveStart) && !occurrence.isAfter(horizonEnd)) {
+                result.add(toIncomeEntryDto(project, occurrence));
+            }
+            ym = ym.plusMonths(1);
+        }
+
+        return result;
+    }
+
+    private ForecastEntryDTO toIncomeEntryDto(Project project, LocalDate date) {
+        return new ForecastEntryDTO(
+                null,                          // patternId -- not from a recurring mother
+                null,                          // motherTransactionId -- same
+                date,
+                INCOME_TYPE,
+                project.getExpectedMonthlyRevenue(),
+                INCOME_DESCRIPTION_PREFIX + project.getName(),
+                INCOME_CATEGORY,
+                null,                          // subcategory
+                null,                          // counterparty
+                project.getId(),
+                project.getName(),
+                project.getStatus(),
+                project.getColor(),
+                INCOME_FREQUENCY,
+                100,                           // confidencePct -- LIVE = certain
+                false                          // isOpex -- always project-scoped
+        );
     }
 
     private ForecastEntryDTO toEntryDto(Transaction virtual,
@@ -210,24 +310,6 @@ public class ForecastService {
                 pattern.getFrequency(),
                 mother.getConfidencePct() != null ? mother.getConfidencePct() : 100,
                 isOpex
-        );
-    }
-
-    private ForecastResponse emptyResponse(UUID entityId, LocalDate asOf,
-                                           int months, int horizonDays) {
-        return new ForecastResponse(
-                entityId,
-                asOf,
-                months,
-                horizonDays,
-                List.of(),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                0,
-                0,
-                0,
-                0
         );
     }
 }
