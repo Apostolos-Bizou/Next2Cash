@@ -12,6 +12,7 @@ import java.util.UUID;
  * NULL project_id = OpEx (general company expense).
  *
  * Spec ref: CashPlanning TechSpec v1.0 section 4.4
+ * S86 extension: Pricing Calculator + AI CFO Advisor fields (10 new columns).
  */
 @Entity
 @Table(name = "projects")
@@ -60,6 +61,54 @@ public class Project {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = Boolean.TRUE;
 
+    // ============================================================
+    // S86 Pricing Calculator fields
+    // ============================================================
+
+    /** Manual override for monthly direct burn. If NULL, auto-computed from recurrence patterns. */
+    @Column(name = "direct_burn_monthly", precision = 15, scale = 2)
+    private BigDecimal directBurnMonthly;
+
+    /** Manual % of total OpEx allocated to this project. 0-100. */
+    @Column(name = "opex_allocation_pct", precision = 5, scale = 2)
+    private BigDecimal opexAllocationPct = BigDecimal.ZERO;
+
+    /** Current Monthly Recurring Revenue from this project (EUR). */
+    @Column(name = "current_mrr", precision = 15, scale = 2)
+    private BigDecimal currentMrr = BigDecimal.ZERO;
+
+    /** Current paying customers count for this project. */
+    @Column(name = "current_customers")
+    private Integer currentCustomers = 0;
+
+    /** Customer Acquisition Cost in EUR per customer. */
+    @Column(name = "cac_per_customer", precision = 15, scale = 2)
+    private BigDecimal cacPerCustomer = BigDecimal.ZERO;
+
+    /** Gross margin % (revenue minus COGS / revenue). SaaS default 75%. */
+    @Column(name = "gross_margin_pct", precision = 5, scale = 2)
+    private BigDecimal grossMarginPct = new BigDecimal("75.00");
+
+    /** Monthly customer churn % for monthly-billing customers. */
+    @Column(name = "monthly_churn_pct", precision = 5, scale = 2)
+    private BigDecimal monthlyChurnPct = new BigDecimal("3.00");
+
+    // ============================================================
+    // S86 Billing Mix fields (Annual vs Monthly contracts)
+    // ============================================================
+
+    /** % of customers on annual prepay contracts. Affects effective blended churn + cash flow. */
+    @Column(name = "annual_billing_pct", precision = 5, scale = 2)
+    private BigDecimal annualBillingPct = BigDecimal.ZERO;
+
+    /** % discount given for annual prepay (vs monthly sticker). Default 15%. */
+    @Column(name = "annual_discount_pct", precision = 5, scale = 2)
+    private BigDecimal annualDiscountPct = new BigDecimal("15.00");
+
+    /** Annual contract churn % (renewal failures). Default 0.5%. */
+    @Column(name = "annual_churn_pct", precision = 5, scale = 2)
+    private BigDecimal annualChurnPct = new BigDecimal("0.50");
+
     @PrePersist
     protected void onCreate() {
         if (this.id == null) this.id = UUID.randomUUID();
@@ -71,6 +120,16 @@ public class Project {
         if (this.expectedMonthlyRevenue == null) this.expectedMonthlyRevenue = BigDecimal.ZERO;
         if (this.color == null) this.color = "#3B82F6";
         if (this.isActive == null) this.isActive = Boolean.TRUE;
+        // S86 defaults
+        if (this.opexAllocationPct == null) this.opexAllocationPct = BigDecimal.ZERO;
+        if (this.currentMrr == null) this.currentMrr = BigDecimal.ZERO;
+        if (this.currentCustomers == null) this.currentCustomers = 0;
+        if (this.cacPerCustomer == null) this.cacPerCustomer = BigDecimal.ZERO;
+        if (this.grossMarginPct == null) this.grossMarginPct = new BigDecimal("75.00");
+        if (this.monthlyChurnPct == null) this.monthlyChurnPct = new BigDecimal("3.00");
+        if (this.annualBillingPct == null) this.annualBillingPct = BigDecimal.ZERO;
+        if (this.annualDiscountPct == null) this.annualDiscountPct = new BigDecimal("15.00");
+        if (this.annualChurnPct == null) this.annualChurnPct = new BigDecimal("0.50");
     }
 
     @PreUpdate
@@ -107,4 +166,28 @@ public class Project {
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean active) { this.isActive = active; }
+
+    // S86 Pricing Calculator getters/setters
+    public BigDecimal getDirectBurnMonthly() { return directBurnMonthly; }
+    public void setDirectBurnMonthly(BigDecimal directBurnMonthly) { this.directBurnMonthly = directBurnMonthly; }
+    public BigDecimal getOpexAllocationPct() { return opexAllocationPct; }
+    public void setOpexAllocationPct(BigDecimal opexAllocationPct) { this.opexAllocationPct = opexAllocationPct; }
+    public BigDecimal getCurrentMrr() { return currentMrr; }
+    public void setCurrentMrr(BigDecimal currentMrr) { this.currentMrr = currentMrr; }
+    public Integer getCurrentCustomers() { return currentCustomers; }
+    public void setCurrentCustomers(Integer currentCustomers) { this.currentCustomers = currentCustomers; }
+    public BigDecimal getCacPerCustomer() { return cacPerCustomer; }
+    public void setCacPerCustomer(BigDecimal cacPerCustomer) { this.cacPerCustomer = cacPerCustomer; }
+    public BigDecimal getGrossMarginPct() { return grossMarginPct; }
+    public void setGrossMarginPct(BigDecimal grossMarginPct) { this.grossMarginPct = grossMarginPct; }
+    public BigDecimal getMonthlyChurnPct() { return monthlyChurnPct; }
+    public void setMonthlyChurnPct(BigDecimal monthlyChurnPct) { this.monthlyChurnPct = monthlyChurnPct; }
+
+    // S86 Billing Mix getters/setters
+    public BigDecimal getAnnualBillingPct() { return annualBillingPct; }
+    public void setAnnualBillingPct(BigDecimal annualBillingPct) { this.annualBillingPct = annualBillingPct; }
+    public BigDecimal getAnnualDiscountPct() { return annualDiscountPct; }
+    public void setAnnualDiscountPct(BigDecimal annualDiscountPct) { this.annualDiscountPct = annualDiscountPct; }
+    public BigDecimal getAnnualChurnPct() { return annualChurnPct; }
+    public void setAnnualChurnPct(BigDecimal annualChurnPct) { this.annualChurnPct = annualChurnPct; }
 }
