@@ -16,6 +16,7 @@ import {
   PointElement, LineElement, Filler,
 } from 'chart.js'
 import api from '@/api'
+import { allowedEntityKeys, isRestrictedToSingleEntity, defaultEntityKey } from '@/stores/entityScope'
 
 ChartJS.register(
   Title, Tooltip, Legend,
@@ -33,7 +34,8 @@ const ENTITY_MAP = {
 }
 
 const entities = ref([])  // populated from /api/config/entities; falls back to hardcoded
-const entityKey = ref(localStorage.getItem('n2c_entity') || 'next2megroup')
+const entityKey = ref(defaultEntityKey('next2megroup'))
+const showEntityDropdownFV = computed(() => !isRestrictedToSingleEntity())
 watch(entityKey, (v) => {
   localStorage.setItem('n2c_entity', v)
   loadForecast()
@@ -118,7 +120,10 @@ async function loadEntities() {
     // 403 or other -- fall through to hardcoded
   }
   // Fallback to hardcoded 3 entities
-  entities.value = Object.keys(ENTITY_MAP).map(k => ({
+  const _allowed = allowedEntityKeys()
+      entities.value = Object.keys(ENTITY_MAP)
+        .filter(k => _allowed === null || _allowed.includes(k))
+        .map(k => ({
     key:   k,
     id:    ENTITY_MAP[k].id,
     label: ENTITY_MAP[k].label,
@@ -410,7 +415,7 @@ onMounted(async () => {
       </div>
 
       <div class="forecast__controls">
-        <div class="forecast__control">
+        <div class="forecast__control" v-if="showEntityDropdownFV">
           <label>Entity</label>
           <select v-model="entityKey">
             <option v-for="e in entities" :key="e.key" :value="e.key">

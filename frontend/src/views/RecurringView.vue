@@ -7,6 +7,7 @@ import {
   BarElement, CategoryScale, LinearScale,
 } from 'chart.js'
 import api from '@/api'
+import { allowedEntityKeys, isRestrictedToSingleEntity, defaultEntityKey } from '@/stores/entityScope'
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
 
@@ -35,7 +36,9 @@ const error          = ref(null)
 const recurringTxns  = ref([])
 const patterns       = ref([])
 const projects       = ref([])
-const entityKey      = ref(localStorage.getItem('n2c_entity') || 'next2me')
+const entityKey      = ref(defaultEntityKey('next2megroup'))
+const rvAllowedKeys  = () => allowedEntityKeys()
+const showEntityDropdownRV = () => !isRestrictedToSingleEntity()
 const scope          = ref('group')
 
 // S83: cost view mode — 'raw' = direct only, 'loaded' = direct + allocated OpEx share
@@ -426,10 +429,8 @@ onMounted(loadAll)
         <span class="hdr-sub">Burn rate, MRR &amp; cash forecast · {{ recurringTxns.length }} εγγραφές</span>
       </div>
       <div class="hdr-right">
-        <select v-model="entityKey" class="entity-sel">
-          <option value="next2me">{{ ENTITY_LABELS.next2me }}</option>
-          <option value="house">{{ ENTITY_LABELS.house }}</option>
-          <option value="next2megroup">{{ ENTITY_LABELS.next2megroup }}</option>
+        <select v-if="showEntityDropdownRV()" v-model="entityKey" class="entity-sel">
+          <option v-for="k in (rvAllowedKeys() || ['next2me','house','next2megroup'])" :key="k" :value="k">{{ ENTITY_LABELS[k] }}</option>
         </select>
         <button class="refresh-btn" @click="loadAll" :disabled="loading">
           <i class="fas fa-redo"></i>

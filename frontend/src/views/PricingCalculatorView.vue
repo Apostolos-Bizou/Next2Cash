@@ -14,6 +14,7 @@
 
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
+import { filterEntityMap, isRestrictedToSingleEntity, isViewer, defaultEntityKey } from '@/stores/entityScope'
 
 /* ----------------------------------------------------------------
    Entity mapping (matches ForecastView pattern)
@@ -24,7 +25,7 @@ const ENTITY_MAP = {
   next2megroup: { id: '50317f44-9961-4fb4-add0-7a118e32dc14', label: 'Next2Me Group' },
 }
 
-const entityKey = ref(localStorage.getItem('n2c_entity') || 'next2megroup')
+const entityKey = ref(defaultEntityKey('next2megroup'))
 watch(entityKey, (v) => {
   localStorage.setItem('n2c_entity', v)
   loadProjects()
@@ -32,6 +33,11 @@ watch(entityKey, (v) => {
 })
 
 const currentEntityId = computed(() => ENTITY_MAP[entityKey.value]?.id)
+
+// S87: entity scoping + read-only viewer
+const visibleEntityMap = computed(() => filterEntityMap(ENTITY_MAP))
+const showEntityDropdown = computed(() => !isRestrictedToSingleEntity())
+const isViewerRO = computed(() => isViewer())
 
 /* ----------------------------------------------------------------
    Pricing-specific state
@@ -238,11 +244,11 @@ function fmtTier(t) {
       </div>
 
       <div class="header-controls">
-        <!-- Entity dropdown -->
-        <div class="control-group">
+        <!-- Entity dropdown (S87: hidden for single-entity users) -->
+        <div class="control-group" v-if="showEntityDropdown">
           <label>Entity</label>
           <select v-model="entityKey">
-            <option v-for="(meta, key) in ENTITY_MAP" :key="key" :value="key">{{ meta.label }}</option>
+            <option v-for="(meta, key) in visibleEntityMap" :key="key" :value="key">{{ meta.label }}</option>
           </select>
         </div>
 
@@ -264,6 +270,7 @@ function fmtTier(t) {
             max="50"
             step="1"
             v-model.number="targetMarginPct"
+            :disabled="isViewerRO"
           />
         </div>
       </div>

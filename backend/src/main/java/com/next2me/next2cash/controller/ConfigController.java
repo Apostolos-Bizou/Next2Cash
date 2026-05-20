@@ -107,7 +107,7 @@ public class ConfigController {
         ));
     }
 
-    // β•β•β•β•β•β• Phase H v2 + Phase K β€” Cards (karteles with rules) β•β•β•β•β•β•
+    // Ξ²β€ΆΒΞ²β€ΆΒΞ²β€ΆΒΞ²β€ΆΒΞ²β€ΆΒΞ²β€ΆΒ Phase H v2 + Phase K Ξ²β‚¬β€ Cards (karteles with rules) Ξ²β€ΆΒΞ²β€ΆΒΞ²β€ΆΒΞ²β€ΆΒΞ²β€ΆΒΞ²β€ΆΒ
 
     @GetMapping("/cards")
     @PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
@@ -281,7 +281,7 @@ public class ConfigController {
         ));
     }
 
-    // β”€β”€β”€ Export endpoints (unchanged β€” Phase K.3 will migrate to rows) β”€β”€β”€
+    // Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬ Export endpoints (unchanged Ξ²β‚¬β€ Phase K.3 will migrate to rows) Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬
 
     @GetMapping("/cards/{id}/export/excel")
     @PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
@@ -350,7 +350,7 @@ public class ConfigController {
     }
 
     // ===================================================================
-    //  M.7 β€” CRUD for Config items (categories, subcategories, etc.)
+    //  M.7 Ξ²β‚¬β€ CRUD for Config items (categories, subcategories, etc.)
     // ===================================================================
 
     /**
@@ -358,7 +358,7 @@ public class ConfigController {
      * Returns ALL config items (including inactive) for admin management.
      */
     @GetMapping("/items")
-    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','VIEWER')")
     public ResponseEntity<?> listAllConfigItems(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID entityId,
@@ -514,7 +514,7 @@ public class ConfigController {
         return m;
     }
 
-    // β”€β”€β”€ helper β”€β”€β”€
+    // Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬ helper Ξ²β€β‚¬Ξ²β€β‚¬Ξ²β€β‚¬
 
     private static Map<String, Object> toCardDto(Config c) {
         Map<String, Object> m = new LinkedHashMap<>();

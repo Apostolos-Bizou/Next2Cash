@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   - user with assignments sees ONLY those entities (cross-entity blocked)
  *   - user WITHOUT assignments sees ALL (legacy compatibility)
  *   - accountant is fully blocked (role-level 403 via @PreAuthorize)
- *   - viewer is fully blocked (role-level 403 via @PreAuthorize)
+ *   - viewer has READ-ONLY access to assigned entities (200), blocked cross-entity (403)
  *
  * All 6 tests should PASS against the current code (Phase B ported + UserEntityLink).
  */
@@ -102,14 +102,32 @@ class TransactionSecurityTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("viewer is BLOCKED from GET /api/transactions (403)")
-    void viewer_gettingTransactions_returns403() throws Exception {
+    @DisplayName("viewer has READ-ONLY access to assigned entity transactions (200)")
+    void viewer_gettingAssignedEntity_returns200() throws Exception {
+        // S87: VIEWER role granted read-only GET access (investor use case).
+        // POST/PUT/DELETE remain ADMIN/USER-only (enforced by @PreAuthorize).
         User viewer = tdb.createViewer("sophia");
         CompanyEntity house = tdb.createEntity("HOUSE", "House");
         tdb.assignEntities(viewer, house);
 
         mockMvc.perform(get("/api/transactions")
                 .param("entityId", house.getId().toString())
+                .header("Authorization", tdb.bearerToken(viewer)))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("viewer is BLOCKED from UNASSIGNED entity transactions (403)")
+    void viewer_gettingUnassignedEntity_returns403() throws Exception {
+        // S87: entity guard still applies to VIEWER — read access only to
+        // assigned entities, never cross-entity.
+        User viewer = tdb.createViewer("sophia");
+        CompanyEntity house   = tdb.createEntity("HOUSE",   "House");
+        CompanyEntity next2me = tdb.createEntity("NEXT2ME", "Next2Me");
+        tdb.assignEntities(viewer, house);
+
+        mockMvc.perform(get("/api/transactions")
+                .param("entityId", next2me.getId().toString())
                 .header("Authorization", tdb.bearerToken(viewer)))
             .andExpect(status().isForbidden());
     }

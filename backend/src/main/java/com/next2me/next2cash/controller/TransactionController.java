@@ -60,7 +60,7 @@ public class TransactionController {
     //   mode=all      -> both modes (or simply omit the param)
     // Filter is applied AFTER the repository query so existing query methods stay untouched.
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER')")
     public ResponseEntity<?> getTransactions(
             @RequestHeader("Authorization") String authHeader,
             @RequestParam UUID entityId,
@@ -138,7 +138,7 @@ public class TransactionController {
 
     // GET /api/transactions/{id}
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER')")
     public ResponseEntity<?> getTransaction(
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Integer id) {
@@ -410,7 +410,7 @@ public class TransactionController {
 
     // GET /api/transactions/search?entityId=X&q=...
     @GetMapping("/search")
-    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'VIEWER')")
     public ResponseEntity<?> searchTransactions(
             @RequestHeader("Authorization") String authHeader,
             @RequestParam UUID entityId,
