@@ -2,7 +2,7 @@
 // S71-B: Projects Portfolio view
 // Reads /api/projects (production-verified S71-A) and renders cards per spec section 5.5.
 // Spent/progress calculations are intentional placeholders until S71-D backend aggregation.
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '@/api'
 import { isViewer } from '@/stores/entityScope'
 
@@ -347,7 +347,14 @@ async function toggleInactive() {
   await loadProjects()
 }
 
-onMounted(loadProjects)
+function onProjectsEntityChanged() { loadProjects() }
+onMounted(() => {
+  loadProjects()
+  window.addEventListener('entity-changed', onProjectsEntityChanged)
+})
+onUnmounted(() => {
+  window.removeEventListener('entity-changed', onProjectsEntityChanged)
+})
 </script>
 
 <template>
