@@ -7,7 +7,7 @@
 // Data source: GET /api/forecast?entityId=...&horizonMonths=...
 // Backend service: ForecastService (Phase A expenses + Phase B LIVE income)
 
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { Bar, Line } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -398,6 +398,18 @@ onMounted(async () => {
   }
   await Promise.all([loadForecast(), loadProjects()])
 })
+
+// S87.14: react to sidebar entity switch (App.vue dispatches 'entity-changed').
+// Copy n2c_entity into the local entityKey ref; the existing watch(entityKey)
+// then reloads automatically. Cleaned up on unmount.
+function __syncEntityFromSidebar() {
+  try {
+    const k = localStorage.getItem('n2c_entity')
+    if (k && k !== entityKey.value) entityKey.value = k
+  } catch (e) { /* ignore */ }
+}
+onMounted(() => { window.addEventListener('entity-changed', __syncEntityFromSidebar) })
+onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFromSidebar) })
 </script>
 
 <template>

@@ -12,7 +12,7 @@
 // Data source: GET /api/pricing-calculator[?{projectId}][?targetMargin=...]
 // Backend service: PricingCalculatorService (S86.5)
 
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import api from '@/api'
 import { filterEntityMap, isRestrictedToSingleEntity, isViewer, defaultEntityKey } from '@/stores/entityScope'
 
@@ -232,6 +232,18 @@ function fmtNumber(v) {
 function fmtTier(t) {
   return `${t.name} (${fmtMoney(t.monthlyPrice)}/μήνα)`
 }
+
+// S87.14: react to sidebar entity switch (App.vue dispatches 'entity-changed').
+// Copy n2c_entity into the local entityKey ref; the existing watch(entityKey)
+// then reloads automatically. Cleaned up on unmount.
+function __syncEntityFromSidebar() {
+  try {
+    const k = localStorage.getItem('n2c_entity')
+    if (k && k !== entityKey.value) entityKey.value = k
+  } catch (e) { /* ignore */ }
+}
+onMounted(() => { window.addEventListener('entity-changed', __syncEntityFromSidebar) })
+onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFromSidebar) })
 </script>
 
 <template>
