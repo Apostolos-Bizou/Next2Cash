@@ -2,40 +2,40 @@
 // S71-B: Projects Portfolio view
 // Reads /api/projects (production-verified S71-A) and renders cards per spec section 5.5.
 // Spent/progress calculations are intentional placeholders until S71-D backend aggregation.
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '@/api'
 import { isViewer } from '@/stores/entityScope'
 
-// β”€β”€ State β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── State ───────────────────────────────────────────────────────────
 const loading = ref(false)
 const error = ref(null)
 const projects = ref([])
 
-// β”€β”€ Filters β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Filters ─────────────────────────────────────────────────────────
 const STATUS_LABELS = {
-  PLANNING: 'Ξ£Ο‡ΞµΞ΄ΞΉΞ±ΟƒΞΌΟΟ‚',
-  IN_DEVELOPMENT: 'Ξ£Ξµ Ξ‘Ξ½Ξ¬Ο€Ο„Ο…ΞΎΞ·',
-  TESTING: 'Ξ”ΞΏΞΊΞΉΞΌΞ­Ο‚',
-  LIVE: 'Ξ£Ξµ Ξ Ξ±ΟΞ±Ξ³Ο‰Ξ³Ξ®',
-  PAUSED: 'Ξ Ξ±ΟΟƒΞ·',
-  CANCELLED: 'Ξ‘ΞΊΟ…ΟΟ‰ΞΌΞ­Ξ½ΞΏ',
+  PLANNING: 'Σχεδιασμός',
+  IN_DEVELOPMENT: 'Σε Ανάπτυξη',
+  TESTING: 'Δοκιμές',
+  LIVE: 'Σε Παραγωγή',
+  PAUSED: 'Παύση',
+  CANCELLED: 'Ακυρωμένο',
 }
 
 const STATUS_FILTER_OPTIONS = [
-  { value: 'all', label: 'ΞΞ»ΞµΟ‚ ΞΏΞΉ ΞΊΞ±Ο„Ξ±ΟƒΟ„Ξ¬ΟƒΞµΞΉΟ‚' },
-  { value: 'PLANNING', label: 'Ξ£Ο‡ΞµΞ΄ΞΉΞ±ΟƒΞΌΟΟ‚' },
-  { value: 'IN_DEVELOPMENT', label: 'Ξ£Ξµ Ξ‘Ξ½Ξ¬Ο€Ο„Ο…ΞΎΞ·' },
-  { value: 'TESTING', label: 'Ξ”ΞΏΞΊΞΉΞΌΞ­Ο‚' },
-  { value: 'LIVE', label: 'Ξ£Ξµ Ξ Ξ±ΟΞ±Ξ³Ο‰Ξ³Ξ®' },
-  { value: 'PAUSED', label: 'Ξ Ξ±ΟΟƒΞ·' },
-  { value: 'CANCELLED', label: 'Ξ‘ΞΊΟ…ΟΟ‰ΞΌΞ­Ξ½ΞΏ' },
+  { value: 'all', label: 'Όλες οι καταστάσεις' },
+  { value: 'PLANNING', label: 'Σχεδιασμός' },
+  { value: 'IN_DEVELOPMENT', label: 'Σε Ανάπτυξη' },
+  { value: 'TESTING', label: 'Δοκιμές' },
+  { value: 'LIVE', label: 'Σε Παραγωγή' },
+  { value: 'PAUSED', label: 'Παύση' },
+  { value: 'CANCELLED', label: 'Ακυρωμένο' },
 ]
 
 const SORT_OPTIONS = [
-  { value: 'name', label: 'ΞΞ½ΞΏΞΌΞ± (Ξ‘-Ξ©)' },
-  { value: 'budget_desc', label: 'Budget (Ο†ΞΈΞ―Ξ½ΞΏΞ½)' },
-  { value: 'budget_asc', label: 'Budget (Ξ±ΟΞΎΞΏΞ½)' },
-  { value: 'status', label: 'ΞΞ±Ο„Ξ¬ΟƒΟ„Ξ±ΟƒΞ·' },
+  { value: 'name', label: 'Όνομα (Α-Ω)' },
+  { value: 'budget_desc', label: 'Budget (φθίνον)' },
+  { value: 'budget_asc', label: 'Budget (αύξον)' },
+  { value: 'status', label: 'Κατάσταση' },
 ]
 
 const statusFilter = ref('all')
@@ -85,12 +85,12 @@ const ENTITY_OPTIONS_S78 = [
 ];
 // S78-HOTFIX-STATUS-APPLIED: only PLANNING + LIVE are accepted by backend
 const STATUS_OPTIONS_S78 = [
-  { value: 'PLANNING',       label: 'Ξ£Ο‡ΞµΞ΄ΞΉΞ±ΟƒΞΌΟΟ‚' },
-  { value: 'IN_DEVELOPMENT', label: 'Ξ¥Ο€Ο Ξ‘Ξ½Ξ¬Ο€Ο„Ο…ΞΎΞ·' },
-  { value: 'TESTING',        label: 'Ξ”ΞΏΞΊΞΉΞΌΞ­Ο‚' },
-  { value: 'LIVE',           label: 'Ξ£Ξµ Ξ Ξ±ΟΞ±Ξ³Ο‰Ξ³Ξ®' },
-  { value: 'PAUSED',         label: 'Ξ£Ξµ Ξ Ξ±ΟΟƒΞ·' },
-  { value: 'CANCELLED',      label: 'Ξ‘ΞΊΟ…ΟΟΞΈΞ·ΞΊΞµ' },
+  { value: 'PLANNING',       label: 'Σχεδιασμός' },
+  { value: 'IN_DEVELOPMENT', label: 'Υπό Ανάπτυξη' },
+  { value: 'TESTING',        label: 'Δοκιμές' },
+  { value: 'LIVE',           label: 'Σε Παραγωγή' },
+  { value: 'PAUSED',         label: 'Σε Παύση' },
+  { value: 'CANCELLED',      label: 'Ακυρώθηκε' },
 ];
 
 function resetForm() {
@@ -218,7 +218,7 @@ async function deactivateProject(p) {
 }
 // END S78-PROJECTS-CRUD-APPLIED
 
-// β”€β”€ Computed: filtered + sorted projects β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Computed: filtered + sorted projects ────────────────────────────
 const filteredProjects = computed(() => {
   let list = projects.value.slice()
 
@@ -247,7 +247,7 @@ const filteredProjects = computed(() => {
   return list
 })
 
-// β”€β”€ Totals (header summary) β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Totals (header summary) ─────────────────────────────────────────
 const totals = computed(() => {
   let budget = 0
   let monthlyRev = 0
@@ -260,7 +260,7 @@ const totals = computed(() => {
   return { budget, monthlyRev, count }
 })
 
-// β”€β”€ Formatters β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Formatters ──────────────────────────────────────────────────────
 function fmtMoney(n) {
   const v = parseFloat(n) || 0
   return new Intl.NumberFormat('el-GR', {
@@ -271,9 +271,9 @@ function fmtMoney(n) {
 }
 
 function fmtDate(d) {
-  if (!d) return 'β€”'
+  if (!d) return '—'
   const date = new Date(d)
-  if (isNaN(date.getTime())) return 'β€”'
+  if (isNaN(date.getTime())) return '—'
   return date.toLocaleDateString('el-GR', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
@@ -291,7 +291,7 @@ function statusBadgeStyle(status) {
 }
 
 function statusLabel(status) {
-  return STATUS_LABELS[status] || status || 'β€”'
+  return STATUS_LABELS[status] || status || '—'
 }
 
 // Timeline progress: % of elapsed time between start_date and target_completion_date
@@ -306,7 +306,7 @@ function timelineProgress(p) {
   return Math.round(((now - start) / (end - start)) * 100)
 }
 
-// β”€β”€ Load projects β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€
+// ── Load projects ───────────────────────────────────────────────────
 async function loadProjects() {
   loading.value = true
   error.value = null
@@ -326,14 +326,14 @@ async function loadProjects() {
     if (res.data && res.data.success) {
       projects.value = Array.isArray(res.data.data) ? res.data.data : []
     } else {
-      error.value = res.data?.error || 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± Ο†ΟΟΟ„Ο‰ΟƒΞ·Ο‚ projects'
+      error.value = res.data?.error || 'Σφάλμα φόρτωσης projects'
     }
   } catch (e) {
     console.error('loadProjects error:', e)
     if (e.response?.status === 403) {
-      error.value = 'Ξ”ΞµΞ½ Ξ­Ο‡ΞµΟ„Ξµ Ξ΄ΞΉΞΊΞ±Ξ―Ο‰ΞΌΞ± Ο€ΟΟΟƒΞ²Ξ±ΟƒΞ·Ο‚ ΟƒΞµ Ξ±Ο…Ο„Ξ® Ο„Ξ· ΟƒΞµΞ»Ξ―Ξ΄Ξ±.'
+      error.value = 'Δεν έχετε δικαίωμα πρόσβασης σε αυτή τη σελίδα.'
     } else {
-      error.value = 'Ξ£Ο†Ξ¬Ξ»ΞΌΞ± ΟƒΟΞ½Ξ΄ΞµΟƒΞ·Ο‚ ΞΌΞµ Ο„ΞΏΞ½ server.'
+      error.value = 'Σφάλμα σύνδεσης με τον server.'
     }
   } finally {
     loading.value = false
@@ -347,14 +347,7 @@ async function toggleInactive() {
   await loadProjects()
 }
 
-function onProjectsEntityChanged() { loadProjects() }
-onMounted(() => {
-  loadProjects()
-  window.addEventListener('entity-changed', onProjectsEntityChanged)
-})
-onUnmounted(() => {
-  window.removeEventListener('entity-changed', onProjectsEntityChanged)
-})
+onMounted(loadProjects)
 </script>
 
 <template>
@@ -362,55 +355,55 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="page-header">
       <div class="page-title">
-        <span class="page-icon">π―</span>
+        <span class="page-icon">🎯</span>
         <h1>Projects Portfolio</h1>
       </div>
       <div class="page-subtitle">
-        Ξ•Ο€ΞΉΟƒΞΊΟΟ€Ξ·ΟƒΞ· ΟΞ»Ο‰Ξ½ Ο„Ο‰Ξ½ projects Ο„ΞΏΟ… ΞΏΞΌΞ―Ξ»ΞΏΟ… Β· {{ totals.count }} Ξ­ΟΞ³Ξ±
+        Επισκόπηση όλων των projects του ομίλου · {{ totals.count }} έργα
       </div>
     </div>
 
     <!-- Filters bar -->
     <div class="filters-bar">
       <div class="filter-group">
-        <label>ΞΞ±Ο„Ξ¬ΟƒΟ„Ξ±ΟƒΞ·:</label>
+        <label>Κατάσταση:</label>
         <select v-model="statusFilter" class="filter-select">
           <option v-for="o in STATUS_FILTER_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
       </div>
       <div class="filter-group">
-        <label>Ξ¤Ξ±ΞΎΞΉΞ½ΟΞΌΞ·ΟƒΞ·:</label>
+        <label>Ταξινόμηση:</label>
         <select v-model="sortBy" class="filter-select">
           <option v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
       </div>
       <div class="filter-group">
         <button v-if="!isViewerProjectsRO" class="toggle-btn" :class="{ active: showInactive }" @click="toggleInactive">
-          {{ showInactive ? 'β“ ' : '' }}Ξ£Ο…ΞΌΟ€ΞµΟΞ―Ξ»Ξ·ΟΞ· Ξ±Ξ½ΞµΞ½ΞµΟΞ³ΟΞ½
+          {{ showInactive ? '✓ ' : '' }}Συμπερίληψη ανενεργών
         </button>
       </div>
       <div class="filter-spacer"></div>
       <!-- S78-PROJECTS-CRUD-APPLIED: new project button (admin only) -->
       <button v-if="isAdmin" class="btn-new-project-s78" @click="openCreateModal">
-        + ΞΞ­ΞΏ Project
+        + Νέο Project
       </button>
       <button class="btn-reload" @click="loadProjects" :disabled="loading">
-        β†» Ξ‘Ξ½Ξ±Ξ½Ξ­Ο‰ΟƒΞ·
+        ↻ Ανανέωση
       </button>
     </div>
 
     <!-- Summary strip -->
     <div class="summary-strip">
       <div class="summary-item">
-        <div class="summary-label">Ξ£ΟΞ½ΞΏΞ»ΞΏ Budget</div>
+        <div class="summary-label">Σύνολο Budget</div>
         <div class="summary-value">{{ fmtMoney(totals.budget) }}</div>
       </div>
       <div class="summary-item">
-        <div class="summary-label">Ξ‘Ξ½Ξ±ΞΌΞµΞ½ΟΞΌΞµΞ½Ξ± ΞΟƒΞΏΞ΄Ξ± / ΞΌΞ®Ξ½Ξ±</div>
+        <div class="summary-label">Αναμενόμενα Έσοδα / μήνα</div>
         <div class="summary-value">{{ fmtMoney(totals.monthlyRev) }}</div>
       </div>
       <div class="summary-item">
-        <div class="summary-label">Ξ Ξ»Ξ®ΞΈΞΏΟ‚ Projects</div>
+        <div class="summary-label">Πλήθος Projects</div>
         <div class="summary-value">{{ totals.count }}</div>
       </div>
     </div>
@@ -418,18 +411,18 @@ onUnmounted(() => {
     <!-- Loading / Error / Empty states -->
     <div v-if="loading" class="state-box">
       <div class="spinner"></div>
-      <div>Ξ¦ΟΟΟ„Ο‰ΟƒΞ· projects...</div>
+      <div>Φόρτωση projects...</div>
     </div>
 
     <div v-else-if="error" class="state-box state-error">
-      <div class="state-icon">β οΈ</div>
+      <div class="state-icon">⚠️</div>
       <div>{{ error }}</div>
-      <button class="btn-retry" @click="loadProjects">Ξ”ΞΏΞΊΞΉΞΌΞ® ΞΎΞ±Ξ½Ξ¬</button>
+      <button class="btn-retry" @click="loadProjects">Δοκιμή ξανά</button>
     </div>
 
     <div v-else-if="filteredProjects.length === 0" class="state-box">
-      <div class="state-icon">π“­</div>
-      <div>Ξ”ΞµΞ½ Ξ²ΟΞ­ΞΈΞ·ΞΊΞ±Ξ½ projects ΞΌΞµ Ο„Ξ± Ο„ΟΞ­Ο‡ΞΏΞ½Ο„Ξ± Ο†Ξ―Ξ»Ο„ΟΞ±.</div>
+      <div class="state-icon">📭</div>
+      <div>Δεν βρέθηκαν projects με τα τρέχοντα φίλτρα.</div>
     </div>
 
     <!-- Cards grid -->
@@ -449,8 +442,8 @@ onUnmounted(() => {
           <span class="status-badge" :style="statusBadgeStyle(p.status)">{{ statusLabel(p.status) }}</span>
           <!-- S78-PROJECTS-CRUD-APPLIED: admin actions -->
           <span v-if="isAdmin" class="card-admin-actions-s78" @click.stop>
-            <button class="card-action-btn-s78" title="Ξ•Ο€ΞµΞΎΞµΟΞ³Ξ±ΟƒΞ―Ξ±" @click.stop="openEditModal(p)">βοΈ</button>
-            <button class="card-action-btn-s78 danger" title="Ξ‘Ο€ΞµΞ½ΞµΟΞ³ΞΏΟ€ΞΏΞ―Ξ·ΟƒΞ·" @click.stop="deactivateProject(p)" :disabled="!p.isActive">π«</button>
+            <button class="card-action-btn-s78" title="Επεξεργασία" @click.stop="openEditModal(p)">✏️</button>
+            <button class="card-action-btn-s78 danger" title="Απενεργοποίηση" @click.stop="deactivateProject(p)" :disabled="!p.isActive">🚫</button>
           </span>
         </div>
 
@@ -465,9 +458,9 @@ onUnmounted(() => {
 
         <!-- Spent placeholder (S71-D will fill) -->
         <div class="spent-placeholder">
-          <div class="placeholder-label">Ξ”Ξ±Ο€Ξ¬Ξ½ΞµΟ‚ & Ο€ΟΟΞΏΞ΄ΞΏΟ‚ budget</div>
+          <div class="placeholder-label">Δαπάνες & πρόοδος budget</div>
           <div class="placeholder-text">
-            Ξ”ΞΉΞ±ΞΈΞ­ΟƒΞΉΞΌΞΏ ΟƒΟ„ΞΏ Project Deep-Dive (ΞµΟ€ΟΞΌΞµΞ½Ξ· Ο†Ξ¬ΟƒΞ·)
+            Διαθέσιμο στο Project Deep-Dive (επόμενη φάση)
           </div>
           <div class="progress-bar progress-placeholder">
             <div class="progress-fill" style="width: 0%"></div>
@@ -478,28 +471,28 @@ onUnmounted(() => {
         <div v-if="p.startDate || p.targetCompletionDate" class="timeline-block">
           <div class="timeline-dates">
             <span>{{ fmtDate(p.startDate) }}</span>
-            <span class="timeline-arrow">β†’</span>
+            <span class="timeline-arrow">→</span>
             <span>{{ fmtDate(p.targetCompletionDate) }}</span>
           </div>
           <div v-if="timelineProgress(p) !== null" class="progress-bar">
             <div class="progress-fill progress-fill-timeline" :style="{ width: timelineProgress(p) + '%' }"></div>
           </div>
           <div v-if="timelineProgress(p) !== null" class="timeline-info">
-            {{ timelineProgress(p) }}% Ο„ΞΏΟ… Ο‡ΟΞΏΞ½ΞΏΞ΄ΞΉΞ±Ξ³ΟΞ¬ΞΌΞΌΞ±Ο„ΞΏΟ‚
+            {{ timelineProgress(p) }}% του χρονοδιαγράμματος
           </div>
         </div>
 
         <!-- Revenue expectation -->
         <div v-if="parseFloat(p.expectedMonthlyRevenue) > 0" class="revenue-row">
-          <span class="revenue-label">π“ Ξ‘Ξ½Ξ±ΞΌΞµΞ½ΟΞΌΞµΞ½Ξ± Ξ­ΟƒΞΏΞ΄Ξ±:</span>
-          <span class="revenue-value">{{ fmtMoney(p.expectedMonthlyRevenue) }} / ΞΌΞ®Ξ½Ξ±</span>
+          <span class="revenue-label">📈 Αναμενόμενα έσοδα:</span>
+          <span class="revenue-value">{{ fmtMoney(p.expectedMonthlyRevenue) }} / μήνα</span>
         </div>
 
         <!-- Footer: actions -->
         <div class="card-footer">
           <!-- S75-MARKER-DETAILS-LINK -->
           <router-link class="btn-details btn-details-active" :to="`/projects/${p.id}`">
-            Ξ›ΞµΟ€Ο„ΞΏΞΌΞ­ΟΞµΞΉΞµΟ‚ β†’
+            Λεπτομέρειες →
           </router-link>
         </div>
       </div>
@@ -510,27 +503,27 @@ onUnmounted(() => {
     <div v-if="showProjectModal" class="proj-modal-backdrop-s78" @click.self="closeProjectModal">
       <div class="proj-modal-s78">
         <div class="proj-modal-header-s78">
-          <h2>{{ modalMode === 'create' ? '+ ΞΞ­ΞΏ Project' : 'βοΈ Ξ•Ο€ΞµΞΎΞµΟΞ³Ξ±ΟƒΞ―Ξ± Project' }}</h2>
-          <button class="proj-modal-close-s78" @click="closeProjectModal" :disabled="modalSaving">Γ—</button>
+          <h2>{{ modalMode === 'create' ? '+ Νέο Project' : '✏️ Επεξεργασία Project' }}</h2>
+          <button class="proj-modal-close-s78" @click="closeProjectModal" :disabled="modalSaving">×</button>
         </div>
         <div class="proj-modal-body-s78">
           <div class="proj-field-s78">
-            <label>ΞΞ½ΞΏΞΌΞ± *</label>
+            <label>Όνομα *</label>
             <input v-model="modalForm.name" type="text" class="proj-input-s78" maxlength="120" />
           </div>
           <div class="proj-field-s78">
-            <label>Ξ ΞµΟΞΉΞ³ΟΞ±Ο†Ξ®</label>
+            <label>Περιγραφή</label>
             <textarea v-model="modalForm.description" class="proj-input-s78" rows="2"></textarea>
           </div>
           <div class="proj-field-row-s78">
             <div class="proj-field-s78">
-              <label>Ξ•Ο„Ξ±ΞΉΟΞµΞ―Ξ± *</label>
+              <label>Εταιρεία *</label>
               <select v-model="modalForm.ownerEntityId" class="proj-input-s78">
                 <option v-for="e in ENTITY_OPTIONS_S78" :key="e.id" :value="e.id">{{ e.name }}</option>
               </select>
             </div>
             <div class="proj-field-s78">
-              <label>ΞΞ±Ο„Ξ¬ΟƒΟ„Ξ±ΟƒΞ·</label>
+              <label>Κατάσταση</label>
               <select v-model="modalForm.status" class="proj-input-s78">
                 <option v-for="s in STATUS_OPTIONS_S78" :key="s.value" :value="s.value">{{ s.label }}</option>
               </select>
@@ -538,42 +531,42 @@ onUnmounted(() => {
           </div>
           <div class="proj-field-row-s78">
             <div class="proj-field-s78">
-              <label>Total Budget (β‚¬)</label>
+              <label>Total Budget (€)</label>
               <input v-model.number="modalForm.totalBudget" type="number" step="0.01" min="0" class="proj-input-s78" />
             </div>
             <div class="proj-field-s78">
-              <label>Expected Monthly Revenue (β‚¬)</label>
+              <label>Expected Monthly Revenue (€)</label>
               <input v-model.number="modalForm.expectedMonthlyRevenue" type="number" step="0.01" min="0" class="proj-input-s78" />
             </div>
           </div>
           <div class="proj-field-row-s78">
             <div class="proj-field-s78">
-              <label>Ξ—ΞΌ/Ξ½Ξ―Ξ± ΞΞ½Ξ±ΟΞΎΞ·Ο‚</label>
+              <label>Ημ/νία Έναρξης</label>
               <input v-model="modalForm.startDate" type="date" class="proj-input-s78" />
             </div>
             <div class="proj-field-s78">
-              <label>Ξ£Ο„ΟΟ‡ΞΏΟ‚ ΞΞ»ΞΏΞΊΞ»Ξ®ΟΟ‰ΟƒΞ·Ο‚</label>
+              <label>Στόχος Ολοκλήρωσης</label>
               <input v-model="modalForm.targetCompletionDate" type="date" class="proj-input-s78" />
             </div>
           </div>
           <div class="proj-field-row-s78">
             <div class="proj-field-s78">
-              <label>Ξ§ΟΟΞΌΞ±</label>
+              <label>Χρώμα</label>
               <input v-model="modalForm.color" type="color" class="proj-input-s78" />
             </div>
             <div class="proj-field-s78 proj-field-check-s78">
               <label>
                 <input v-model="modalForm.isActive" type="checkbox" />
-                Ξ•Ξ½ΞµΟΞ³Ο
+                Ενεργό
               </label>
             </div>
           </div>
           <div v-if="modalError" class="proj-modal-error-s78">{{ modalError }}</div>
         </div>
         <div class="proj-modal-footer-s78">
-          <button class="proj-btn-secondary-s78" @click="closeProjectModal" :disabled="modalSaving">Ξ†ΞΊΟ…ΟΞΏ</button>
+          <button class="proj-btn-secondary-s78" @click="closeProjectModal" :disabled="modalSaving">Άκυρο</button>
           <button class="proj-btn-primary-s78" @click="saveProject" :disabled="modalSaving">
-            {{ modalSaving ? 'Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·...' : 'Ξ‘Ο€ΞΏΞΈΞ®ΞΊΞµΟ…ΟƒΞ·' }}
+            {{ modalSaving ? 'Αποθήκευση...' : 'Αποθήκευση' }}
           </button>
         </div>
       </div>
@@ -587,7 +580,7 @@ onUnmounted(() => {
   min-height: 100vh;
 }
 
-/* β”€β”€ Header β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Header ─────────────────────────────────────── */
 .page-header {
   margin-bottom: 18px;
 }
@@ -610,7 +603,7 @@ onUnmounted(() => {
   margin-top: 4px;
 }
 
-/* β”€β”€ Filters bar β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Filters bar ────────────────────────────────── */
 .filters-bar {
   display: flex;
   align-items: center;
@@ -682,7 +675,7 @@ onUnmounted(() => {
   border-color: #4A9EFF;
 }
 
-/* β”€β”€ Summary strip β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Summary strip ──────────────────────────────── */
 .summary-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -708,7 +701,7 @@ onUnmounted(() => {
   color: #e0e6ed;
 }
 
-/* β”€β”€ State boxes (loading / error / empty) β”€β”€β”€β”€β”€β”€β”€ */
+/* ── State boxes (loading / error / empty) ─────── */
 .state-box {
   background: #142536;
   border: 1px solid #2a4a6a;
@@ -752,7 +745,7 @@ onUnmounted(() => {
   border-color: #4A9EFF;
 }
 
-/* β”€β”€ Cards grid β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Cards grid ────────────────────────────────── */
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
@@ -838,7 +831,7 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-/* β”€β”€ Spent placeholder β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Spent placeholder ─────────────────────────── */
 .spent-placeholder {
   background: #1a2f45;
   border: 1px dashed #2a4a6a;
@@ -859,7 +852,7 @@ onUnmounted(() => {
   margin-bottom: 6px;
 }
 
-/* β”€β”€ Timeline β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Timeline ──────────────────────────────────── */
 .timeline-block {
   display: flex;
   flex-direction: column;
@@ -881,7 +874,7 @@ onUnmounted(() => {
   text-align: right;
 }
 
-/* β”€β”€ Progress bars β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Progress bars ─────────────────────────────── */
 .progress-bar {
   height: 6px;
   background: #1a2f45;
@@ -901,7 +894,7 @@ onUnmounted(() => {
   background: #2a4a6a;
 }
 
-/* β”€β”€ Revenue β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Revenue ───────────────────────────────────── */
 .revenue-row {
   display: flex;
   justify-content: space-between;
@@ -917,7 +910,7 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-/* β”€β”€ Footer β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Footer ────────────────────────────────────── */
 .card-footer {
   display: flex;
   justify-content: flex-end;
@@ -937,7 +930,7 @@ onUnmounted(() => {
   opacity: 0.6;
 }
 
-/* β”€β”€ Mobile β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€β”€ */
+/* ── Mobile ────────────────────────────────────── */
 @media (max-width: 768px) {
   .projects-page {
     padding: 12px;
