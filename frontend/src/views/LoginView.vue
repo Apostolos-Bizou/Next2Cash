@@ -60,7 +60,11 @@ const login = async () => {
     if (res.data.success) {
       userStore.setUser(res.data.user, res.data.token)
 
-      // M.6: Auto-select entity based on user's entityIds
+      // M.6 + S87.16: Auto-select entity, but RESPECT the user's last
+      // chosen entity if it is still among their allowed entities.
+      // Previously this always forced entityIds[0] (= Next2Me), which
+      // discarded the entity the user was working in (e.g. Next2Me Group)
+      // every time they logged back in.
       const user = res.data.user
       if (user.entityIds && user.entityIds.length > 0) {
         // User has entity restriction - map UUID to key
@@ -69,9 +73,17 @@ const login = async () => {
           'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
           '50317f44-9961-4fb4-add0-7a118e32dc14': 'next2megroup',
         }
-        const firstKey = uuidToKey[user.entityIds[0]]
-        if (firstKey) {
-          localStorage.setItem('n2c_entity', firstKey)
+        const allowedKeys = user.entityIds
+          .map((id) => uuidToKey[id])
+          .filter((k) => !!k)
+        const stored = localStorage.getItem('n2c_entity')
+        if (stored && allowedKeys.includes(stored)) {
+          // Keep the user's last selection - do not overwrite.
+        } else {
+          const firstKey = allowedKeys[0]
+          if (firstKey) {
+            localStorage.setItem('n2c_entity', firstKey)
+          }
         }
       }
 
