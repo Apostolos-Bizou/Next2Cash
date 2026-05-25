@@ -69,6 +69,10 @@ function fmtMoneySigned(amount) {
   })
   return sign + abs.replace('-', '')
 }
+// S86.14 annual: monthly-equivalent x12 = annual cost (most intuitive for CEO)
+function fmtAnnual(monthlyAmount) {
+  return fmtMoney((Number(monthlyAmount) || 0) * 12)
+}
 
 const FREQ_LABELS = {
   DAILY: 'Ημερήσια', WEEKLY: 'Εβδομαδιαία', MONTHLY: 'Μηνιαία',
@@ -280,6 +284,7 @@ const pareto = computed(() => {
       id: t.id,
       description: t.description,
       monthly: t.monthly,
+      annual: (Number(t.monthly) || 0) * 12, // S86.14 annual: true yearly weight
       amount: t.amount, // S86.13 real-charge: real charge for display (sort still by monthly)
       isOpEx: t.isOpEx,
       projectName: t.projectName,
@@ -593,10 +598,9 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
           <div class="panel-hdr">
             <span class="ptitle">
               <i class="fas fa-chart-column"></i>
-              <span v-if="recurringMode === 'loaded'">Total Cost vs MRR ανά Project</span>
-              <span v-else>Burn vs MRR ανά Project</span>
-              <span class="ptitle-sub" v-if="recurringMode === 'loaded'">(direct + allocated OpEx vs έσοδα)</span>
-              <span class="ptitle-sub" v-else>(πόσα κοστίζει vs πόσα φέρνει)</span>
+              <span>Ετήσιο Κόστος ανά Project</span>
+              <span class="ptitle-sub" v-if="recurringMode === 'loaded'">(direct + allocated OpEx, ετήσια)</span>
+              <span class="ptitle-sub" v-else>(πόσο κοστίζει κάθε project τον χρόνο)</span>
             </span>
             <span class="pbadge">{{ perProject.length }} groups</span>
           </div>
@@ -626,20 +630,20 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
                   {{ g.label }}
                 </td>
                 <template v-if="recurringMode === 'loaded'">
-                  <td class="num neg">{{ fmtMoney(g.directBurn) }}</td>
+                  <td class="num neg">{{ fmtAnnual(g.directBurn) }}</td>
                   <td class="num" :class="g.receivesShare ? 'alloc' : 'muted'">
-                    <span v-if="g.receivesShare">+ {{ fmtMoney(g.allocatedOpEx) }}</span>
+                    <span v-if="g.receivesShare">+ {{ fmtAnnual(g.allocatedOpEx) }}</span>
                     <span v-else>—</span>
                   </td>
-                  <td class="num neg strong">{{ fmtMoney(g.burn) }}</td>
+                  <td class="num neg strong">{{ fmtAnnual(g.burn) }}</td>
                 </template>
                 <template v-else>
-                  <td class="num neg">{{ fmtMoney(g.burn) }}</td>
+                  <td class="num neg">{{ fmtAnnual(g.burn) }}</td>
                 </template>
-                <td class="num pos" v-if="g.mrr > 0">{{ fmtMoney(g.mrr) }}</td>
+                <td class="num pos" v-if="g.mrr > 0">{{ fmtAnnual(g.mrr) }}</td>
                 <td class="num muted" v-else>—</td>
                 <td class="num strong" :style="{ color: g.net >= 0 ? '#10b981' : '#ef4444' }">
-                  {{ fmtMoneySigned(g.net) }}
+                  {{ fmtMoneySigned(g.net * 12) }}
                 </td>
                 <td class="center">
                   <span class="status-pill" :style="{ background: g.statusBg, color: g.statusFg }">
@@ -711,7 +715,7 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
             <div class="pareto-bar-wrap">
               <div class="pareto-bar" :style="{ width: p.barWidth + '%', background: p.projectColor }"></div>
             </div>
-            <span class="pareto-amount">{{ fmtMoney(p.amount) }}</span>
+            <span class="pareto-amount">{{ fmtMoney(p.amount) }}<span class="pareto-annual">{{ fmtAnnual(p.monthly) }}/έτος</span></span>
             <span class="pareto-pct">{{ p.pct.toFixed(1) }}%</span>
           </div>
         </div>
@@ -773,6 +777,7 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
               </div>
               <div class="recur-amount" :style="{ color: r.type === 'income' ? '#10b981' : '#ef4444' }">
                 {{ r.type === 'income' ? '+' : '' }}{{ fmtMoney(r.amount) }}
+                <span class="recur-annual">{{ fmtAnnual(r.monthly) }}/έτος</span>
               </div>
             </div>
           </div>
@@ -1037,6 +1042,8 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
   text-align: right; color: #ef4444; font-variant-numeric: tabular-nums;
 }
 .pareto-pct { font-size: 10px; width: 42px; text-align: right; color: #8b949e; }
+.pareto-annual { display: block; font-size: 9px; color: #6e7681; font-weight: 400; margin-top: 1px; } /* S86.14 annual */
+.recur-annual { display: block; font-size: 10px; color: #6e7681; font-weight: 400; margin-top: 1px; } /* S86.14 annual */
 .pareto-foot {
   display: flex; justify-content: space-between; align-items: center;
   margin-top: 14px; padding-top: 10px;
