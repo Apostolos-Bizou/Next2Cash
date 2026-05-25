@@ -195,8 +195,14 @@ public class PricingCalculatorService {
             breakdown.add(e);
         }
 
-        // Fill pctOfGroup
+        // Fill pctOfGroup + S86.12: suggested price (cost floor) per project.
+        // OpEx is allocated to each project pro-rata by its direct burn; if no
+        // project has any direct burn, OpEx is split equally as a safety net.
+        int liveCount = breakdown.size();
+        BigDecimal targetMarginFraction = clamp(targetMargin, new BigDecimal("0.01"), new BigDecimal("0.95"));
+        BigDecimal marginDivisor = BigDecimal.ONE.subtract(targetMarginFraction); // (1 - margin)
         for (ProjectBreakdownEntry e : breakdown) {
+            // pct of group (by direct burn)
             if (totalDirectBurn.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal pct = e.getDirectBurn()
                     .multiply(ONE_HUNDRED)
@@ -204,6 +210,33 @@ public class PricingCalculatorService {
                 e.setPctOfGroup(pct);
             } else {
                 e.setPctOfGroup(BigDecimal.ZERO);
+            }
+
+            // allocated OpEx share
+            BigDecimal opexShare;
+            if (totalDirectBurn.compareTo(BigDecimal.ZERO) > 0) {
+                opexShare = totalOpex
+                    .multiply(e.getDirectBurn())
+                    .divide(totalDirectBurn, MONEY_SCALE, RoundingMode.HALF_UP);
+            } else if (liveCount > 0) {
+                opexShare = totalOpex.divide(new BigDecimal(liveCount), MONEY_SCALE, RoundingMode.HALF_UP);
+            } else {
+                opexShare = BigDecimal.ZERO;
+            }
+
+            // fully-loaded monthly cost = direct burn + allocated OpEx share
+            BigDecimal fullyLoaded = nz(e.getDirectBurn()).add(opexShare);
+            e.setFullyLoadedCost(money(fullyLoaded));
+
+            // suggested price = fullyLoaded / customers / (1 - margin)
+            // null when no customers set yet (cannot divide; needs CFO input)
+            Integer cust = e.getCurrentCustomers();
+            if (cust != null && cust > 0 && marginDivisor.signum() > 0 && fullyLoaded.signum() > 0) {
+                BigDecimal perCustomer = fullyLoaded.divide(new BigDecimal(cust), MONEY_SCALE, RoundingMode.HALF_UP);
+                BigDecimal suggested = perCustomer.divide(marginDivisor, MONEY_SCALE, RoundingMode.HALF_UP);
+                e.setSuggestedMonthlyPrice(money(suggested));
+            } else {
+                e.setSuggestedMonthlyPrice(null);
             }
         }
         out.setProjectBreakdown(breakdown);

@@ -152,6 +152,9 @@ public class PricingCalculatorResponse {
         private BigDecimal pctOfGroup;
         private BigDecimal currentMrr;
         private Integer currentCustomers;
+        // S86.12: cost-based suggested pricing
+        private BigDecimal fullyLoadedCost;
+        private BigDecimal suggestedMonthlyPrice;
         public UUID getProjectId() { return projectId; }
         public void setProjectId(UUID v) { this.projectId = v; }
         public String getProjectName() { return projectName; }
@@ -166,6 +169,10 @@ public class PricingCalculatorResponse {
         public void setCurrentMrr(BigDecimal v) { this.currentMrr = v; }
         public Integer getCurrentCustomers() { return currentCustomers; }
         public void setCurrentCustomers(Integer v) { this.currentCustomers = v; }
+        public BigDecimal getFullyLoadedCost() { return fullyLoadedCost; }
+        public void setFullyLoadedCost(BigDecimal v) { this.fullyLoadedCost = v; }
+        public BigDecimal getSuggestedMonthlyPrice() { return suggestedMonthlyPrice; }
+        public void setSuggestedMonthlyPrice(BigDecimal v) { this.suggestedMonthlyPrice = v; }
     }
 
     // ============ Outer Getters/Setters ============
