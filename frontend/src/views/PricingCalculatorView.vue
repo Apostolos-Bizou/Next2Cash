@@ -65,6 +65,11 @@ const error    = ref(null)
 const response = ref(null)
 const projects = ref([])  // list of LIVE projects for dropdown
 
+// S86.9: AI CFO Advisor state
+const aiLoading = ref(false)
+const aiError   = ref(null)
+const aiAdvice  = ref(null)
+
 /* ----------------------------------------------------------------
    Computed
    ---------------------------------------------------------------- */
@@ -182,6 +187,41 @@ async function load() {
     loading.value = false
   }
 }
+
+// S86.9: request AI CFO advice for the current project/group + margin.
+async function loadAiAdvice() {
+  aiLoading.value = true
+  aiError.value = null
+  try {
+    const margin = targetMarginRatio.value
+    let res
+    if (selectedProjectId.value === 'ALL') {
+      res = await api.post('/api/pricing-calculator/group/ai-advice', null, {
+        params: { targetMargin: margin }
+      })
+    } else {
+      res = await api.post(`/api/pricing-calculator/${selectedProjectId.value}/ai-advice`, null, {
+        params: { targetMargin: margin }
+      })
+    }
+    aiAdvice.value = res.data
+  } catch (e) {
+    if (e.response?.status === 503) {
+      aiError.value = 'Η υπηρεσία AI δεν είναι διαθέσιμη αυτή τη στιγμή. Δοκιμάστε αργότερα.'
+    } else {
+      aiError.value = e.response?.data?.error || e.message || 'Αποτυχία λήψης συμβουλής AI.'
+    }
+    aiAdvice.value = null
+  } finally {
+    aiLoading.value = false
+  }
+}
+
+// Clear stale advice when the underlying pricing context changes.
+watch([selectedProjectId, targetMarginPct, entityKey], () => {
+  aiAdvice.value = null
+  aiError.value = null
+})
 
 onMounted(async () => {
   await loadProjects()
@@ -491,11 +531,101 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
       </p>
     </section>
 
-    <!-- ============ PLACEHOLDER FOR AI CFO ADVISOR ============ -->
-    <section v-if="response" class="ai-placeholder">
-      <h2>🤖 AI CFO Advisor</h2>
-      <p>Σύντομα: Συγκριτική ανάλυση 3 στρατηγικών (Conservative / Balanced / Aggressive) με competitive benchmarks και actionable recommendations.</p>
-      <button class="btn-disabled" disabled>Συμβουλή από AI CFO (coming in S86.8)</button>
+    <!-- ============ AI CFO ADVISOR (S86.9) ============ -->
+    <section v-if="response" class="ai-advice-section">
+      <div class="ai-advice-head">
+        <h2>🤖 AI CFO Advisor</h2>
+        <button
+          class="ai-advice-btn"
+          :disabled="aiLoading"
+          @click="loadAiAdvice">
+          <span v-if="aiLoading">Ανάλυση σε εξέλιξη…</span>
+          <span v-else-if="aiAdvice">Νέα ανάλυση</span>
+          <span v-else>Ζήτησε συμβουλή από AI CFO</span>
+        </button>
+      </div>
+      <p class="ai-advice-intro">
+        Συγκριτική ανάλυση 3 στρατηγικών τιμολόγησης (Conservative / Balanced / Aggressive)
+        με benchmarks του κλάδου και πρακτικές συστάσεις, βασισμένη στα τρέχοντα δεδομένα.
+      </p>
+
+      <div v-if="aiError" class="ai-advice-error">{{ aiError }}</div>
+
+      <div v-if="aiLoading" class="ai-advice-loading">
+        <div class="ai-spinner"></div>
+        <span>Ο AI CFO αναλύει τα οικονομικά σου… (10-20 δευτ.)</span>
+      </div>
+
+      <div v-if="aiAdvice && !aiLoading" class="ai-advice-body">
+        <p v-if="aiAdvice.fromCache" class="ai-advice-cache">
+          (αποθηκευμένη ανάλυση — ανανεώνεται κάθε 24 ώρες)
+        </p>
+
+        <p v-if="aiAdvice.summary" class="ai-advice-summary">{{ aiAdvice.summary }}</p>
+
+        <!-- 3 strategy cards -->
+        <div class="ai-strategies" v-if="aiAdvice.strategies && aiAdvice.strategies.length">
+          <div
+            v-for="(s, i) in aiAdvice.strategies"
+            :key="i"
+            class="ai-strat-card"
+            :class="'strat-' + i">
+            <div class="ai-strat-name">{{ s.name }}</div>
+            <div class="ai-strat-price">{{ s.monthlyPrice }}</div>
+            <div class="ai-strat-row" v-if="s.positioning">
+              <span class="ai-strat-k">Τοποθέτηση</span>
+              <span class="ai-strat-v">{{ s.positioning }}</span>
+            </div>
+            <div class="ai-strat-row" v-if="s.tradeoff">
+              <span class="ai-strat-k">Trade-off</span>
+              <span class="ai-strat-v">{{ s.tradeoff }}</span>
+            </div>
+            <div class="ai-strat-row" v-if="s.bestWhen">
+              <span class="ai-strat-k">Ιδανικό όταν</span>
+              <span class="ai-strat-v">{{ s.bestWhen }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- benchmarks -->
+        <div class="ai-bench-wrap" v-if="aiAdvice.benchmarks && aiAdvice.benchmarks.length">
+          <h3 class="ai-sub">Benchmarks κλάδου</h3>
+          <table class="ai-bench-table">
+            <thead>
+              <tr>
+                <th>Δείκτης</th>
+                <th>Εσύ</th>
+                <th>Κλάδος</th>
+                <th>Κρίση</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(b, i) in aiAdvice.benchmarks" :key="i">
+                <td>{{ b.metric }}</td>
+                <td>{{ b.yours }}</td>
+                <td>{{ b.industry }}</td>
+                <td>
+                  <span class="ai-verdict" :class="'v-' + (b.verdict || '').toLowerCase()">
+                    {{ b.verdict }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- recommendations -->
+        <div class="ai-recs-wrap" v-if="aiAdvice.recommendations && aiAdvice.recommendations.length">
+          <h3 class="ai-sub">Συστάσεις</h3>
+          <ul class="ai-recs">
+            <li v-for="(r, i) in aiAdvice.recommendations" :key="i">{{ r }}</li>
+          </ul>
+        </div>
+
+        <p class="ai-advice-foot" v-if="aiAdvice.modelUsed">
+          Παράχθηκε από {{ aiAdvice.modelUsed }}. Συμβουλευτικό — όχι υποκατάστατο επαγγελματικής οικονομικής γνώμης.
+        </p>
+      </div>
     </section>
   </div>
 </template>
@@ -935,6 +1065,162 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
   font-size: 12px;
   color: #64748B;
   font-style: italic;
+}
+
+/* ============ AI CFO ADVISOR (S86.9) ============ */
+.ai-advice-section {
+  background: linear-gradient(135deg, #1E1B4B 0%, #1E293B 100%);
+  border: 1px solid #312E81;
+  border-radius: 14px;
+  padding: 24px;
+  margin-top: 24px;
+}
+.ai-advice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ai-advice-head h2 {
+  color: #fff;
+  margin: 0;
+  font-size: 20px;
+}
+.ai-advice-btn {
+  background: #6366F1;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.ai-advice-btn:hover:not(:disabled) { background: #4F46E5; }
+.ai-advice-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.ai-advice-intro { color: #C7D2FE; font-size: 13px; margin: 10px 0 18px; }
+.ai-advice-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid #EF4444;
+  color: #FCA5A5;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.ai-advice-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #C7D2FE;
+  font-size: 14px;
+  padding: 20px 0;
+}
+.ai-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(199, 210, 254, 0.3);
+  border-top-color: #C7D2FE;
+  border-radius: 50%;
+  animation: ai-spin 0.8s linear infinite;
+}
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+.ai-advice-cache { color: #94A3B8; font-size: 12px; font-style: italic; margin: 0 0 8px; }
+.ai-advice-summary {
+  color: #E2E8F0;
+  font-size: 15px;
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+.ai-strategies {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.ai-strat-card {
+  background: #0F172A;
+  border-radius: 10px;
+  padding: 16px;
+  border-top: 3px solid #6366F1;
+}
+.ai-strat-card.strat-0 { border-top-color: #10B981; }
+.ai-strat-card.strat-1 { border-top-color: #6366F1; }
+.ai-strat-card.strat-2 { border-top-color: #F59E0B; }
+.ai-strat-name {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94A3B8;
+}
+.ai-strat-price {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin: 6px 0 12px;
+}
+.ai-strat-row { margin-bottom: 10px; }
+.ai-strat-k {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #64748B;
+  margin-bottom: 2px;
+}
+.ai-strat-v { display: block; font-size: 13px; color: #CBD5E1; line-height: 1.4; }
+.ai-sub {
+  color: #fff;
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.ai-bench-wrap { margin-bottom: 24px; }
+.ai-bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ai-bench-table th {
+  text-align: left;
+  color: #94A3B8;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-bottom: 1px solid #334155;
+}
+.ai-bench-table td {
+  color: #E2E8F0;
+  padding: 8px 10px;
+  border-bottom: 1px solid #1E293B;
+}
+.ai-verdict {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.ai-verdict.v-good  { background: rgba(16, 185, 129, 0.15); color: #6EE7B7; }
+.ai-verdict.v-watch { background: rgba(245, 158, 11, 0.15); color: #FCD34D; }
+.ai-verdict.v-risk  { background: rgba(239, 68, 68, 0.15);  color: #FCA5A5; }
+.ai-recs-wrap { margin-bottom: 8px; }
+.ai-recs {
+  margin: 0;
+  padding-left: 20px;
+}
+.ai-recs li {
+  color: #E2E8F0;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+.ai-advice-foot {
+  color: #64748B;
+  font-size: 11px;
+  font-style: italic;
+  margin: 16px 0 0;
 }
 
 /* ============ AI PLACEHOLDER ============ */
