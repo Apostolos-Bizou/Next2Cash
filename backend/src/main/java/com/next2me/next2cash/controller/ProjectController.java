@@ -339,6 +339,12 @@ public class ProjectController {
         if (dto.expectedMonthlyRevenue != null) p.setExpectedMonthlyRevenue(dto.expectedMonthlyRevenue);
         if (dto.color != null && !dto.color.isBlank()) p.setColor(dto.color);
         if (dto.isActive != null) p.setIsActive(dto.isActive);
+        // S86.12: CFO inputs (null-safe, only update when provided)
+        if (dto.currentCustomers != null) p.setCurrentCustomers(dto.currentCustomers);
+        if (dto.currentMrr != null) p.setCurrentMrr(dto.currentMrr);
+        if (dto.directBurnMonthly != null) p.setDirectBurnMonthly(dto.directBurnMonthly);
+        if (dto.grossMarginPct != null) p.setGrossMarginPct(dto.grossMarginPct);
+        if (dto.cacPerCustomer != null) p.setCacPerCustomer(dto.cacPerCustomer);
 
         Project saved = projectRepository.save(p);
         response.put("success", true);

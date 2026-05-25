@@ -22,6 +22,12 @@ public class ProjectDTO {
     public LocalDateTime createdAt;
     public LocalDateTime updatedAt;
     public Boolean isActive;
+    // S86.12: CFO inputs for pricing engine
+    public Integer currentCustomers;
+    public BigDecimal currentMrr;
+    public BigDecimal directBurnMonthly;
+    public BigDecimal grossMarginPct;
+    public BigDecimal cacPerCustomer;
 
     public ProjectDTO() {}
 
@@ -41,6 +47,11 @@ public class ProjectDTO {
         d.createdAt = p.getCreatedAt();
         d.updatedAt = p.getUpdatedAt();
         d.isActive = p.getIsActive();
+        d.currentCustomers = p.getCurrentCustomers();
+        d.currentMrr = p.getCurrentMrr();
+        d.directBurnMonthly = p.getDirectBurnMonthly();
+        d.grossMarginPct = p.getGrossMarginPct();
+        d.cacPerCustomer = p.getCacPerCustomer();
         return d;
     }
 }
