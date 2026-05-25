@@ -42,4 +42,13 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
      */
     @Query("SELECT p FROM Project p WHERE p.status = :status AND p.ownerEntityId IN :entityIds ORDER BY p.name")
     List<Project> findByStatusAndOwnerEntityIdIn(String status, Set<java.util.UUID> entityIds);
+
+    /**
+     * S86.12: multiple statuses (e.g. active = LIVE + IN_DEVELOPMENT + TESTING).
+     */
+    @Query("SELECT p FROM Project p WHERE p.status IN :statuses ORDER BY p.name")
+    List<Project> findByStatusIn(java.util.Collection<String> statuses);
+
+    @Query("SELECT p FROM Project p WHERE p.status IN :statuses AND p.ownerEntityId IN :entityIds ORDER BY p.name")
+    List<Project> findByStatusInAndOwnerEntityIdIn(java.util.Collection<String> statuses, Set<java.util.UUID> entityIds);
 }

@@ -124,6 +124,39 @@ public class PricingCalculatorService {
     //  GROUP MODE
     // =====================================================================
 
+    // S86.12: active statuses carry OpEx cost (work is being done on them);
+    // only LIVE projects get a suggested selling price (you only sell what ships).
+    private static final java.util.List<String> ACTIVE_STATUSES =
+        java.util.Arrays.asList("LIVE", "IN_DEVELOPMENT", "TESTING");
+
+    private List<Project> loadActiveProjects(UUID entityId) {
+        if (entityId != null) {
+            return projectRepository.findByStatusInAndOwnerEntityIdIn(
+                ACTIVE_STATUSES, java.util.Collections.singleton(entityId));
+        }
+        return projectRepository.findByStatusIn(ACTIVE_STATUSES);
+    }
+
+    // S86.12: automatic OpEx share for one project = totalOpex allocated across all
+    // active projects, pro-rata by direct burn; equal split when no project has burn.
+    private BigDecimal opexShareFor(Project project,
+                                    List<Project> activeProjects,
+                                    Map<UUID, BigDecimal> burnByProject,
+                                    BigDecimal totalOpex) {
+        if (activeProjects == null || activeProjects.isEmpty() || totalOpex.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal totalBurn = BigDecimal.ZERO;
+        for (Project p : activeProjects) {
+            totalBurn = totalBurn.add(effectiveDirectBurn(p, burnByProject));
+        }
+        BigDecimal myBurn = effectiveDirectBurn(project, burnByProject);
+        if (totalBurn.signum() > 0) {
+            return totalOpex.multiply(myBurn).divide(totalBurn, MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        return totalOpex.divide(new BigDecimal(activeProjects.size()), MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
     private void buildGroupMode(PricingCalculatorResponse out,
                                 Map<UUID, BigDecimal> burnByProject,
                                 BigDecimal totalOpex,
@@ -133,15 +166,10 @@ public class PricingCalculatorService {
         out.setProjectId(null);
         out.setProjectName("Όλος ο Όμιλος");
 
-        // Load LIVE projects. S86.10: when an entityId is supplied, scope to
-        // that entity only; otherwise consolidate the whole group.
-        List<Project> liveProjects;
-        if (entityId != null) {
-            liveProjects = projectRepository.findByStatusAndOwnerEntityIdIn(
-                    "LIVE", java.util.Collections.singleton(entityId));
-        } else {
-            liveProjects = projectRepository.findByStatus("LIVE");
-        }
+        // S86.12: active statuses (LIVE + IN_DEVELOPMENT + TESTING) all carry OpEx
+        // cost. PAUSED / CANCELLED / PLANNING are excluded entirely. Only LIVE rows
+        // receive a suggested selling price (handled in the breakdown loop below).
+        List<Project> liveProjects = loadActiveProjects(entityId);
 
         // S86.11: when scoped to a single entity, recompute OpEx + burns
         // from that entity's transactions only (full per-entity isolation).
@@ -230,8 +258,10 @@ public class PricingCalculatorService {
 
             // suggested price = fullyLoaded / customers / (1 - margin)
             // null when no customers set yet (cannot divide; needs CFO input)
+            // S86.12: only LIVE projects get a suggested selling price.
+            boolean isLive = "LIVE".equalsIgnoreCase(e.getStatus());
             Integer cust = e.getCurrentCustomers();
-            if (cust != null && cust > 0 && marginDivisor.signum() > 0 && fullyLoaded.signum() > 0) {
+            if (isLive && cust != null && cust > 0 && marginDivisor.signum() > 0 && fullyLoaded.signum() > 0) {
                 BigDecimal perCustomer = fullyLoaded.divide(new BigDecimal(cust), MONEY_SCALE, RoundingMode.HALF_UP);
                 BigDecimal suggested = perCustomer.divide(marginDivisor, MONEY_SCALE, RoundingMode.HALF_UP);
                 e.setSuggestedMonthlyPrice(money(suggested));
@@ -300,11 +330,12 @@ public class PricingCalculatorService {
 
         BigDecimal directBurn = effectiveDirectBurn(project, burnByProject);
 
-        // Allocated OpEx = totalOpex * (project.opexAllocationPct / 100)
-        BigDecimal allocPct = nz(project.getOpexAllocationPct());
-        BigDecimal allocatedOpex = totalOpex
-            .multiply(allocPct)
-            .divide(ONE_HUNDRED, MONEY_SCALE, RoundingMode.HALF_UP);
+        // S86.12: automatic OpEx allocation (matches GROUP mode). The project's
+        // share of central OpEx = pro-rata by direct burn across all active
+        // projects, or equal split when none has direct burn. This replaces the
+        // old static opexAllocationPct so single-project and group views agree.
+        List<Project> activeForAlloc = loadActiveProjects(null);
+        BigDecimal allocatedOpex = opexShareFor(project, activeForAlloc, burnByProject, totalOpex);
 
         BigDecimal totalCost = directBurn.add(allocatedOpex);
 
@@ -449,16 +480,29 @@ public class PricingCalculatorService {
     /**
      * Project mode scenarios: A=Flat, B=Fixed customers, C=Tiered 3 plans.
      */
+    // S86.12: cost-based flat price = totalCost / customers / (1 - margin).
+    // Falls back to the legacy flat constant when no customers are set yet.
+    private BigDecimal costBasedFlatPrice(PricingCalculatorResponse out) {
+        Integer customers = out.getCurrentCustomers();
+        if (customers == null || customers <= 0) return SCENARIO_A_FLAT_PRICE;
+        BigDecimal totalCost = nz(out.getTotalCost());
+        BigDecimal divisor = BigDecimal.ONE.subtract(nz(out.getTargetMargin()));
+        if (totalCost.signum() <= 0 || divisor.signum() <= 0) return SCENARIO_A_FLAT_PRICE;
+        BigDecimal perCustomerCost = totalCost.divide(new BigDecimal(customers), MONEY_SCALE, RoundingMode.HALF_UP);
+        return perCustomerCost.divide(divisor, MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
     private void fillScenariosProject(PricingCalculatorResponse out) {
         BigDecimal requiredRevenue = out.getRequiredRevenue();
         BigDecimal annualDiscount = out.getAnnualDiscountPct();
 
-        // ---- Scenario A: Flat €99 ----
+        // ---- Scenario A: cost-based flat price (was hardcoded 99) ----
+        BigDecimal flatA = costBasedFlatPrice(out);
         ScenarioA a = new ScenarioA();
-        a.setMonthlyPrice(SCENARIO_A_FLAT_PRICE);
-        a.setAnnualPrice(annualPriceFromMonthly(SCENARIO_A_FLAT_PRICE, annualDiscount));
-        a.setEffectiveMonthlyFromAnnual(effectiveMonthly(SCENARIO_A_FLAT_PRICE, annualDiscount));
-        a.setCustomersNeeded(divCeil(requiredRevenue, SCENARIO_A_FLAT_PRICE));
+        a.setMonthlyPrice(flatA);
+        a.setAnnualPrice(annualPriceFromMonthly(flatA, annualDiscount));
+        a.setEffectiveMonthlyFromAnnual(effectiveMonthly(flatA, annualDiscount));
+        a.setCustomersNeeded(divCeil(requiredRevenue, flatA));
         out.setScenarioA(a);
 
         // ---- Scenario B: Fixed N customers (current count, fallback 10) ----
@@ -498,12 +542,13 @@ public class PricingCalculatorService {
         BigDecimal requiredRevenue = out.getRequiredRevenue();
         BigDecimal annualDiscount = out.getAnnualDiscountPct();
 
-        // ---- Scenario A: Flat €99 across all products ----
+        // ---- Scenario A: cost-based flat price across all products (was hardcoded 99) ----
+        BigDecimal flatA = costBasedFlatPrice(out);
         ScenarioA a = new ScenarioA();
-        a.setMonthlyPrice(SCENARIO_A_FLAT_PRICE);
-        a.setAnnualPrice(annualPriceFromMonthly(SCENARIO_A_FLAT_PRICE, annualDiscount));
-        a.setEffectiveMonthlyFromAnnual(effectiveMonthly(SCENARIO_A_FLAT_PRICE, annualDiscount));
-        a.setCustomersNeeded(divCeil(requiredRevenue, SCENARIO_A_FLAT_PRICE));
+        a.setMonthlyPrice(flatA);
+        a.setAnnualPrice(annualPriceFromMonthly(flatA, annualDiscount));
+        a.setEffectiveMonthlyFromAnnual(effectiveMonthly(flatA, annualDiscount));
+        a.setCustomersNeeded(divCeil(requiredRevenue, flatA));
         out.setScenarioA(a);
 
         // ---- Scenario B: Blended fixed-customer price ----

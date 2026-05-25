@@ -58,7 +58,7 @@ class PricingCalculatorServiceTest {
 
     @Test
     void calculate_groupMode_noProjects_returnsZeroBurn() {
-        when(projectRepository.findByStatus("LIVE")).thenReturn(Collections.emptyList());
+        when(projectRepository.findByStatusIn(any())).thenReturn(Collections.emptyList());
         when(transactionRepository.findAll()).thenReturn(Collections.emptyList());
         when(recurrencePatternRepository.findActiveAsOf(any(LocalDate.class)))
             .thenReturn(Collections.emptyList());
@@ -78,7 +78,7 @@ class PricingCalculatorServiceTest {
         Project p = makeProject("Next2Cash", "LIVE", new BigDecimal("4985"),
             new BigDecimal("0"), new BigDecimal("1200"), 12);
 
-        when(projectRepository.findByStatus("LIVE")).thenReturn(List.of(p));
+        when(projectRepository.findByStatusIn(any())).thenReturn(List.of(p));
 
         Transaction opexTxn = makeOpexTransaction(new BigDecimal("6870"));
         RecurrencePattern opexPat = makeMonthlyPattern(opexTxn.getRecurrencePatternId());
@@ -107,7 +107,11 @@ class PricingCalculatorServiceTest {
     // =====================================================================
 
     @Test
-    void calculate_projectMode_withOpexAllocation_appliesPct() {
+    void calculate_projectMode_autoOpexAllocation_sharesAcrossActive() {
+        // S86.12: OpEx is no longer a static per-project pct. It is allocated
+        // automatically across all ACTIVE projects (pro-rata by direct burn, or
+        // equal split when none has burn). With a single active project, that
+        // project absorbs 100% of OpEx.
         UUID projectId = UUID.randomUUID();
 
         Project p = makeProjectWithId(projectId, "Next2Cash", "LIVE",
@@ -115,6 +119,7 @@ class PricingCalculatorServiceTest {
             new BigDecimal("1200"), 12);
 
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(p));
+        when(projectRepository.findByStatusIn(any())).thenReturn(List.of(p));
 
         Transaction opexTxn = makeOpexTransaction(new BigDecimal("10000"));
         RecurrencePattern opexPat = makeMonthlyPattern(opexTxn.getRecurrencePatternId());
@@ -127,8 +132,9 @@ class PricingCalculatorServiceTest {
         assertThat(out.getMode()).isEqualTo("PROJECT");
         assertThat(out.getProjectId()).isEqualTo(projectId);
         assertThat(out.getDirectBurn()).isEqualByComparingTo(new BigDecimal("4000.00"));
-        assertThat(out.getAllocatedOpex()).isEqualByComparingTo(new BigDecimal("5000.00"));
-        assertThat(out.getTotalCost()).isEqualByComparingTo(new BigDecimal("9000.00"));
+        // single active project -> absorbs all 10000 OpEx
+        assertThat(out.getAllocatedOpex()).isEqualByComparingTo(new BigDecimal("10000.00"));
+        assertThat(out.getTotalCost()).isEqualByComparingTo(new BigDecimal("14000.00"));
     }
 
     @Test
@@ -139,6 +145,7 @@ class PricingCalculatorServiceTest {
             new BigDecimal("9999"), new BigDecimal("0"),
             BigDecimal.ZERO, 0);
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(p));
+        when(projectRepository.findByStatusIn(any())).thenReturn(List.of(p));
 
         Transaction t = makeProjectTransaction(projectId, new BigDecimal("123"));
         RecurrencePattern pat = makeMonthlyPattern(t.getRecurrencePatternId());
@@ -160,7 +167,7 @@ class PricingCalculatorServiceTest {
     void reversePricing_15pctMargin_computesRequiredRevenue() {
         Project p = makeProject("X", "LIVE", new BigDecimal("8500"),
             new BigDecimal("0"), BigDecimal.ZERO, 0);
-        when(projectRepository.findByStatus("LIVE")).thenReturn(List.of(p));
+        when(projectRepository.findByStatusIn(any())).thenReturn(List.of(p));
         when(transactionRepository.findAll()).thenReturn(Collections.emptyList());
         when(recurrencePatternRepository.findActiveAsOf(any(LocalDate.class)))
             .thenReturn(Collections.emptyList());
@@ -184,6 +191,7 @@ class PricingCalculatorServiceTest {
         p.setAnnualBillingPct(BigDecimal.ZERO);
 
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(p));
+        when(projectRepository.findByStatusIn(any())).thenReturn(List.of(p));
         when(transactionRepository.findAll()).thenReturn(Collections.emptyList());
         when(recurrencePatternRepository.findActiveAsOf(any(LocalDate.class)))
             .thenReturn(Collections.emptyList());
@@ -209,7 +217,7 @@ class PricingCalculatorServiceTest {
     void scenarios_flat99_computesCustomersNeeded() {
         Project p = makeProject("X", "LIVE", new BigDecimal("11855"),
             new BigDecimal("0"), BigDecimal.ZERO, 0);
-        when(projectRepository.findByStatus("LIVE")).thenReturn(List.of(p));
+        when(projectRepository.findByStatusIn(any())).thenReturn(List.of(p));
         when(transactionRepository.findAll()).thenReturn(Collections.emptyList());
         when(recurrencePatternRepository.findActiveAsOf(any(LocalDate.class)))
             .thenReturn(Collections.emptyList());
@@ -228,6 +236,7 @@ class PricingCalculatorServiceTest {
             new BigDecimal("5000"), new BigDecimal("0"),
             BigDecimal.ZERO, 0);
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(p));
+        when(projectRepository.findByStatusIn(any())).thenReturn(List.of(p));
         when(transactionRepository.findAll()).thenReturn(Collections.emptyList());
         when(recurrencePatternRepository.findActiveAsOf(any(LocalDate.class)))
             .thenReturn(Collections.emptyList());
