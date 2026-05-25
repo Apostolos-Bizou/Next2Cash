@@ -280,6 +280,7 @@ const pareto = computed(() => {
       id: t.id,
       description: t.description,
       monthly: t.monthly,
+      amount: t.amount, // S86.13 real-charge: real charge for display (sort still by monthly)
       isOpEx: t.isOpEx,
       projectName: t.projectName,
       projectColor: t.isOpEx ? OPEX_COLOR : (projectColorById.value[t.projectId] || PROJECT_COLORS[0]),
@@ -710,7 +711,7 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
             <div class="pareto-bar-wrap">
               <div class="pareto-bar" :style="{ width: p.barWidth + '%', background: p.projectColor }"></div>
             </div>
-            <span class="pareto-amount">{{ fmtMoney(p.monthly) }}</span>
+            <span class="pareto-amount">{{ fmtMoney(p.amount) }}</span>
             <span class="pareto-pct">{{ p.pct.toFixed(1) }}%</span>
           </div>
         </div>
@@ -771,7 +772,7 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
                 </div>
               </div>
               <div class="recur-amount" :style="{ color: r.type === 'income' ? '#10b981' : '#ef4444' }">
-                {{ r.type === 'income' ? '+' : '' }}{{ fmtMoney(r.monthly) }}
+                {{ r.type === 'income' ? '+' : '' }}{{ fmtMoney(r.amount) }}
               </div>
             </div>
           </div>
