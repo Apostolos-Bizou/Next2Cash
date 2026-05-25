@@ -415,6 +415,8 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
             <th class="num">% of Group</th>
             <th class="num">Current MRR</th>
             <th class="num">Customers</th>
+            <th class="num">Fully-Loaded Κόστος</th>
+            <th class="num">Προτεινόμενη Τιμή</th>
           </tr>
         </thead>
         <tbody>
@@ -425,6 +427,11 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
             <td class="num">{{ fmtPct(row.pctOfGroup) }}</td>
             <td class="num">{{ fmtMoney(row.currentMrr) }}</td>
             <td class="num">{{ fmtNumber(row.currentCustomers) }}</td>
+            <td class="num">{{ fmtMoney(row.fullyLoadedCost) }}</td>
+            <td class="num">
+              <span v-if="row.suggestedMonthlyPrice != null" class="suggested-price">{{ fmtMoney(row.suggestedMonthlyPrice) }}/μήνα</span>
+              <span v-else class="suggested-empty" title="Ορίστε αριθμό συμβολαίων στο Project Detail">—</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -1278,4 +1285,7 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
     width: 100%;
   }
 }
+
+.suggested-price { color: #4ade80; font-weight: 700; }
+.suggested-empty { color: #64748b; }
 </style>
