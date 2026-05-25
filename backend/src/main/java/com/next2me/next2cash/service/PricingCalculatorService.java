@@ -143,6 +143,13 @@ public class PricingCalculatorService {
             liveProjects = projectRepository.findByStatus("LIVE");
         }
 
+        // S86.11: when scoped to a single entity, recompute OpEx + burns
+        // from that entity's transactions only (full per-entity isolation).
+        if (entityId != null) {
+            burnByProject = computeBurnByProject(entityId);
+            totalOpex = burnByProject.getOrDefault(null, BigDecimal.ZERO);
+        }
+
         // --- Cost: sum of direct burns of LIVE projects + 100% of OpEx ---
         BigDecimal totalDirectBurn = BigDecimal.ZERO;
         BigDecimal totalCurrentMrr = BigDecimal.ZERO;
@@ -605,6 +612,12 @@ public class PricingCalculatorService {
      * their RecurrencePattern frequency to a monthly rate.
      */
     Map<UUID, BigDecimal> computeBurnByProject() {
+        return computeBurnByProject(null);
+    }
+
+    // S86.11: entity-aware overload. When entityId != null, only that
+    // entity's transactions contribute to the burn map (OpEx included).
+    Map<UUID, BigDecimal> computeBurnByProject(UUID entityId) {
         Map<UUID, BigDecimal> burn = new HashMap<>();
 
         // Load all patterns once
@@ -617,6 +630,7 @@ public class PricingCalculatorService {
         List<Transaction> all = transactionRepository.findAll();
         for (Transaction t : all) {
             if (!"PLANNED".equalsIgnoreCase(t.getEntryMode())) continue;
+            if (entityId != null && !entityId.equals(t.getEntityId())) continue;
             if (t.getIsRecurring() == null || !t.getIsRecurring()) continue;
             if (t.getRecurrencePatternId() == null) continue;
             // Only expense rows contribute to burn (income would be revenue)
