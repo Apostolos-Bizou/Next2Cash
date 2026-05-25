@@ -99,6 +99,49 @@
         </div>
       </div>
 
+      <!-- ===== Section 2.5: CFO Inputs (ADMIN only) ===== -->
+      <div v-if="isAdmin" class="detail-section">
+        <h2 class="section-title">
+          <span class="section-icon">💰</span>
+          CFO Inputs
+          <span class="cfo-sub-title">(δεδομένα τιμολόγησης — μόνο admin)</span>
+        </h2>
+        <div class="cfo-grid">
+          <div class="cfo-field">
+            <label>Αριθμός συμβολαίων / πελατών</label>
+            <input type="number" min="0" step="1" v-model.number="cfoForm.currentCustomers" placeholder="0" />
+            <span class="cfo-hint">πόσους πελάτες έχεις σήμερα</span>
+          </div>
+          <div class="cfo-field">
+            <label>Τρέχον μηνιαίο έσοδο (MRR €)</label>
+            <input type="number" min="0" step="0.01" v-model.number="cfoForm.currentMrr" placeholder="0" />
+            <span class="cfo-hint">τι εισπράττεις τώρα / μήνα</span>
+          </div>
+          <div class="cfo-field">
+            <label>Άμεσο μηνιαίο κόστος (€)</label>
+            <input type="number" min="0" step="0.01" v-model.number="cfoForm.directBurnMonthly" placeholder="auto" />
+            <span class="cfo-hint">override — άφησέ το κενό για αυτόματο</span>
+          </div>
+          <div class="cfo-field">
+            <label>Περιθώριο κέρδους (%)</label>
+            <input type="number" min="0" max="100" step="0.01" v-model.number="cfoForm.grossMarginPct" placeholder="75" />
+            <span class="cfo-hint">gross margin — π.χ. 75</span>
+          </div>
+          <div class="cfo-field">
+            <label>Κόστος απόκτησης πελάτη (CAC €)</label>
+            <input type="number" min="0" step="0.01" v-model.number="cfoForm.cacPerCustomer" placeholder="0" />
+            <span class="cfo-hint">τι κοστίζει να φέρεις έναν πελάτη</span>
+          </div>
+        </div>
+        <div class="cfo-actions">
+          <button class="cfo-save-btn" :disabled="cfoSaving" @click="saveCfo">
+            {{ cfoSaving ? 'Αποθήκευση...' : 'Αποθήκευση CFO δεδομένων' }}
+          </button>
+          <span v-if="cfoSaved" class="cfo-ok">✓ Αποθηκεύθηκε</span>
+          <span v-if="cfoError" class="cfo-err">{{ cfoError }}</span>
+        </div>
+      </div>
+
       <!-- ===== Section 3: Budget Breakdown ===== -->
       <div class="detail-section">
         <h2 class="section-title">
@@ -291,6 +334,74 @@ onMounted(loadDetail)
 
 // S87.10: reload when route param changes (Vue Router reuses the component instance)
 watch(projectId, () => { loadDetail() })
+
+// ----- S86.12: CFO inputs editing (ADMIN only) --------------------
+const isAdmin = computed(() => {
+  try {
+    const u = JSON.parse(localStorage.getItem('n2c_user') || '{}')
+    return (u.role || '').toUpperCase() === 'ADMIN'
+  } catch (_) { return false }
+})
+
+const cfoForm = ref({
+  currentCustomers: null,
+  currentMrr: null,
+  directBurnMonthly: null,
+  grossMarginPct: null,
+  cacPerCustomer: null
+})
+const cfoSaving = ref(false)
+const cfoSaved = ref(false)
+const cfoError = ref(null)
+
+// Sync the form from the loaded project whenever detail changes
+watch(detail, (d) => {
+  const p = d && d.project ? d.project : null
+  if (!p) return
+  cfoForm.value = {
+    currentCustomers: p.currentCustomers ?? null,
+    currentMrr: p.currentMrr ?? null,
+    directBurnMonthly: p.directBurnMonthly ?? null,
+    grossMarginPct: p.grossMarginPct ?? null,
+    cacPerCustomer: p.cacPerCustomer ?? null
+  }
+}, { immediate: true })
+
+async function saveCfo() {
+  if (!detail.value || !detail.value.project) return
+  cfoSaving.value = true
+  cfoSaved.value = false
+  cfoError.value = null
+  try {
+    const body = {
+      currentCustomers: cfoForm.value.currentCustomers === '' ? null : cfoForm.value.currentCustomers,
+      currentMrr: cfoForm.value.currentMrr === '' ? null : cfoForm.value.currentMrr,
+      directBurnMonthly: cfoForm.value.directBurnMonthly === '' ? null : cfoForm.value.directBurnMonthly,
+      grossMarginPct: cfoForm.value.grossMarginPct === '' ? null : cfoForm.value.grossMarginPct,
+      cacPerCustomer: cfoForm.value.cacPerCustomer === '' ? null : cfoForm.value.cacPerCustomer
+    }
+    const res = await api.put('/api/projects/' + projectId.value, body)
+    if (res.data && res.data.success) {
+      // sync back from server response (single source of truth)
+      const saved = res.data.data
+      if (saved && detail.value && detail.value.project) {
+        detail.value.project.currentCustomers = saved.currentCustomers
+        detail.value.project.currentMrr = saved.currentMrr
+        detail.value.project.directBurnMonthly = saved.directBurnMonthly
+        detail.value.project.grossMarginPct = saved.grossMarginPct
+        detail.value.project.cacPerCustomer = saved.cacPerCustomer
+      }
+      cfoSaved.value = true
+      setTimeout(() => { cfoSaved.value = false }, 3000)
+    } else {
+      cfoError.value = (res.data && res.data.error) || 'Failed to save'
+    }
+  } catch (e) {
+    cfoError.value = (e.response && e.response.data && e.response.data.error) || e.message || 'Save failed'
+  } finally {
+    cfoSaving.value = false
+  }
+}
 
 // ----- Computed: owner entity name --------------------------------
 const ownerEntityName = computed(() => {
@@ -674,4 +785,19 @@ function statusClass(s) {
   color: #94a3b8;
   margin-top: 4px;
 }
+
+/* S86.12: CFO Inputs panel */
+.cfo-sub-title { font-size: 0.7rem; font-weight: 400; font-style: italic; color: #94a3b8; margin-left: 0.5rem; }
+.cfo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.cfo-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.cfo-field label { font-size: 0.78rem; color: #cbd5e1; font-weight: 600; }
+.cfo-field input { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 0.55rem 0.7rem; color: #f1f5f9; font-size: 0.95rem; }
+.cfo-field input:focus { outline: none; border-color: #6366f1; }
+.cfo-hint { font-size: 0.68rem; color: #64748b; font-style: italic; }
+.cfo-actions { display: flex; align-items: center; gap: 1rem; margin-top: 1.1rem; }
+.cfo-save-btn { background: #6366f1; color: #fff; border: none; border-radius: 8px; padding: 0.6rem 1.2rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+.cfo-save-btn:hover:not(:disabled) { background: #4f46e5; }
+.cfo-save-btn:disabled { opacity: 0.6; cursor: default; }
+.cfo-ok { color: #4ade80; font-size: 0.85rem; font-weight: 600; }
+.cfo-err { color: #f87171; font-size: 0.85rem; }
 </style>
