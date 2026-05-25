@@ -58,6 +58,7 @@ public class PricingCalculatorController {
     @GetMapping
     public ResponseEntity<?> calculateGroup(
             @RequestParam(name = "targetMargin", required = false) BigDecimal targetMargin,
+            @RequestParam(name = "entityId", required = false) UUID entityId,
             HttpServletRequest request) {
 
         try {
@@ -71,7 +72,7 @@ public class PricingCalculatorController {
             log.info("Pricing calculator GROUP mode requested by user {} with margin {}",
                 user.getUsername(), margin);
 
-            PricingCalculatorResponse response = pricingService.calculate(null, margin);
+            PricingCalculatorResponse response = pricingService.calculate(null, margin, entityId);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(errorBody(ex.getMessage()));
@@ -217,6 +218,7 @@ public class PricingCalculatorController {
     @PostMapping("/group/ai-advice")
     public ResponseEntity<?> aiAdviceGroup(
             @RequestParam(name = "targetMargin", required = false) BigDecimal targetMargin,
+            @RequestParam(name = "entityId", required = false) UUID entityId,
             HttpServletRequest request) {
         try {
             String authHeader = request.getHeader("Authorization");
@@ -227,7 +229,7 @@ public class PricingCalculatorController {
             BigDecimal margin = targetMargin != null ? targetMargin : DEFAULT_TARGET_MARGIN;
             log.info("AI CFO advice GROUP mode requested by user {} with margin {}",
                 user.getUsername(), margin);
-            AiCfoAdviceResponse advice = pricingAiAdvisorService.advise(null, margin);
+            AiCfoAdviceResponse advice = pricingAiAdvisorService.advise(null, margin, entityId);
             return ResponseEntity.ok(advice);
         } catch (IllegalStateException ex) {
             // ANTHROPIC_API_KEY not configured, etc.

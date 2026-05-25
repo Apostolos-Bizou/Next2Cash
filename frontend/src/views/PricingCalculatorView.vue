@@ -172,7 +172,7 @@ async function load() {
     let res
     if (selectedProjectId.value === 'ALL') {
       res = await api.get('/api/pricing-calculator', {
-        params: { targetMargin: margin }
+        params: { targetMargin: margin, entityId: currentEntityId.value }
       })
     } else {
       res = await api.get(`/api/pricing-calculator/${selectedProjectId.value}`, {
@@ -197,7 +197,7 @@ async function loadAiAdvice() {
     let res
     if (selectedProjectId.value === 'ALL') {
       res = await api.post('/api/pricing-calculator/group/ai-advice', null, {
-        params: { targetMargin: margin }
+        params: { targetMargin: margin, entityId: currentEntityId.value }
       })
     } else {
       res = await api.post(`/api/pricing-calculator/${selectedProjectId.value}/ai-advice`, null, {

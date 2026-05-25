@@ -89,6 +89,13 @@ public class PricingCalculatorService {
      * @param targetMargin target margin as decimal (0.15 = 15%); 0.05-0.50 acceptable
      */
     public PricingCalculatorResponse calculate(UUID projectId, BigDecimal targetMargin) {
+        return calculate(projectId, targetMargin, null);
+    }
+
+    // S86.10: entity-aware overload. entityId == null keeps original
+    // group-wide behaviour; a non-null entityId scopes GROUP mode to the
+    // LIVE projects owned by that single entity (zeros if it owns none).
+    public PricingCalculatorResponse calculate(UUID projectId, BigDecimal targetMargin, UUID entityId) {
         if (targetMargin == null) targetMargin = new BigDecimal("0.15");
         targetMargin = clamp(targetMargin, new BigDecimal("0.01"), new BigDecimal("0.95"));
 
@@ -101,7 +108,7 @@ public class PricingCalculatorService {
 
         // --- Branch on mode ---
         if (projectId == null) {
-            buildGroupMode(out, burnByProject, totalOpex, targetMargin);
+            buildGroupMode(out, burnByProject, totalOpex, targetMargin, entityId);
         } else {
             Optional<Project> projOpt = projectRepository.findById(projectId);
             if (projOpt.isEmpty()) {
@@ -120,13 +127,21 @@ public class PricingCalculatorService {
     private void buildGroupMode(PricingCalculatorResponse out,
                                 Map<UUID, BigDecimal> burnByProject,
                                 BigDecimal totalOpex,
-                                BigDecimal targetMargin) {
+                                BigDecimal targetMargin,
+                                UUID entityId) {
         out.setMode("GROUP");
         out.setProjectId(null);
         out.setProjectName("Όλος ο Όμιλος");
 
-        // Load all LIVE projects
-        List<Project> liveProjects = projectRepository.findByStatus("LIVE");
+        // Load LIVE projects. S86.10: when an entityId is supplied, scope to
+        // that entity only; otherwise consolidate the whole group.
+        List<Project> liveProjects;
+        if (entityId != null) {
+            liveProjects = projectRepository.findByStatusAndOwnerEntityIdIn(
+                    "LIVE", java.util.Collections.singleton(entityId));
+        } else {
+            liveProjects = projectRepository.findByStatus("LIVE");
+        }
 
         // --- Cost: sum of direct burns of LIVE projects + 100% of OpEx ---
         BigDecimal totalDirectBurn = BigDecimal.ZERO;

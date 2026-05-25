@@ -52,7 +52,15 @@ public class PricingAiAdvisorService {
      * Serves from the 24h in-memory cache when a fresh entry exists.
      */
     public AiCfoAdviceResponse advise(UUID projectId, BigDecimal targetMargin) {
+        return advise(projectId, targetMargin, null);
+    }
+
+    // S86.10: entity-aware overload. entityId scopes GROUP advice to a single
+    // entity's LIVE projects; included in the cache key so each scope caches
+    // independently.
+    public AiCfoAdviceResponse advise(UUID projectId, BigDecimal targetMargin, UUID entityId) {
         String cacheKey = (projectId == null ? "GROUP" : projectId.toString())
+                + ":" + (entityId == null ? "all" : entityId.toString())
                 + ":" + (targetMargin == null ? "default" : targetMargin.toPlainString());
 
         CacheEntry cached = cache.get(cacheKey);
@@ -63,7 +71,7 @@ public class PricingAiAdvisorService {
         }
 
         // Compute fresh pricing metrics (single source of truth = the same service the UI uses).
-        PricingCalculatorResponse metrics = pricingService.calculate(projectId, targetMargin);
+        PricingCalculatorResponse metrics = pricingService.calculate(projectId, targetMargin, entityId);
 
         String systemPrompt = buildSystemPrompt();
         String userMessage = buildUserMessage(metrics);
