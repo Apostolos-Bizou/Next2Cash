@@ -1,11 +1,13 @@
 package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.dto.PricingCalculatorResponse;
+import com.next2me.next2cash.dto.AiCfoAdviceResponse;
 import com.next2me.next2cash.dto.PricingConfigDTO;
 import com.next2me.next2cash.model.Project;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.ProjectRepository;
 import com.next2me.next2cash.service.PricingCalculatorService;
+import com.next2me.next2cash.service.PricingAiAdvisorService;
 import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -46,6 +48,7 @@ public class PricingCalculatorController {
     private static final BigDecimal DEFAULT_TARGET_MARGIN = new BigDecimal("0.15");
 
     private final PricingCalculatorService pricingService;
+    private final PricingAiAdvisorService pricingAiAdvisorService;
     private final ProjectRepository projectRepository;
     private final UserAccessService userAccessService;
 
@@ -202,6 +205,72 @@ public class PricingCalculatorController {
             return ResponseEntity.status(403).body(errorBody("Access denied for this project"));
         } catch (Exception ex) {
             log.error("Pricing config update failed for projectId={}", projectId, ex);
+            return ResponseEntity.status(500).body(errorBody(ex.getMessage()));
+        }
+    }
+
+    // =====================================================================
+    //  POST -- AI CFO advice (S86.8)
+    //  GROUP mode: POST /api/pricing-calculator/group/ai-advice
+    //  PROJECT mode: POST /api/pricing-calculator/{projectId}/ai-advice
+    // =====================================================================
+    @PostMapping("/group/ai-advice")
+    public ResponseEntity<?> aiAdviceGroup(
+            @RequestParam(name = "targetMargin", required = false) BigDecimal targetMargin,
+            HttpServletRequest request) {
+        try {
+            String authHeader = request.getHeader("Authorization");
+            User user = userAccessService.getCurrentUser(authHeader);
+            if (user == null) {
+                return ResponseEntity.status(401).body(errorBody("Unauthenticated"));
+            }
+            BigDecimal margin = targetMargin != null ? targetMargin : DEFAULT_TARGET_MARGIN;
+            log.info("AI CFO advice GROUP mode requested by user {} with margin {}",
+                user.getUsername(), margin);
+            AiCfoAdviceResponse advice = pricingAiAdvisorService.advise(null, margin);
+            return ResponseEntity.ok(advice);
+        } catch (IllegalStateException ex) {
+            // ANTHROPIC_API_KEY not configured, etc.
+            return ResponseEntity.status(503).body(errorBody(ex.getMessage()));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(errorBody(ex.getMessage()));
+        } catch (Exception ex) {
+            log.error("AI CFO advice GROUP mode failed", ex);
+            return ResponseEntity.status(500).body(errorBody(ex.getMessage()));
+        }
+    }
+
+    @PostMapping("/{projectId}/ai-advice")
+    public ResponseEntity<?> aiAdviceProject(
+            @PathVariable UUID projectId,
+            @RequestParam(name = "targetMargin", required = false) BigDecimal targetMargin,
+            HttpServletRequest request) {
+        try {
+            String authHeader = request.getHeader("Authorization");
+            User user = userAccessService.getCurrentUser(authHeader);
+            if (user == null) {
+                return ResponseEntity.status(401).body(errorBody("Unauthenticated"));
+            }
+            Optional<Project> projOpt = projectRepository.findById(projectId);
+            if (projOpt.isEmpty()) {
+                return ResponseEntity.status(404).body(errorBody("Project not found"));
+            }
+            Project project = projOpt.get();
+            userAccessService.assertCanAccessEntity(user, project.getOwnerEntityId());
+
+            BigDecimal margin = targetMargin != null ? targetMargin : DEFAULT_TARGET_MARGIN;
+            log.info("AI CFO advice PROJECT mode for project {} by user {} with margin {}",
+                projectId, user.getUsername(), margin);
+            AiCfoAdviceResponse advice = pricingAiAdvisorService.advise(projectId, margin);
+            return ResponseEntity.ok(advice);
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(errorBody("Access denied for this project"));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(503).body(errorBody(ex.getMessage()));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(errorBody(ex.getMessage()));
+        } catch (Exception ex) {
+            log.error("AI CFO advice PROJECT mode failed for projectId={}", projectId, ex);
             return ResponseEntity.status(500).body(errorBody(ex.getMessage()));
         }
     }
