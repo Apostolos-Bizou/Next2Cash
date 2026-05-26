@@ -538,6 +538,100 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
       </p>
     </section>
 
+    <!-- ============ COMPETITION / MARKET ANCHORS (S86.15) ============ -->
+    <section v-if="response" class="comp-section">
+      <div class="comp-head">
+        <div>
+          <h2>🔍 Competition &amp; Market Pricing <em>(ανταγωνισμός &amp; τιμές αγοράς)</em></h2>
+          <p class="comp-intro">
+            Πραγματικές τιμές ανταγωνιστών από έρευνα αγοράς, για την κατηγορία του project.
+          </p>
+        </div>
+        <button
+          class="comp-refresh-btn"
+          :disabled="aiLoading"
+          @click="loadAiAdvice">
+          <span v-if="aiLoading">Ανανέωση…</span>
+          <span v-else-if="aiAdvice">↻ Ανανέωση</span>
+          <span v-else>Φόρτωση ανταγωνισμού</span>
+        </button>
+      </div>
+
+      <!-- loading -->
+      <div v-if="aiLoading" class="comp-loading">
+        <span>Αναζήτηση ανταγωνιστών στην αγορά… (30-90 δευτ.)</span>
+      </div>
+
+      <!-- error -->
+      <div v-if="aiError && !aiLoading" class="comp-error">{{ aiError }}</div>
+
+      <!-- empty (not loaded yet) -->
+      <div v-if="!aiAdvice && !aiLoading && !aiError" class="comp-empty">
+        Πάτησε «Φόρτωση ανταγωνισμού» για να δεις τις τρέχουσες τιμές της αγοράς.
+      </div>
+
+      <!-- competitors table -->
+      <div v-if="aiAdvice && aiAdvice.competitors && aiAdvice.competitors.length && !aiLoading" class="comp-body">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th>Εταιρεία</th>
+              <th>Προϊόν</th>
+              <th>Πακέτο</th>
+              <th>Τιμή</th>
+              <th>Χρέωση</th>
+              <th>Περιλαμβάνει</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="(c, ci) in aiAdvice.competitors" :key="'c' + ci">
+              <!-- competitor with tiers: one row per tier, company spans -->
+              <template v-if="c.tiers && c.tiers.length">
+                <tr v-for="(t, ti) in c.tiers" :key="'c' + ci + 't' + ti" class="comp-row">
+                  <td v-if="ti === 0" :rowspan="c.tiers.length" class="comp-name-cell">
+                    <a v-if="c.website" :href="c.website" target="_blank" rel="noopener noreferrer" class="comp-link">
+                      {{ c.name }} ↗
+                    </a>
+                    <span v-else>{{ c.name }}</span>
+                    <span v-if="c.note" class="comp-note">{{ c.note }}</span>
+                  </td>
+                  <td v-if="ti === 0" :rowspan="c.tiers.length" class="comp-product-cell">{{ c.product }}</td>
+                  <td class="comp-tier-name">{{ t.name }}</td>
+                  <td class="comp-tier-price">{{ t.price }}</td>
+                  <td class="comp-tier-billing">{{ t.billing }}</td>
+                  <td class="comp-tier-feat">{{ t.features }}</td>
+                </tr>
+              </template>
+              <!-- competitor without tiers: single row -->
+              <tr v-else class="comp-row">
+                <td class="comp-name-cell">
+                  <a v-if="c.website" :href="c.website" target="_blank" rel="noopener noreferrer" class="comp-link">
+                    {{ c.name }} ↗
+                  </a>
+                  <span v-else>{{ c.name }}</span>
+                  <span v-if="c.note" class="comp-note">{{ c.note }}</span>
+                </td>
+                <td class="comp-product-cell">{{ c.product }}</td>
+                <td class="comp-tier-name">—</td>
+                <td class="comp-tier-price">{{ c.price }}</td>
+                <td class="comp-tier-billing">—</td>
+                <td class="comp-tier-feat">—</td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+
+        <p class="comp-disclaimer">
+          ⚠️ Ενδεικτικές τιμές από αυτόματη έρευνα αγοράς — επαλήθευσε στην επίσημη σελίδα κάθε εταιρείας πριν λάβεις απόφαση τιμολόγησης.
+        </p>
+      </div>
+
+      <!-- loaded but no competitors -->
+      <div v-if="aiAdvice && (!aiAdvice.competitors || !aiAdvice.competitors.length) && !aiLoading" class="comp-empty">
+        Δεν βρέθηκαν ανταγωνιστές για αυτή την κατηγορία. Δοκίμασε ξανά ή έλεγξε την περιγραφή του project.
+      </div>
+    </section>
+
     <!-- ============ AI CFO ADVISOR (S86.9) ============ -->
     <section v-if="response" class="ai-advice-section">
       <div class="ai-advice-head">
@@ -1072,6 +1166,128 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
   font-size: 12px;
   color: #64748B;
   font-style: italic;
+}
+
+/* ============ COMPETITION / MARKET ANCHORS (S86.15) ============ */
+.comp-section {
+  background: #1E293B;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.comp-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.comp-head h2 {
+  color: #fff;
+  font-size: 18px;
+  margin: 0 0 4px 0;
+}
+.comp-head h2 em {
+  display: inline;
+  color: #94A3B8;
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 400;
+  margin-left: 8px;
+}
+.comp-intro {
+  color: #94A3B8;
+  font-size: 13px;
+  margin: 0 0 12px 0;
+}
+.comp-refresh-btn {
+  flex-shrink: 0;
+  background: #6366F1;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.comp-refresh-btn:hover:not(:disabled) { background: #4F46E5; }
+.comp-refresh-btn:disabled { opacity: 0.55; cursor: default; }
+.comp-loading {
+  color: #A5B4FC;
+  font-size: 14px;
+  padding: 16px 4px;
+}
+.comp-error {
+  color: #FCA5A5;
+  font-size: 14px;
+  padding: 12px 4px;
+}
+.comp-empty {
+  color: #64748B;
+  font-size: 14px;
+  font-style: italic;
+  padding: 12px 4px;
+}
+.comp-body { margin-top: 8px; }
+.comp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.comp-table th {
+  text-align: left;
+  color: #94A3B8;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-bottom: 1px solid #334155;
+  white-space: nowrap;
+}
+.comp-table td {
+  color: #E2E8F0;
+  padding: 8px 10px;
+  border-bottom: 1px solid #1E293B;
+  vertical-align: top;
+}
+.comp-row:nth-child(even) td { background: rgba(148, 163, 184, 0.03); }
+.comp-name-cell {
+  border-right: 1px solid #334155;
+  min-width: 130px;
+}
+.comp-product-cell {
+  border-right: 1px solid #334155;
+  color: #CBD5E1;
+  min-width: 140px;
+}
+.comp-link {
+  color: #818CF8;
+  font-weight: 600;
+  text-decoration: none;
+  display: block;
+}
+.comp-link:hover { color: #A5B4FC; text-decoration: underline; }
+.comp-note {
+  display: block;
+  color: #64748B;
+  font-size: 11px;
+  font-style: italic;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.comp-tier-name { font-weight: 600; color: #fff; white-space: nowrap; }
+.comp-tier-price { color: #6EE7B7; font-weight: 600; white-space: nowrap; }
+.comp-tier-billing { color: #94A3B8; font-size: 12px; white-space: nowrap; }
+.comp-tier-feat { color: #CBD5E1; font-size: 12px; line-height: 1.4; }
+.comp-disclaimer {
+  color: #FCD34D;
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 16px 0 0;
 }
 
 /* ============ AI CFO ADVISOR (S86.9) ============ */
