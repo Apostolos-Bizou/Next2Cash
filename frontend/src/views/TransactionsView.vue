@@ -125,6 +125,70 @@ const editModal = ref({
   original: null
 })
 
+// ───── S88: PLANNED edit support ─────
+// When the edited transaction is PLANNED, the modal exposes the same blocks
+// as NewEntryView (recurrence/project/scenario/confidence/notes). These refs
+// hold the editable PLANNED state, pre-filled in openEdit() and consumed in
+// saveEdit(). ACTUAL editing never touches them.
+const editPlanned = ref({
+  isRecurring:   false,
+  frequency:     'MONTHLY',
+  dayOfMonth:    1,
+  dayOfWeek:     1,
+  intervalCount: 1,
+  startDate:     '',
+  endDate:       '',
+  isOpenEnded:   true,
+  isOpEx:        true,
+  projectId:     '',
+  scenario:      'BASELINE',
+  confidence:    100,
+  notes:         '',
+  // internal: existing pattern id (if the txn was already recurring)
+  recurrencePatternId: null
+})
+const editProjects = ref([])
+const editLoadingProjects = ref(false)
+
+const editFrequencyOptions = [
+  { value: 'DAILY',     label: '\u039a\u03b1\u03b8\u03b7\u03bc\u03b5\u03c1\u03b9\u03bd\u03ac' },
+  { value: 'WEEKLY',    label: '\u0395\u03b2\u03b4\u03bf\u03bc\u03b1\u03b4\u03b9\u03b1\u03af\u03b1' },
+  { value: 'MONTHLY',   label: '\u039c\u03b7\u03bd\u03b9\u03b1\u03af\u03b1' },
+  { value: 'QUARTERLY', label: '\u03a4\u03c1\u03b9\u03bc\u03b7\u03bd\u03b9\u03b1\u03af\u03b1' },
+  { value: 'YEARLY',    label: '\u0395\u03c4\u03ae\u03c3\u03b9\u03b1' },
+]
+const editDayOfWeekOptions = [
+  { value: 1, label: '\u0394\u03b5\u03c5\u03c4\u03ad\u03c1\u03b1' },
+  { value: 2, label: '\u03a4\u03c1\u03af\u03c4\u03b7' },
+  { value: 3, label: '\u03a4\u03b5\u03c4\u03ac\u03c1\u03c4\u03b7' },
+  { value: 4, label: '\u03a0\u03ad\u03bc\u03c0\u03c4\u03b7' },
+  { value: 5, label: '\u03a0\u03b1\u03c1\u03b1\u03c3\u03ba\u03b5\u03c5\u03ae' },
+  { value: 6, label: '\u03a3\u03ac\u03b2\u03b2\u03b1\u03c4\u03bf' },
+  { value: 7, label: '\u039a\u03c5\u03c1\u03b9\u03b1\u03ba\u03ae' },
+]
+const editScenarioOptions = [
+  { value: 'BASELINE',    label: 'Baseline',    color: '#3b82f6' },
+  { value: 'OPTIMISTIC',  label: 'Optimistic',  color: '#10b981' },
+  { value: 'PESSIMISTIC', label: 'Pessimistic', color: '#ef4444' },
+]
+
+async function loadEditProjects() {
+  if (editProjects.value.length > 0) return
+  editLoadingProjects.value = true
+  try {
+    const res = await api.get('/api/projects', { params: { entityId: entityId.value } })
+    if (res && res.data && res.data.success && Array.isArray(res.data.data)) {
+      editProjects.value = res.data.data
+    } else if (res && res.data && Array.isArray(res.data)) {
+      editProjects.value = res.data
+    }
+  } catch (e) {
+    console.warn('[TransactionsView] loadEditProjects failed:', e)
+  } finally {
+    editLoadingProjects.value = false
+  }
+}
+
 // --- Step 57-A.2: Categories + subcategories for edit modal cascading dropdowns -----
 // Categories and subcategories come from /api/config. Subcategories are
 // filtered by the currently selected category in the edit modal via the
@@ -594,6 +658,71 @@ function openEdit(t) {
   loadEditAttachments(t.id)
   // Step 57-A.4: reset any staged uploads from a previous open
   resetEditUploadedFiles()
+  // S88: pre-fill PLANNED state (entryMode comes from the API as camelCase)
+  prefillEditPlanned(t)
+}
+
+// S88: copy PLANNED fields from the transaction into editPlanned, and
+// stamp entryMode onto editModal.data so the template can branch on it.
+function prefillEditPlanned(t) {
+  const mode = (t.entryMode || 'ACTUAL').toUpperCase()
+  editModal.value.data.entryMode = mode
+  // Strip the "[Σημ.] ..." notes suffix back out of the description so the
+  // notes field shows it separately (same convention as NewEntryView).
+  const NOTE_MARK = '\n[\u03a3\u03b7\u03bc.] '
+  let baseDesc = t.description || ''
+  let notes = ''
+  const markIdx = baseDesc.indexOf(NOTE_MARK)
+  if (markIdx >= 0) {
+    notes = baseDesc.substring(markIdx + NOTE_MARK.length)
+    baseDesc = baseDesc.substring(0, markIdx)
+    editModal.value.data.description = baseDesc
+  }
+  editPlanned.value = {
+    isRecurring:   !!t.isRecurring,
+    frequency:     'MONTHLY',
+    dayOfMonth:    1,
+    dayOfWeek:     1,
+    intervalCount: 1,
+    startDate:     t.docDate || '',
+    endDate:       '',
+    isOpenEnded:   true,
+    isOpEx:        !t.projectId,
+    projectId:     t.projectId || '',
+    scenario:      'BASELINE',
+    confidence:    (t.confidencePct != null ? t.confidencePct : 100),
+    notes:         notes,
+    recurrencePatternId: t.recurrencePatternId || null
+  }
+  if (mode === 'PLANNED') {
+    loadEditProjects()
+    if (t.recurrencePatternId) {
+      loadEditPattern(t.recurrencePatternId)
+    }
+  }
+}
+
+// S88: fetch an existing recurrence pattern's details to fill the form.
+async function loadEditPattern(patternId) {
+  try {
+    const res = await api.get('/api/recurrence-patterns/' + patternId)
+    const p = (res && res.data && (res.data.data || res.data)) || null
+    if (p && (p.frequency || p.id)) {
+      editPlanned.value.frequency     = p.frequency || 'MONTHLY'
+      editPlanned.value.intervalCount = p.intervalCount || 1
+      if (p.dayOfMonth != null) editPlanned.value.dayOfMonth = p.dayOfMonth
+      if (p.dayOfWeek  != null) editPlanned.value.dayOfWeek  = p.dayOfWeek
+      if (p.startDate) editPlanned.value.startDate = p.startDate
+      if (p.endDate) {
+        editPlanned.value.endDate = p.endDate
+        editPlanned.value.isOpenEnded = false
+      } else {
+        editPlanned.value.isOpenEnded = true
+      }
+    }
+  } catch (e) {
+    console.warn('[TransactionsView] loadEditPattern failed:', e)
+  }
 }
 
 function closeEdit() {
@@ -612,9 +741,71 @@ async function saveEdit() {
 
   editModal.value.saving = true
   try {
+    const isPlanned = (d.entryMode || 'ACTUAL').toUpperCase() === 'PLANNED'
+    const ep = editPlanned.value
+
+    // S88: For PLANNED + recurring, create or update the recurrence pattern.
+    let recurrencePatternId = ep.recurrencePatternId || null
+    if (isPlanned && ep.isRecurring) {
+      if (ep.confidence < 0 || ep.confidence > 100) {
+        showToast('error', '\u0392\u03b5\u03b2\u03b1\u03b9\u03cc\u03c4\u03b7\u03c4\u03b1 \u03c0\u03c1\u03ad\u03c0\u03b5\u03b9 \u03bd\u03b1 \u03b5\u03af\u03bd\u03b1\u03b9 0-100')
+        editModal.value.saving = false; return
+      }
+      if (!ep.startDate) {
+        showToast('error', '\u03a3\u03c5\u03bc\u03c0\u03bb\u03b7\u03c1\u03ce\u03c3\u03c4\u03b5 \u0397\u03bc/\u03bd\u03af\u03b1 \u0388\u03bd\u03b1\u03c1\u03be\u03b7\u03c2 \u03b5\u03c0\u03b1\u03bd\u03ac\u03bb\u03b7\u03c8\u03b7\u03c2')
+        editModal.value.saving = false; return
+      }
+      if (!ep.isOpenEnded && ep.endDate && ep.endDate < ep.startDate) {
+        showToast('error', '\u0397 \u039b\u03ae\u03be\u03b7 \u03c0\u03c1\u03ad\u03c0\u03b5\u03b9 \u03bd\u03b1 \u03b5\u03af\u03bd\u03b1\u03b9 \u03bc\u03b5\u03c4\u03ac \u03c4\u03b7\u03bd \u0388\u03bd\u03b1\u03c1\u03be\u03b7')
+        editModal.value.saving = false; return
+      }
+      const patternPayload = {
+        frequency:     ep.frequency,
+        intervalCount: Number(ep.intervalCount) || 1,
+        startDate:     ep.startDate,
+        timezone:      'Europe/Athens',
+      }
+      if (ep.frequency === 'WEEKLY') {
+        patternPayload.dayOfWeek = Number(ep.dayOfWeek)
+      } else if (['MONTHLY','QUARTERLY','YEARLY'].includes(ep.frequency)) {
+        patternPayload.dayOfMonth = Number(ep.dayOfMonth)
+      }
+      if (!ep.isOpenEnded && ep.endDate) {
+        patternPayload.endDate = ep.endDate
+      }
+      try {
+        let patternRes
+        if (recurrencePatternId) {
+          patternRes = await api.put('/api/recurrence-patterns/' + recurrencePatternId, patternPayload, { params: { entityId: entityId.value } })
+        } else {
+          patternRes = await api.post('/api/recurrence-patterns', patternPayload, { params: { entityId: entityId.value } })
+        }
+        const pdata = patternRes && patternRes.data && (patternRes.data.data || patternRes.data)
+        if (pdata && pdata.id) {
+          recurrencePatternId = pdata.id
+        } else if (!recurrencePatternId) {
+          showToast('error', '\u03a3\u03c6\u03ac\u03bb\u03bc\u03b1 pattern \u03b5\u03c0\u03b1\u03bd\u03ac\u03bb\u03b7\u03c8\u03b7\u03c2')
+          editModal.value.saving = false; return
+        }
+      } catch (pe) {
+        showToast('error', '\u03a3\u03c6\u03ac\u03bb\u03bc\u03b1 pattern: ' + (pe.response?.data?.error || pe.message || ''))
+        editModal.value.saving = false; return
+      }
+    } else if (isPlanned && !ep.isRecurring) {
+      // turned off recurring: detach (leave any old pattern orphaned;
+      // backend FK is ON DELETE SET NULL, cleanup is a separate concern)
+      recurrencePatternId = null
+    }
+
+    // S88: description — append notes for PLANNED (same convention as NewEntryView)
+    let finalDescription = d.description
+    if (isPlanned && ep.notes && ep.notes.trim()) {
+      finalDescription = (finalDescription || '') + '\n[\u03a3\u03b7\u03bc.] ' + ep.notes.trim()
+    }
+
     const payload = {
       docDate: d.docDate,
-      description: d.description,
+      description: finalDescription,
       amount: amountNum,
       type: d.type,
       category: d.category,
@@ -623,6 +814,14 @@ async function saveEdit() {
       paymentMethod: d.paymentMethod,
       paymentStatus: d.paymentStatus,
       paymentDate: d.paymentDate || null
+    }
+    // S88: PLANNED extra fields (backend already has setters for these)
+    if (isPlanned) {
+      payload.entryMode           = 'PLANNED'
+      payload.isRecurring         = ep.isRecurring
+      payload.recurrencePatternId = recurrencePatternId
+      payload.projectId           = ep.isOpEx ? null : (ep.projectId || null)
+      payload.confidencePct       = Number(ep.confidence) || 100
     }
     const res = await api.put('/api/transactions/' + d.id, payload)
     if (res.data && res.data.success !== false) {
@@ -1236,7 +1435,7 @@ onUnmounted(() => {
               <label>Ημ/νία</label>
               <input v-model="editModal.data.docDate" type="date" class="f-input" />
             </div>
-            <div class="form-field">
+            <div class="form-field" v-if="(editModal.data.entryMode || 'ACTUAL') !== 'PLANNED'">
               <label>Ημ/νία Πληρωμής</label>
               <input v-model="editModal.data.paymentDate" type="date" class="f-input" />
             </div>
@@ -1274,7 +1473,112 @@ onUnmounted(() => {
               <label>Περιγραφή</label>
               <textarea v-model="editModal.data.description" class="f-input edit-desc-textarea" maxlength="500" rows="2"></textarea>
             </div>
-            <div class="form-field full edit-pending-row">
+            <!-- S88: PLANNED sections (only when editing a PLANNED transaction) -->
+            <div v-if="(editModal.data.entryMode || 'ACTUAL') === 'PLANNED'" class="form-field full edit-planned-sections">
+              <div class="edit-planned-block">
+                <label class="edit-block-checkbox">
+                  <input type="checkbox" v-model="editPlanned.isRecurring" />
+                  <span class="edit-block-title">🔁 Είναι επαναλαμβανόμενη</span>
+                </label>
+                <div v-if="editPlanned.isRecurring" class="edit-block-body">
+                  <div class="edit-planned-row">
+                    <div class="edit-planned-col">
+                      <label>Συχνότητα</label>
+                      <select v-model="editPlanned.frequency" class="f-input">
+                        <option v-for="f in editFrequencyOptions" :key="f.value" :value="f.value">{{ f.label }}</option>
+                      </select>
+                    </div>
+                    <div class="edit-planned-col">
+                      <label>Κάθε</label>
+                      <div class="edit-interval-row">
+                        <input v-model.number="editPlanned.intervalCount" type="number" min="1" max="12" class="f-input edit-interval-input" />
+                        <span class="edit-interval-suffix">{{ editPlanned.frequency==='DAILY' ? 'ημέρες' : editPlanned.frequency==='WEEKLY' ? 'εβδομάδες' : editPlanned.frequency==='MONTHLY' ? 'μήνες' : editPlanned.frequency==='QUARTERLY' ? 'τρίμηνα' : 'χρόνια' }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="edit-planned-row" v-if="editPlanned.frequency==='WEEKLY'">
+                    <div class="edit-planned-col">
+                      <label>Ημέρα εβδομάδας</label>
+                      <select v-model.number="editPlanned.dayOfWeek" class="f-input">
+                        <option v-for="dw in editDayOfWeekOptions" :key="dw.value" :value="dw.value">{{ dw.label }}</option>
+                      </select>
+                    </div>
+                    <div class="edit-planned-col"></div>
+                  </div>
+                  <div class="edit-planned-row" v-if="['MONTHLY','QUARTERLY','YEARLY'].includes(editPlanned.frequency)">
+                    <div class="edit-planned-col">
+                      <label>Ημέρα μήνα (1-31)</label>
+                      <input v-model.number="editPlanned.dayOfMonth" type="number" min="1" max="31" class="f-input" />
+                    </div>
+                    <div class="edit-planned-col"></div>
+                  </div>
+                  <div class="edit-planned-row">
+                    <div class="edit-planned-col">
+                      <label>Έναρξη</label>
+                      <input v-model="editPlanned.startDate" type="date" class="f-input" />
+                    </div>
+                    <div class="edit-planned-col">
+                      <label>Λήξη</label>
+                      <input v-model="editPlanned.endDate" type="date" class="f-input" :disabled="editPlanned.isOpenEnded" />
+                      <label class="edit-inline-check">
+                        <input type="checkbox" v-model="editPlanned.isOpenEnded" />
+                        <span>Αόριστη (χωρίς λήξη)</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="edit-planned-block" v-if="editProjects.length > 0">
+                <div class="edit-block-title-row"><span class="edit-block-title">🎯 Project</span></div>
+                <div class="edit-block-body">
+                  <label class="edit-inline-check">
+                    <input type="checkbox" v-model="editPlanned.isOpEx" />
+                    <span>Αυτό είναι γενικό έξοδο εταιρείας (OpEx)</span>
+                  </label>
+                  <div class="edit-planned-col" style="margin-top:10px" v-if="!editPlanned.isOpEx">
+                    <label>Project</label>
+                    <select v-model="editPlanned.projectId" class="f-input" :disabled="editLoadingProjects">
+                      <option value="">— Χωρίς project (γενικό OpEx) —</option>
+                      <option v-for="p in editProjects" :key="p.id" :value="p.id">{{ p.name }}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="edit-planned-block">
+                <div class="edit-block-title-row"><span class="edit-block-title">🎬 Σενάριο</span></div>
+                <div class="edit-block-body">
+                  <div class="edit-scenario-options">
+                    <button v-for="s in editScenarioOptions" :key="s.value" type="button"
+                            :class="['edit-scenario-btn', {active: editPlanned.scenario===s.value}]"
+                            :style="editPlanned.scenario===s.value ? {borderColor: s.color, background: s.color + '22', color: s.color} : {}"
+                            @click="editPlanned.scenario=s.value">{{ s.label }}</button>
+                  </div>
+                  <span class="edit-hint">Το σενάριο αποθηκεύεται σε επόμενη φάση (Phase 2)</span>
+                </div>
+              </div>
+
+              <div class="edit-planned-block">
+                <div class="edit-block-title-row">
+                  <span class="edit-block-title">📈 Βεβαιότητα</span>
+                  <span class="edit-confidence-display">{{ editPlanned.confidence }}%</span>
+                </div>
+                <div class="edit-block-body">
+                  <input v-model.number="editPlanned.confidence" type="range" min="0" max="100" step="5" class="edit-confidence-slider" />
+                  <span class="edit-hint">100% = σίγουρο πώγιο, χαμηλότερο = πιθανή συναλλαγή</span>
+                </div>
+              </div>
+
+              <div class="edit-planned-block">
+                <div class="edit-block-title-row"><span class="edit-block-title">ℹ️ Παρατηρήσεις</span></div>
+                <div class="edit-block-body">
+                  <textarea v-model="editPlanned.notes" class="f-input" rows="2" placeholder="Προαιρετικά: σχόλια, υποθέσεις, follow-up..."></textarea>
+                </div>
+              </div>
+            </div>
+            <!-- END S88 PLANNED sections -->
+            <div class="form-field full edit-pending-row" v-if="(editModal.data.entryMode || 'ACTUAL') !== 'PLANNED'">
               <label class="edit-pending-label">
                 <input type="checkbox"
                        :checked="editModal.data.paymentStatus !== 'paid'"
@@ -1397,6 +1701,29 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* S88: PLANNED edit modal blocks (mirrors NewEntryView styling) */
+.edit-planned-sections { background: rgba(245,158,11,.05); border: 1px dashed rgba(245,158,11,.4); border-radius: 8px; padding: 14px; }
+.edit-planned-block { background: rgba(255,255,255,.03); border: 1px solid rgba(148,163,184,.18); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+.edit-planned-block:last-child { margin-bottom: 0; }
+.edit-block-checkbox { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.edit-block-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.edit-block-title { font-size: .92rem; font-weight: 700; }
+.edit-block-body { margin-top: 10px; }
+.edit-planned-row { display: flex; gap: 12px; margin-bottom: 10px; }
+.edit-planned-row:last-child { margin-bottom: 0; }
+.edit-planned-col { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.edit-planned-col label { font-size: .8rem; opacity: .85; }
+.edit-interval-row { display: flex; align-items: center; gap: 8px; }
+.edit-interval-input { max-width: 80px; }
+.edit-interval-suffix { font-size: .85rem; opacity: .7; }
+.edit-inline-check { display: flex; align-items: center; gap: 8px; font-size: .85rem; cursor: pointer; margin-top: 6px; }
+.edit-scenario-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.edit-scenario-btn { flex: 1; min-width: 100px; padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(148,163,184,.3); background: transparent; cursor: pointer; font-size: .85rem; font-weight: 600; }
+.edit-scenario-btn.active { font-weight: 700; }
+.edit-confidence-display { font-size: 1rem; font-weight: 700; color: #f59e0b; }
+.edit-confidence-slider { width: 100%; accent-color: #f59e0b; cursor: pointer; }
+.edit-hint { display: block; font-size: .72rem; opacity: .6; margin-top: 6px; }
+
 .txn-page { padding: 0 24px 24px; color: var(--text-primary); position: relative; }
 .kpi-bar { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
 .kpi-item { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px 20px; min-width:150px; border-left:3px solid var(--accent); flex:1; }
