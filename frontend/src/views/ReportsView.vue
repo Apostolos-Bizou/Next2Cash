@@ -213,7 +213,50 @@ const monthlyData = computed(() => {
   return months
 })
 
-// ── REPORT 5: Budget Analysis (all years, expenses by category) ──
+// ── S86.18: Monthly grouped by year (only when 'all' years) ────
+const expandedYears = ref({})  // {2021: true, ...} — all closed by default
+function toggleYear(y) { expandedYears.value[y] = !expandedYears.value[y] }
+
+const monthlyByYear = computed(() => {
+  // group transactions: year -> 12 months
+  const map = {}
+  modeFilteredTransactions.value.forEach(t => {
+    if (!t.docDate) return
+    const yr = t.docDate.substring(0, 4)
+    const m = parseInt(t.docDate.substring(5, 7), 10) - 1
+    if (m < 0 || m > 11) return
+    if (!map[yr]) {
+      map[yr] = {
+        year: yr,
+        months: Array.from({ length: 12 }, (_, i) => ({
+          month: MONTH_NAMES[i], income: 0, payments: 0, net: 0, moves: 0
+        })),
+        income: 0, payments: 0, net: 0, moves: 0
+      }
+    }
+    const amt = Number(t.amount) || 0
+    const g = map[yr]
+    g.months[m].moves++
+    g.moves++
+    if (t.type === 'income') { g.months[m].income += amt; g.income += amt }
+    else { g.months[m].payments += amt; g.payments += amt }
+  })
+  // finalize net + keep only months with activity inside each year
+  const arr = Object.values(map)
+  arr.forEach(g => {
+    g.net = g.income - g.payments
+    g.months.forEach(mo => { mo.net = mo.income - mo.payments })
+    g.activeMonths = g.months.filter(mo => mo.moves > 0)
+  })
+  return arr.sort((a, b) => a.year.localeCompare(b.year))
+})
+
+const monthlyByYearTotals = computed(() => {
+  const inc = monthlyByYear.value.reduce((s, g) => s + g.income, 0)
+  const pay = monthlyByYear.value.reduce((s, g) => s + g.payments, 0)
+  const mov = monthlyByYear.value.reduce((s, g) => s + g.moves, 0)
+  return { income: inc, payments: pay, net: inc - pay, moves: mov }
+})
 const budgetCategories = computed(() => {
   const map = {}
   let colorIdx = 0
@@ -611,8 +654,65 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
          REPORT: ΜΗΝΙΑΙΑ ΑΝΑΛΥΣΗ
     ═════════════════════════════════════════════════════════════ -->
     <template v-if="selectedReport === 'monthly'">
-      <p class="report-intro">Δείχνει <strong>μήνα-μήνα</strong> πόσα μπήκαν (εισπράξεις) και πόσα βγήκαν (πληρωμές), και το <strong>καθαρό</strong> κάθε μήνα.</p>
-      <div class="data-table-wrap">
+      <p class="report-intro" v-if="selectedYear === 'all'">Με <strong>«Όλα τα έτη»</strong>, οι μήνες ομαδοποιούνται <strong>ανά έτος</strong>. Πάτησε σε ένα έτος για να ανοίξει/κλείσει τους μήνες του.</p>
+      <p class="report-intro" v-else>Δείχνει <strong>μήνα-μήνα</strong> πόσα μπήκαν (εισπράξεις) και πόσα βγήκαν (πληρωμές), και το <strong>καθαρό</strong> κάθε μήνα.</p>
+
+      <!-- ΟΛΑ ΤΑ ΕΤΗ: grouped ανα ετος (expandable) -->
+      <div class="data-table-wrap" v-if="selectedYear === 'all'">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="col-name">ΠΕΡΙΟΔΟΣ</th>
+              <th class="col-num">ΕΙΣΠΡΑΞΕΙΣ</th>
+              <th class="col-num">ΠΛΗΡΩΜΕΣ</th>
+              <th class="col-num">NET <span class="col-hint" title="Εισπράξεις μείον Πληρωμές: τι έμεινε καθαρό">?</span></th>
+              <th class="col-moves">ΚΙΝΗΣΕΙΣ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="g in monthlyByYear" :key="g.year">
+              <tr class="year-group-row" @click="toggleYear(g.year)">
+                <td class="col-name year-group-name">
+                  <span class="year-caret">{{ expandedYears[g.year] ? '▾' : '▸' }}</span> {{ g.year }}
+                </td>
+                <td class="col-num income-val">
+                  <span v-if="g.income > 0">{{ fmt(g.income) }}</span><span v-else class="dash">—</span>
+                </td>
+                <td class="col-num payment-val">
+                  <span v-if="g.payments > 0">{{ fmt(g.payments) }}</span><span v-else class="dash">—</span>
+                </td>
+                <td class="col-num" :class="g.net >= 0 ? 'income-val' : 'payment-val'">{{ fmt(g.net) }}</td>
+                <td class="col-moves">{{ g.moves || '—' }}</td>
+              </tr>
+              <tr v-for="mo in g.activeMonths" v-show="expandedYears[g.year]" :key="g.year + mo.month" class="month-sub-row">
+                <td class="col-name month-sub-name">{{ mo.month }}</td>
+                <td class="col-num income-val">
+                  <span v-if="mo.income > 0">{{ fmt(mo.income) }}</span><span v-else class="dash">—</span>
+                </td>
+                <td class="col-num payment-val">
+                  <span v-if="mo.payments > 0">{{ fmt(mo.payments) }}</span><span v-else class="dash">—</span>
+                </td>
+                <td class="col-num" :class="mo.net >= 0 ? 'income-val' : 'payment-val'">
+                  <span v-if="mo.moves > 0">{{ fmt(mo.net) }}</span><span v-else class="dash">—</span>
+                </td>
+                <td class="col-moves">{{ mo.moves || '—' }}</td>
+              </tr>
+            </template>
+          </tbody>
+          <tfoot>
+            <tr class="total-row">
+              <td>ΓΕΝΙΚΟ ΣΥΝΟΛΟ</td>
+              <td class="col-num income-val">{{ fmt(monthlyByYearTotals.income) }}</td>
+              <td class="col-num payment-val">{{ fmt(monthlyByYearTotals.payments) }}</td>
+              <td class="col-num" :class="monthlyByYearTotals.net >= 0 ? 'income-val' : 'payment-val'">{{ fmt(monthlyByYearTotals.net) }}</td>
+              <td class="col-moves">{{ monthlyByYearTotals.moves }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- ΣΥΓΚΕΚΡΙΜΕΝΟ ΕΤΟΣ: flat 12 μηνες (οπως πριν) -->
+      <div class="data-table-wrap" v-else>
         <table class="data-table">
           <thead>
             <tr>
@@ -1032,6 +1132,15 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
 
 .total-row td { font-weight: 700; }
 .total-row td.col-name, .total-row > td:first-child { color: #1e293b; }
+
+/* S86.18: Monthly grouped by year */
+.year-group-row { cursor: pointer; background: #fff; }
+.year-group-row:hover { background: #f8fafc; }
+.year-group-name { font-weight: 700; color: #1e293b; }
+.year-caret { display: inline-block; width: 14px; color: #94a3b8; }
+.month-sub-row { background: #fcfdfe; }
+.month-sub-row:hover { background: #f5f8fc; }
+.month-sub-name { padding-left: 42px !important; color: #475569; }
 
 /* Budget table specifics */
 .col-budget-name {
