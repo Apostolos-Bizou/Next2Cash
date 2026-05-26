@@ -143,7 +143,10 @@ public class PricingAiAdvisorService {
           .append("    {\"name\": \"Aggressive\", ...}\n")
           .append("  ],\n")
           .append("  \"benchmarks\": [\n")
-          .append("    {\"metric\": \"...\", \"yours\": \"...\", \"industry\": \"...\", ")
+          .append("    {\"metric\": \"keep the standard term, then add a short Greek ")
+          .append("explanation in parentheses, e.g. 'CAC payback (σε πόσους μήνες ")
+          .append("ξεκερδίζεις ό,τι ξόδεψες για έναν πελάτη)'\", ")
+          .append("\"yours\": \"...\", \"industry\": \"...\", ")
           .append("\"verdict\": \"good|watch|risk\"}\n")
           .append("  ],\n");
 
@@ -164,8 +167,16 @@ public class PricingAiAdvisorService {
 
         sb.append("  \"recommendations\": [\"actionable point 1\", \"point 2\", \"point 3\"]\n")
           .append("}\n")
-          .append("All human-readable text values MUST be in Greek. ")
-          .append("Keep each text field short (one sentence). ")
+          .append("CRITICAL LANGUAGE RULE: Write ALL human-readable text (summary, ")
+          .append("positioning, tradeoff, bestWhen, recommendations, notes, features) in ")
+          .append("PLAIN, SIMPLE GREEK for a business owner who does NOT know SaaS jargon. ")
+          .append("Do NOT use untranslated English terms like 'churn', 'margin', 'tier', ")
+          .append("'break-even', 'mid-market', 'GTM', 'product-market fit', 'ARPU', ")
+          .append("'positioning' on their own. If a concept needs such a term, EXPLAIN it ")
+          .append("inside the sentence in everyday Greek (e.g. instead of '2.35 πελάτες για ")
+          .append("break-even' write 'χρειάζεσαι περίπου 2-3 πελάτες για να βγεις στα ίσα'). ")
+          .append("Imagine you are explaining to someone who will repeat this to investors ")
+          .append("and must understand every word. Keep each text field short (one sentence). ")
           .append("Provide exactly 3 strategies and 3 to 5 benchmarks.");
 
         if (webSearchEnabled) {

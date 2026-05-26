@@ -713,9 +713,20 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
               </tr>
             </tbody>
           </table>
-        </div>
 
-        <!-- recommendations -->
+          <!-- S86.16: σταθερο γλωσσαρι δεικτων (παντα στα ελληνικα, δεν αλλαζει) -->
+          <details class="ai-glossary">
+            <summary>📖 Τι σημαίνουν οι δείκτες; (απλά ελληνικά)</summary>
+            <ul class="ai-glossary-list">
+              <li><strong>CAC payback</strong> — Σε πόσους μήνες ξεκερδίζεις τα χρήματα που ξόδεψες για να αποκτήσεις έναν νέο πελάτη. Όσο λιγότεροι μήνες, τόσο καλύτερα.</li>
+              <li><strong>LTV:CAC</strong> — Πόσες φορές περισσότερα κερδίζεις από έναν πελάτη σε όλη τη διάρκεια που μένει μαζί σου, σε σχέση με όσα ξόδεψες για να τον φέρεις. Πάνω από 3 φορές θεωρείται υγιές.</li>
+              <li><strong>Rule of 40</strong> — Δείκτης υγείας: ανάπτυξη + κέρδος μαζί. Αν το άθροισμα ξεπερνά το 40, η εταιρεία θεωρείται υγιής.</li>
+              <li><strong>Gross Margin</strong> — Το ποσοστό που σου μένει από κάθε ευρώ εσόδων, αφού αφαιρέσεις το άμεσο κόστος εξυπηρέτησης. Όσο μεγαλύτερο, τόσο πιο κερδοφόρο το προϊόν.</li>
+              <li><strong>Monthly Churn</strong> — Το ποσοστό πελατών που φεύγουν κάθε μήνα. Όσο χαμηλότερο, τόσο πιο σταθερά τα έσοδά σου.</li>
+              <li><strong>MRR</strong> — Τα σταθερά έσοδα που εισπράττεις κάθε μήνα από συνδρομές.</li>
+            </ul>
+          </details>
+        </div>
         <div class="ai-recs-wrap" v-if="aiAdvice.recommendations && aiAdvice.recommendations.length">
           <h3 class="ai-sub">Συστάσεις</h3>
           <ul class="ai-recs">
@@ -1428,8 +1439,32 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
 .ai-verdict.v-good  { background: rgba(16, 185, 129, 0.15); color: #6EE7B7; }
 .ai-verdict.v-watch { background: rgba(245, 158, 11, 0.15); color: #FCD34D; }
 .ai-verdict.v-risk  { background: rgba(239, 68, 68, 0.15);  color: #FCA5A5; }
-.ai-recs-wrap { margin-bottom: 8px; }
-.ai-recs {
+.ai-glossary {
+  margin-top: 14px;
+  background: rgba(99, 102, 241, 0.06);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.ai-glossary summary {
+  color: #A5B4FC;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.ai-glossary summary:hover { color: #C7D2FE; }
+.ai-glossary-list {
+  margin: 12px 0 4px;
+  padding-left: 18px;
+}
+.ai-glossary-list li {
+  color: #CBD5E1;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+.ai-glossary-list strong { color: #E2E8F0; }
+.ai-recs-wrap { margin-bottom: 8px; }.ai-recs {
   margin: 0;
   padding-left: 20px;
 }
