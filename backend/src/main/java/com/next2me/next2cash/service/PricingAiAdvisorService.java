@@ -274,23 +274,37 @@ public class PricingAiAdvisorService {
     }
 
     /**
-     * Strip optional markdown code fences the model might add despite instructions.
+     * Extract the JSON object from the model answer. Handles three cases:
+     *   1. Plain JSON (no fences).
+     *   2. JSON wrapped in ```json ... ``` fences at the start.
+     *   3. JSON that appears AFTER some preamble text -- this is common when
+     *      web search is on, because the model narrates its research first and
+     *      then emits the JSON inside a fenced block. (S86.15 fix.)
+     *
+     * Strategy: if the trimmed text is not already a bare JSON object, locate
+     * the first '{' and the last '}' and return that substring. This is robust
+     * to leading prose and to ```json fences alike.
      */
     String stripCodeFences(String s) {
         if (s == null) return "{}";
         String t = s.trim();
-        if (t.startsWith("```")) {
-            int firstNewline = t.indexOf('\n');
-            if (firstNewline >= 0) {
-                t = t.substring(firstNewline + 1);
-            }
-            if (t.endsWith("```")) {
-                t = t.substring(0, t.length() - 3);
-            }
+        if (t.isEmpty()) return "{}";
+
+        // Fast path: already a bare JSON object.
+        if (t.startsWith("{") && t.endsWith("}")) {
+            return t;
         }
-        // Also handle a leading "json" token if any survived.
-        t = t.trim();
-        return t.isEmpty() ? "{}" : t;
+
+        // General path: pull out the outermost { ... } span, ignoring any
+        // surrounding prose or code fences.
+        int first = t.indexOf('{');
+        int last = t.lastIndexOf('}');
+        if (first >= 0 && last > first) {
+            return t.substring(first, last + 1);
+        }
+
+        // No JSON object found -> let the caller fall back to raw summary.
+        return t;
     }
 
     private static String text(JsonNode n) {

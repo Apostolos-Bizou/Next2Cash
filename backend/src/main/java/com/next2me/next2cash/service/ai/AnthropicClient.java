@@ -88,17 +88,16 @@ public class AnthropicClient {
         userMsg.put("content", userMessage);
 
         if (attachWebSearch) {
-            // tools: [{ "type": "web_search_20250305", "name": "web_search",
-            //           "max_uses": N, "user_location": {...} }]
+            // tools: [{ "type": "web_search_20250305", "name": "web_search", "max_uses": N }]
+            // Minimal, schema-safe tool block. user_location is intentionally
+            // omitted: it requires city+region+country+timezone together, and a
+            // partial object triggers HTTP 400. European focus is steered via the
+            // prompt instead ("prefer European/EUR sources").
             ArrayNode tools = req.putArray("tools");
             ObjectNode webSearch = tools.addObject();
             webSearch.put("type", "web_search_20250305");
             webSearch.put("name", "web_search");
             webSearch.put("max_uses", webSearchMaxUses);
-            ObjectNode loc = webSearch.putObject("user_location");
-            loc.put("type", "approximate");
-            loc.put("country", "GR");
-            loc.put("timezone", "Europe/Athens");
             log.info("Anthropic call WITH web_search tool (max_uses={})", webSearchMaxUses);
         }
 
