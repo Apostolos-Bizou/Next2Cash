@@ -248,7 +248,7 @@ const monthlyByYear = computed(() => {
     g.months.forEach(mo => { mo.net = mo.income - mo.payments })
     g.activeMonths = g.months.filter(mo => mo.moves > 0)
   })
-  return arr.sort((a, b) => a.year.localeCompare(b.year))
+  return arr.sort((a, b) => b.year.localeCompare(a.year))
 })
 
 const monthlyByYearTotals = computed(() => {
