@@ -127,8 +127,9 @@ public class AiCfoAdviceResponse {
     public static class Competitor {
         private String name;     // company / product name, e.g. "Pleo"
         private String product;  // the comparable offering
-        private String price;    // observed price point, as a string
+        private String price;    // observed price point, as a string (summary, e.g. "from 45 EUR")
         private String note;     // short qualifier / source hint
+        private List<Tier> tiers; // S86.15-T: full per-package pricing (may be empty/null)
 
         public Competitor() {
         }
@@ -144,5 +145,36 @@ public class AiCfoAdviceResponse {
 
         public String getNote() { return note; }
         public void setNote(String v) { this.note = v; }
+
+        // S86.15-T: detailed pricing tiers/packages for this competitor.
+        public List<Tier> getTiers() { return tiers; }
+        public void setTiers(List<Tier> v) { this.tiers = v; }
+    }
+
+    /**
+     * S86.15-T: a single pricing package/plan offered by a competitor.
+     * Captures the full billing policy so the UI can show each plan separately
+     * instead of collapsing everything into one averaged price.
+     */
+    public static class Tier {
+        private String name;     // plan name, e.g. "Free" | "Starter" | "Pro" | "Enterprise"
+        private String price;    // price for this plan, as a string, e.g. "90 EUR"
+        private String billing;  // billing cadence, e.g. "monthly" | "annual" | "per user/mo"
+        private String features; // short note on what this plan includes
+
+        public Tier() {
+        }
+
+        public String getName() { return name; }
+        public void setName(String v) { this.name = v; }
+
+        public String getPrice() { return price; }
+        public void setPrice(String v) { this.price = v; }
+
+        public String getBilling() { return billing; }
+        public void setBilling(String v) { this.billing = v; }
+
+        public String getFeatures() { return features; }
+        public void setFeatures(String v) { this.features = v; }
     }
 }

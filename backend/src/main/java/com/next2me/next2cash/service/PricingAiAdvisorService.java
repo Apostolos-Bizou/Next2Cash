@@ -45,7 +45,7 @@ public class PricingAiAdvisorService {
     private static final Logger log = LoggerFactory.getLogger(PricingAiAdvisorService.class);
 
     private static final int    MAX_TOKENS = 2000;
-    private static final int    MAX_TOKENS_WEB = 3500; // web search answers are longer
+    private static final int    MAX_TOKENS_WEB = 6000; // web+tiers answers are much longer
     private static final long   CACHE_TTL_MILLIS = 24L * 60L * 60L * 1000L; // 24 hours
 
     private final AnthropicClient anthropicClient;
@@ -149,8 +149,15 @@ public class PricingAiAdvisorService {
 
         if (webSearchEnabled) {
             sb.append("  \"competitors\": [\n")
-              .append("    {\"name\": \"...\", \"product\": \"...\", \"price\": \"...\", ")
-              .append("\"note\": \"short qualifier or source hint\"}\n")
+              .append("    {\"name\": \"...\", \"product\": \"...\", ")
+              .append("\"price\": \"short headline price, e.g. 'from 45 EUR'\", ")
+              .append("\"note\": \"short qualifier or source hint\", ")
+              .append("\"tiers\": [\n")
+              .append("      {\"name\": \"plan name e.g. Free/Starter/Pro/Enterprise\", ")
+              .append("\"price\": \"price for this plan e.g. '90 EUR'\", ")
+              .append("\"billing\": \"monthly|annual|per user/mo|on request\", ")
+              .append("\"features\": \"what this plan includes (Greek)\"}\n")
+              .append("    ]}\n")
               .append("  ],\n");
         }
 
@@ -162,8 +169,13 @@ public class PricingAiAdvisorService {
 
         if (webSearchEnabled) {
             sb.append(" Provide 3 to 6 real competitors with their actual observed prices. ")
-              .append("Competitor names and prices stay as found (may be Latin script); ")
-              .append("only the 'note' field is in Greek.");
+              .append("For EACH competitor, populate the 'tiers' array with EVERY pricing ")
+              .append("plan/package you can find (e.g. Free, Starter, Pro, Enterprise) -- ")
+              .append("do NOT collapse them into one averaged price. If a competitor has a ")
+              .append("single plan, give one tier. If pricing is 'on request', say so in ")
+              .append("that tier's price. Capture the full billing policy (monthly vs annual ")
+              .append("vs per-user). Competitor names and plan names stay as found (may be ")
+              .append("Latin script); the 'note' and 'features' fields are in Greek.");
         }
 
         return sb.toString();
@@ -252,6 +264,19 @@ public class PricingAiAdvisorService {
                 cp.setProduct(text(c.path("product")));
                 cp.setPrice(text(c.path("price")));
                 cp.setNote(text(c.path("note")));
+
+                // S86.15-T: parse per-competitor pricing tiers when present.
+                List<AiCfoAdviceResponse.Tier> tiers = new ArrayList<>();
+                for (JsonNode t : c.path("tiers")) {
+                    AiCfoAdviceResponse.Tier tr = new AiCfoAdviceResponse.Tier();
+                    tr.setName(text(t.path("name")));
+                    tr.setPrice(text(t.path("price")));
+                    tr.setBilling(text(t.path("billing")));
+                    tr.setFeatures(text(t.path("features")));
+                    tiers.add(tr);
+                }
+                cp.setTiers(tiers);
+
                 competitors.add(cp);
             }
             out.setCompetitors(competitors);
