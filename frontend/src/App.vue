@@ -265,6 +265,10 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 .entity-option:hover { background: #2a4a6a; }
 .entity-option.active { color: #4FC3A1; font-weight: 600; }
 .nav-section-label { padding: 12px 12px 4px; font-size: 0.65rem; color: #556677; letter-spacing: 1.5px; font-weight: 600; }
+
+/* ─── S90-navlabels: section titles bold white (readability) ─── */
+.nav-section-label { color:#ffffff; font-size:.72rem; font-weight:700; }
+/* ─── end S90-navlabels ─── */
 .sidebar__nav { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; flex: 1; overflow-y: auto; }
 .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #8899aa; font-size: 14px; font-weight: 500; transition: all 120ms ease; white-space: nowrap; text-decoration: none; }
 .nav-item:hover { background: rgba(255,255,255,0.04); color: #e0e6ed; }
