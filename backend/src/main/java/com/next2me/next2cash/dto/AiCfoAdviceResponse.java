@@ -11,6 +11,10 @@ import java.util.List;
  * Holds three pricing strategies (Conservative / Balanced / Aggressive),
  * a list of competitive benchmarks, and a list of actionable recommendations.
  *
+ * S86.15: extended with a list of real competitors (market anchors) that the
+ * model can populate when web search is enabled. The field is optional and
+ * defaults to an empty list, so existing clients are unaffected.
+ *
  * This is a read-only, display-only payload. It is NOT persisted to the
  * database; results are cached in-memory for 24h per (projectId + margin).
  */
@@ -21,9 +25,11 @@ public class AiCfoAdviceResponse {
     private boolean fromCache;       // true if served from the 24h cache
     private String  modelUsed;       // e.g. claude-sonnet-4-5-...
     private String  summary;         // one-paragraph executive summary
-    private List<Strategy>  strategies;
-    private List<Benchmark> benchmarks;
-    private List<String>    recommendations;
+    private List<Strategy>   strategies;
+    private List<Benchmark>  benchmarks;
+    private List<String>     recommendations;
+    private List<Competitor> competitors;   // S86.15: real market anchors (may be empty)
+    private boolean marketDataUsed;          // S86.15: true when web search backed the answer
 
     public AiCfoAdviceResponse() {
     }
@@ -51,6 +57,13 @@ public class AiCfoAdviceResponse {
 
     public List<String> getRecommendations() { return recommendations; }
     public void setRecommendations(List<String> v) { this.recommendations = v; }
+
+    // S86.15 -----------------------------------------------------------------
+    public List<Competitor> getCompetitors() { return competitors; }
+    public void setCompetitors(List<Competitor> v) { this.competitors = v; }
+
+    public boolean isMarketDataUsed() { return marketDataUsed; }
+    public void setMarketDataUsed(boolean v) { this.marketDataUsed = v; }
 
     /**
      * A single pricing strategy option.
@@ -104,5 +117,32 @@ public class AiCfoAdviceResponse {
 
         public String getVerdict() { return verdict; }
         public void setVerdict(String v) { this.verdict = v; }
+    }
+
+    /**
+     * S86.15: a single real-world competitor surfaced via web search.
+     * All fields are plain strings to preserve the model's formatting and
+     * any qualifier it adds (e.g. "from 49 EUR/mo, annual billing").
+     */
+    public static class Competitor {
+        private String name;     // company / product name, e.g. "Pleo"
+        private String product;  // the comparable offering
+        private String price;    // observed price point, as a string
+        private String note;     // short qualifier / source hint
+
+        public Competitor() {
+        }
+
+        public String getName() { return name; }
+        public void setName(String v) { this.name = v; }
+
+        public String getProduct() { return product; }
+        public void setProduct(String v) { this.product = v; }
+
+        public String getPrice() { return price; }
+        public void setPrice(String v) { this.price = v; }
+
+        public String getNote() { return note; }
+        public void setNote(String v) { this.note = v; }
     }
 }
