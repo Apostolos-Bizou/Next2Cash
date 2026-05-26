@@ -26,6 +26,6 @@ public interface RecurrencePatternRepository extends JpaRepository<RecurrencePat
      * All patterns whose start_date is on or before the given date. Used by
      * the recurrence engine to find patterns that have already begun firing.
      */
-    @Query("SELECT r FROM RecurrencePattern r WHERE r.startDate <= :asOf")
+    @Query("SELECT r FROM RecurrencePattern r WHERE r.endDate IS NULL OR r.endDate >= :asOf")
     List<RecurrencePattern> findActiveAsOf(@Param("asOf") LocalDate asOf);
 }
