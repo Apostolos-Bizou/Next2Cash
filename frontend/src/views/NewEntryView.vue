@@ -185,11 +185,7 @@ async function loadNextId() {
 }
 
 // Frequent entries
-const frequentEntries = ['ΕΝΟΙΚΙΟ', 'MICROSOFT AZURE', 'ΠΑΠΑΝΙ', 'ΜΙΧΗΤΑ', 'ΜΑΛΑΜΙΤΣΗΣ', 'ΤΑΛΙΑΔΩΡΟΣ']
-
-function applyFrequent(f) {
-  description.value = nextId.value + ' - ' + f
-}
+// S89.1: frequentEntries array + applyFrequent function removed (frequent-buttons gone from UI).
 
 // Multi-file upload (Phase 56-A)
 const uploadedFiles = ref([])
@@ -312,7 +308,7 @@ async function save() {
       amount:        Number(amount.value),
       paymentMethod: method.value || null,
       description:   finalDescription,
-      docStatus:     isPlanned ? null : docStatus.value,
+      docStatus:     isPlanned ? null : (docStatus.value || null), // S89.1-fix: '' -> null (CHECK constraint)
       paymentStatus: isPlanned
                       ? 'unpaid'
                       : (isPending.value ? (isUrgent.value ? 'urgent' : 'unpaid') : 'paid'),
@@ -409,12 +405,7 @@ function reset() {
   plannedNotes.value = ''
 }
 
-const docStatuses = [
-  { value: 'bank',    label: 'Τράπεζα' },
-  { value: 'receipt', label: 'Απόδειξη' },
-  { value: 'cash',    label: 'Μετρητά' },
-  { value: '',        label: 'Χωρίς' }
-]
+// S89.1: docStatuses array removed (UI was dead). docStatus ref kept (always '').
 
 // Phase 1-F2: frequency options for PLANNED form
 const frequencyOptions = [
@@ -485,7 +476,7 @@ onMounted(async () => {
             <div class="meta-label">ΑΡ. ΚΑΤΑΧΩΡΗΣΗΣ</div>
             <div class="meta-value">#{{ nextId }}</div>
           </div>
-          <div class="meta-badge">
+          <div class="meta-badge amount-badge">
             <div class="meta-label">ΠΟΣΟ</div>
             <div class="meta-value" :style="{color: type==='income'?'var(--success)':'var(--danger)'}">
               {{ amount ? Number(amount).toLocaleString('el-GR', {minimumFractionDigits:2}) + ' €' : '0,00 €' }}
@@ -556,6 +547,22 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- Description with autocomplete (S89.1: moved up, ✓ Συχνές label removed) -->
+      <div class="form-group s89-desc-moved" style="position:relative">
+        <label>Περιγραφή</label>
+        <textarea v-model="description" class="form-input textarea"
+          placeholder=""
+          @input="onDescriptionInput"
+          @blur="hideDropdown">
+        </textarea>
+        <!-- Autocomplete dropdown -->
+        <div v-if="showSuggestions" class="autocomplete-drop">
+          <div v-for="s in suggestions" :key="s.id" class="autocomplete-item" @mousedown="applySuggestion(s)">
+            <span class="ac-desc">{{ s.description }}</span>
+            <span class="ac-meta">{{ s.category }} · {{ s.account }}</span>
+          </div>
+        </div>
+      </div>
       <!-- ═════════════════════════════════════════════════════ -->
       <!--   PLANNED-ONLY SECTIONS (Phase 1-F2)                  -->
       <!-- ═════════════════════════════════════════════════════ -->
@@ -707,27 +714,8 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Description with autocomplete -->
-      <div class="form-group" style="position:relative">
-        <label>Περιγραφή <span class="frequent-label">✓ Συχνές</span></label>
-        <textarea v-model="description" class="form-input textarea"
-          placeholder=""
-          @input="onDescriptionInput"
-          @blur="hideDropdown">
-        </textarea>
-        <!-- Autocomplete dropdown -->
-        <div v-if="showSuggestions" class="autocomplete-drop">
-          <div v-for="s in suggestions" :key="s.id" class="autocomplete-item" @mousedown="applySuggestion(s)">
-            <span class="ac-desc">{{ s.description }}</span>
-            <span class="ac-meta">{{ s.category }} · {{ s.account }}</span>
-          </div>
-        </div>
-      </div>
 
-      <!-- Frequent entries -->
-      <div class="frequent-entries">
-        <button v-for="f in frequentEntries" :key="f" class="frequent-btn" @click="applyFrequent(f)">{{ f }}</button>
-      </div>
+      <!-- S89.1: frequent-buttons removed -->
 
       <!-- File upload (ACTUAL only) -->
       <div class="form-group" v-if="entryMode==='ACTUAL'">
@@ -757,13 +745,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Doc status (ACTUAL only) -->
-      <div class="doc-status-btns" v-if="entryMode==='ACTUAL'">
-        <button v-for="s in docStatuses" :key="s.value"
-          :class="['doc-btn', {active: docStatus===s.value}]" @click="docStatus=s.value">
-          {{ s.label }}
-        </button>
-      </div>
+      <!-- S89.1: docStatus UI removed -->
 
       <!-- Actions -->
       <div class="action-btns">
@@ -784,9 +766,10 @@ onMounted(async () => {
 .entry-title { font-size:1.1rem; font-weight:700; display:flex; align-items:center; gap:10px; }
 .entry-title i { color:var(--accent); }
 .entry-meta { display:flex; gap:12px; }
-.meta-badge { background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:8px 16px; text-align:center; }
+.meta-badge { background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:8px 16px; text-align:center; } /* S89.1 */
+.meta-badge.amount-badge { min-width:140px; padding:8px 18px; }
 .meta-label { font-size:.65rem; color:var(--text-muted); letter-spacing:1px; margin-bottom:4px; }
-.meta-value { font-size:1.05rem; font-weight:700; font-family:var(--font-mono); color:var(--accent); }
+.meta-value { font-size:1.05rem; font-weight:700; font-family:var(--font-mono); color:var(--accent); white-space:nowrap; } /* S89.1 nowrap */
 .msg-success { background:var(--success-bg); color:var(--success); padding:10px 14px; border-radius:var(--radius-md); margin-bottom:14px; }
 .msg-error   { background:var(--danger-bg);  color:var(--danger);  padding:10px 14px; border-radius:var(--radius-md); margin-bottom:14px; }
 .type-toggle { display:flex; margin-bottom:20px; border-radius:var(--radius-md); overflow:hidden; border:1px solid var(--border); }
