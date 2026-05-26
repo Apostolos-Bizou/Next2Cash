@@ -25,6 +25,7 @@ public class PricingCalculatorResponse {
     private String mode;             // "GROUP" or "PROJECT"
     private UUID projectId;          // null in GROUP mode
     private String projectName;      // "Όλος ο Όμιλος" in GROUP mode
+    private String projectDescription; // S86.15-D: project description (category/market anchor)
     private BigDecimal targetMargin; // 0.05-0.50 (e.g. 0.15)
     private BigDecimal grossMarginPct;
     private BigDecimal monthlyChurnPct;
@@ -182,6 +183,8 @@ public class PricingCalculatorResponse {
     public void setProjectId(UUID v) { this.projectId = v; }
     public String getProjectName() { return projectName; }
     public void setProjectName(String v) { this.projectName = v; }
+    public String getProjectDescription() { return projectDescription; }
+    public void setProjectDescription(String v) { this.projectDescription = v; }
     public BigDecimal getTargetMargin() { return targetMargin; }
     public void setTargetMargin(BigDecimal v) { this.targetMargin = v; }
     public BigDecimal getGrossMarginPct() { return grossMarginPct; }

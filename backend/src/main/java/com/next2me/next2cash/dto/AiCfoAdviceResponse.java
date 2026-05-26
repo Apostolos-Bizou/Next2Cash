@@ -129,6 +129,7 @@ public class AiCfoAdviceResponse {
         private String product;  // the comparable offering
         private String price;    // observed price point, as a string (summary, e.g. "from 45 EUR")
         private String note;     // short qualifier / source hint
+        private String website;  // S86.15-W: link to the source / pricing page (may be empty)
         private List<Tier> tiers; // S86.15-T: full per-package pricing (may be empty/null)
 
         public Competitor() {
@@ -145,6 +146,10 @@ public class AiCfoAdviceResponse {
 
         public String getNote() { return note; }
         public void setNote(String v) { this.note = v; }
+
+        // S86.15-W: source / pricing-page URL for this competitor.
+        public String getWebsite() { return website; }
+        public void setWebsite(String v) { this.website = v; }
 
         // S86.15-T: detailed pricing tiers/packages for this competitor.
         public List<Tier> getTiers() { return tiers; }

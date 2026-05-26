@@ -152,6 +152,7 @@ public class PricingAiAdvisorService {
               .append("    {\"name\": \"...\", \"product\": \"...\", ")
               .append("\"price\": \"short headline price, e.g. 'from 45 EUR'\", ")
               .append("\"note\": \"short qualifier or source hint\", ")
+              .append("\"website\": \"URL of the pricing/source page where you found this\", ")
               .append("\"tiers\": [\n")
               .append("      {\"name\": \"plan name e.g. Free/Starter/Pro/Enterprise\", ")
               .append("\"price\": \"price for this plan e.g. '90 EUR'\", ")
@@ -174,7 +175,9 @@ public class PricingAiAdvisorService {
               .append("do NOT collapse them into one averaged price. If a competitor has a ")
               .append("single plan, give one tier. If pricing is 'on request', say so in ")
               .append("that tier's price. Capture the full billing policy (monthly vs annual ")
-              .append("vs per-user). Competitor names and plan names stay as found (may be ")
+              .append("vs per-user). For each competitor also include 'website': the ")
+              .append("URL of the page where you found the pricing (prefer the official ")
+              .append("pricing page). Competitor names and plan names stay as found (may be ")
               .append("Latin script); the 'note' and 'features' fields are in Greek.");
         }
 
@@ -184,7 +187,17 @@ public class PricingAiAdvisorService {
     private String buildUserMessage(PricingCalculatorResponse m) {
         StringBuilder sb = new StringBuilder();
         sb.append("Pricing context for: ").append(safe(m.getProjectName()))
-                .append(" (mode=").append(safe(m.getMode())).append(").\n\n");
+                .append(" (mode=").append(safe(m.getMode())).append(").\n");
+
+        // S86.15-D: feed the project description so the model identifies the
+        // RIGHT market category (do not guess competitors from the name alone).
+        String desc = m.getProjectDescription();
+        if (desc != null && !desc.isBlank()) {
+            sb.append("Product / market category (use this to find the right ")
+              .append("competitors): ").append(desc.trim()).append("\n");
+        }
+        sb.append("\n");
+
         sb.append("Target profit margin: ").append(pct(m.getTargetMargin())).append("\n");
         sb.append("Total monthly cost: ").append(eur(m.getTotalCost())).append("\n");
         sb.append("  - Direct burn: ").append(eur(m.getDirectBurn())).append("\n");
@@ -264,6 +277,7 @@ public class PricingAiAdvisorService {
                 cp.setProduct(text(c.path("product")));
                 cp.setPrice(text(c.path("price")));
                 cp.setNote(text(c.path("note")));
+                cp.setWebsite(text(c.path("website"))); // S86.15-W: source/pricing URL
 
                 // S86.15-T: parse per-competitor pricing tiers when present.
                 List<AiCfoAdviceResponse.Tier> tiers = new ArrayList<>();

@@ -327,6 +327,7 @@ public class PricingCalculatorService {
         out.setMode("PROJECT");
         out.setProjectId(project.getId());
         out.setProjectName(project.getName());
+        out.setProjectDescription(project.getDescription()); // S86.15-D: category anchor for AI advisor
 
         BigDecimal directBurn = effectiveDirectBurn(project, burnByProject);
 
