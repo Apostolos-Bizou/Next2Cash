@@ -525,6 +525,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
          REPORT: ΑΝΑ ΥΠΟΚΑΤΗΓΟΡΙΑ
     ═════════════════════════════════════════════════════════════ -->
     <template v-if="selectedReport === 'subcategory'">
+      <p class="report-intro">Δείχνει <strong>κάθε υποκατηγορία</strong> ξεχωριστά — πόσα μπήκαν (εισπράξεις), πόσα βγήκαν (πληρωμές) και το <strong>καθαρό</strong> της καθεμίας.</p>
       <div class="data-table-wrap">
         <table class="data-table">
           <thead>
@@ -532,7 +533,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
               <th class="col-name">ΥΠΟΚΑΤΗΓΟΡΙΑ</th>
               <th class="col-num">ΕΙΣΠΡΑΞΕΙΣ</th>
               <th class="col-num">ΠΛΗΡΩΜΕΣ</th>
-              <th class="col-num">NET</th>
+              <th class="col-num">NET <span class="col-hint" title="Εισπράξεις μείον Πληρωμές: τι έμεινε καθαρό">?</span></th>
               <th class="col-moves">ΚΙΝΗΣΕΙΣ</th>
             </tr>
           </thead>
@@ -572,15 +573,16 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
          REPORT: ΑΝΑ ΚΑΤΗΓΟΡΙΑ
     ═════════════════════════════════════════════════════════════ -->
     <template v-if="selectedReport === 'category'">
+      <p class="report-intro">Δείχνει <strong>πόσα πήγαν σε κάθε κατηγορία</strong> συνολικά, το <strong>ποσοστό</strong> της καθεμίας στο σύνολο, και πόσες κινήσεις είχε.</p>
       <div class="data-table-wrap">
         <table class="data-table">
           <thead>
             <tr>
               <th class="col-name">ΚΑΤΗΓΟΡΙΑ</th>
               <th class="col-num">ΠΟΣΟ</th>
-              <th class="col-pct">%</th>
+              <th class="col-pct">% <span class="col-hint" title="Τι ποσοστό των συνολικών εξόδων είναι αυτή η κατηγορία">?</span></th>
               <th class="col-moves">ΚΙΝΗΣΕΙΣ</th>
-              <th class="col-num">Μ.Ο./ΚΙΝΗΣΗ</th>
+              <th class="col-num">Μ.Ο./ΚΙΝΗΣΗ <span class="col-hint" title="Ποσό διά πλήθος κινήσεων: μέσο κόστος ανά συναλλαγή">?</span></th>
             </tr>
           </thead>
           <tbody>
@@ -609,6 +611,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
          REPORT: ΜΗΝΙΑΙΑ ΑΝΑΛΥΣΗ
     ═════════════════════════════════════════════════════════════ -->
     <template v-if="selectedReport === 'monthly'">
+      <p class="report-intro">Δείχνει <strong>μήνα-μήνα</strong> πόσα μπήκαν (εισπράξεις) και πόσα βγήκαν (πληρωμές), και το <strong>καθαρό</strong> κάθε μήνα.</p>
       <div class="data-table-wrap">
         <table class="data-table">
           <thead>
@@ -616,7 +619,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
               <th class="col-name">ΜΗΝΑΣ</th>
               <th class="col-num">ΕΙΣΠΡΑΞΕΙΣ</th>
               <th class="col-num">ΠΛΗΡΩΜΕΣ</th>
-              <th class="col-num">NET</th>
+              <th class="col-num">NET <span class="col-hint" title="Εισπράξεις μείον Πληρωμές: τι έμεινε καθαρό">?</span></th>
               <th class="col-moves">ΚΙΝΗΣΕΙΣ</th>
             </tr>
           </thead>
@@ -657,6 +660,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
          REPORT: ΕΤΗΣΙΑ ΣΥΓΚΡΙΣΗ
     ═════════════════════════════════════════════════════════════ -->
     <template v-if="selectedReport === 'yearly'">
+      <p class="report-intro">Δείχνει <strong>πόσα ξόδεψες σε κάθε κατηγορία</strong> κάθε χρόνο, και στη δεξιά στήλη το <strong>σύνολο</strong> κάθε κατηγορίας για όλα τα έτη.</p>
       <div class="data-table-wrap scrollable-x">
         <table class="data-table pivot-table">
           <thead>
@@ -693,6 +697,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
          REPORT: ΑΝΑΛΥΣΗ ΠΡΟΫΠΟΛΟΓΙΣΜΟΥ
     ═════════════════════════════════════════════════════════════ -->
     <template v-if="selectedReport === 'budget'">
+      <p class="report-intro">Δείχνει <strong>πόσα ξόδεψες σε κάθε κατηγορία</strong> κάθε χρόνο, και στο κάτω μέρος τα <strong>συνολικά έξοδα</strong>, τα <strong>έσοδα</strong> και το <strong>καθαρό αποτέλεσμα</strong> (κέρδος ή ζημιά) ανά έτος.</p>
       <div class="data-table-wrap scrollable-x">
         <table class="data-table pivot-table budget-table">
           <thead>
@@ -811,11 +816,11 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
             <div v-for="bar in budgetChartBars" :key="bar.label" class="bar-col bar-col-paired">
               <div class="paired-bars">
                 <div class="bar-inner">
-                  <div class="bar-value-label small">{{ bar.expVal }}</div>
+                  <div class="bar-value-label small bar-exp-label">{{ bar.expVal }}</div>
                   <div class="bar-rect" :style="{ height: bar.expHeight + 'px', background: '#ef5350' }"></div>
                 </div>
                 <div class="bar-inner">
-                  <div class="bar-value-label small">{{ bar.incVal }}</div>
+                  <div class="bar-value-label small bar-inc-label">{{ bar.incVal }}</div>
                   <div class="bar-rect" :style="{ height: bar.incHeight + 'px', background: '#4FC3A1' }"></div>
                 </div>
               </div>
@@ -833,9 +838,9 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
 /* ── Base ── */
 .reports-page {
   padding: 20px 24px;
-  color: #c8d8e8;
+  color: #334155;
   min-height: 100vh;
-  background: #0d1e2e;
+  background: #f4f6f9;
 }
 
 /* ── Top Bar ── */
@@ -849,7 +854,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
 .page-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #e0e6ed;
+  color: #1e293b;
   margin: 0;
   white-space: nowrap;
 }
@@ -866,16 +871,16 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
 }
 .date-label {
   font-size: 0.8rem;
-  color: #8899aa;
+  color: #64748b;
 }
 .select-wrap {
   position: relative;
 }
 .filter-select {
   appearance: none;
-  background: #1a2f45;
-  border: 1px solid #2a4a6a;
-  color: #c8d8e8;
+  background: #ffffff;
+  border: 1px solid #d6dee8;
+  color: #334155;
   padding: 7px 32px 7px 12px;
   border-radius: 6px;
   font-size: 0.83rem;
@@ -889,23 +894,23 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-  color: #556677;
+  color: #94a3b8;
   font-size: 0.75rem;
 }
 .btn-export {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #1a2f45;
-  border: 1px solid #2a4a6a;
-  color: #c8d8e8;
+  background: #ffffff;
+  border: 1px solid #d6dee8;
+  color: #334155;
   padding: 7px 14px;
   border-radius: 6px;
   font-size: 0.83rem;
   cursor: pointer;
   white-space: nowrap;
 }
-.btn-export:hover { background: #223d57; }
+.btn-export:hover { background: #e2e8f0; }
 .export-icon { font-size: 1rem; }
 
 /* ── KPI Row ── */
@@ -916,35 +921,40 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
   margin-bottom: 20px;
 }
 .kpi-card {
-  background: #1a2f45;
-  border-radius: 8px;
-  padding: 16px 20px;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 20px 16px;
   text-align: center;
+  border: 1px solid #e8edf3;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.07);
 }
 .kpi-value {
-  font-size: 1.4rem;
+  font-size: 1.45rem;
   font-weight: 700;
   font-family: monospace;
-  color: #e0e6ed;
+  color: #1e293b;
   letter-spacing: -0.5px;
+  white-space: nowrap;
 }
 .kpi-label {
   font-size: 0.7rem;
-  color: #8899aa;
+  color: #64748b;
   margin-top: 4px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .kpi-green .kpi-value { color: #4FC3A1; }
 .kpi-red   .kpi-value { color: #ef5350; }
-.kpi-neutral .kpi-value { color: #e0e6ed; }
+.kpi-neutral .kpi-value { color: #1e293b; }
 
 /* ── Data Table ── */
 .data-table-wrap {
-  background: #1a2f45;
-  border-radius: 10px;
+  background: #ffffff;
+  border-radius: 12px;
   overflow: hidden;
   margin-bottom: 20px;
+  border: 1px solid #e8edf3;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.07);
 }
 .data-table-wrap.scrollable-x {
   overflow-x: auto;
@@ -952,44 +962,76 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.83rem;
+  font-size: 0.95rem;
 }
 .data-table th {
-  background: #152538;
-  color: #6a8099;
-  padding: 10px 16px;
-  font-size: 0.7rem;
+  background: #f0f3f7;
+  color: #64748b;
+  padding: 13px 18px;
+  font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.06em;
-  border-bottom: 1px solid #223d57;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
 }
 .data-table td {
-  padding: 9px 16px;
-  border-bottom: 1px solid #1e3448;
+  padding: 12px 18px;
+  border-bottom: 1px solid #eaeef3;
+  white-space: nowrap;
 }
-.data-table tbody tr:hover { background: #1e3a52; }
+.data-table tbody tr:hover { background: #f0f4f8; }
 .data-table tfoot td {
-  background: #152538;
-  border-top: 1px solid #2a4a6a;
-  font-weight: 600;
-  font-size: 0.84rem;
+  background: #eef1f5;
+  border-top: 2px solid #d6dee8;
+  font-weight: 700;
+  font-size: 0.96rem;
+  white-space: nowrap;
 }
 
 .col-name     { text-align: left; }
 .col-num      { text-align: right; font-family: monospace; }
-.col-year     { text-align: right; font-family: monospace; font-size: 0.79rem; padding: 9px 10px; }
+.col-year     { text-align: right; font-family: monospace; font-size: 0.9rem; padding: 12px 12px; white-space: nowrap; }
 .col-pct      { text-align: right; }
-.col-moves    { text-align: right; color: #8899aa; }
+.col-moves    { text-align: right; color: #64748b; }
 .num-cell     { text-align: right; font-family: monospace; }
 
 .income-val   { color: #4FC3A1; }
 .payment-val  { color: #ef5350; }
-.neutral-val  { color: #c8d8e8; }
-.pct-val      { color: #8899aa; }
+.neutral-val  { color: #334155; }
+.pct-val      { color: #64748b; }
 .bold-val     { font-weight: 700; }
-.dash         { color: #3a5570; }
+.dash         { color: #cbd5e1; }
 
-.total-row td { color: #e0e6ed; }
+/* S86.17: λεζαντα επεξηγησης ανα προβολη */
+.report-intro {
+  font-size: 0.95rem;
+  color: #475569;
+  line-height: 1.6;
+  margin: 0 0 16px;
+  padding: 14px 18px;
+  background: #eef4fb;
+  border-left: 4px solid #4FC3A1;
+  border-radius: 8px;
+}
+.report-intro strong { color: #1e293b; }
+/* S86.17: tooltip στις δυσκολες στηλες */
+.col-hint {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  cursor: help;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  width: 15px;
+  height: 15px;
+  display: inline-block;
+  text-align: center;
+  line-height: 14px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.total-row td { font-weight: 700; }
+.total-row td.col-name, .total-row > td:first-child { color: #1e293b; }
 
 /* Budget table specifics */
 .col-budget-name {
@@ -1005,23 +1047,25 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
   margin-right: 6px;
   vertical-align: middle;
 }
-.budget-expenses-total td { background: #1b3a54; font-weight: 700; }
-.budget-income-row td     { background: #142a3c; }
-.budget-net-row td        { background: #0f2030; font-weight: 700; border-top: 1px solid #2a4a6a; }
+.budget-expenses-total td { background: #fde8e8; font-weight: 700; }
+.budget-income-row td     { background: #e8f5f0; }
+.budget-net-row td        { background: #eef1f5; font-weight: 700; border-top: 1px solid #d6dee8; }
 .arrow-down { color: #ef5350; font-size: 0.65rem; margin-left: 2px; }
 .arrow-up   { color: #4FC3A1; font-size: 0.65rem; margin-left: 2px; }
 .net-icon   { margin-right: 4px; }
 
 /* ── Chart Section ── */
 .chart-section {
-  background: #1a2f45;
-  border-radius: 10px;
+  background: #ffffff;
+  border-radius: 12px;
   padding: 20px;
+  border: 1px solid #e8edf3;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.07);
 }
 .chart-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #8899aa;
+  color: #64748b;
   margin-bottom: 16px;
   display: flex;
   align-items: center;
@@ -1042,7 +1086,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
   height: 240px;
   padding-bottom: 24px;
   font-size: 0.68rem;
-  color: #4a6a88;
+  color: #94a3b8;
   text-align: right;
   min-width: 42px;
   padding-right: 8px;
@@ -1068,11 +1112,13 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
 .bar-col-paired { min-width: 70px; }
 .bar-value-label {
   font-size: 0.68rem;
-  color: #c8d8e8;
+  color: #334155;
   margin-bottom: 3px;
   text-align: center;
 }
 .bar-value-label.small { font-size: 0.6rem; }
+.bar-exp-label { color: #1e293b; font-weight: 700; }
+.bar-inc-label { color: #0f6e56; font-weight: 700; }
 .bar-rect {
   width: 70%;
   border-radius: 3px 3px 0 0;
@@ -1081,7 +1127,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
 }
 .bar-x-label {
   font-size: 0.65rem;
-  color: #4a6a88;
+  color: #94a3b8;
   margin-top: 6px;
   text-align: center;
   white-space: nowrap;
@@ -1116,7 +1162,7 @@ window.addEventListener('entity-changed', () => { loadTransactions() })
   align-items: center;
   gap: 5px;
   font-size: 0.72rem;
-  color: #8899aa;
+  color: #64748b;
 }
 .legend-dot {
   width: 8px;
