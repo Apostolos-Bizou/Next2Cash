@@ -372,9 +372,44 @@ const markPaidState = ref({ visible: false, transaction: null })
 // S93B-PAID-EDIT-DIALOG: shown when a PUT is blocked because the txn has a payment.
 const paidEditState = ref({ visible: false, paymentId: null, paymentAmount: null, paymentDate: '', reopenData: null, deleting: false })
 // S94B-PAID-NO-PAYMENT-DIALOG: shown when backend returns paid_no_payment_record (legacy paid txns without a Payment row).
-const paidNoPaymentState = ref({ visible: false, paymentStatus: '', amountPaid: 0, reopenData: null })
+const paidNoPaymentState = ref({ visible: false, txnId: null, paymentStatus: '', amountPaid: 0, reopenData: null, confirmText: '', resetting: false })
 function cancelPaidNoPayment() {
-  paidNoPaymentState.value = { visible: false, paymentStatus: '', amountPaid: 0, reopenData: null }
+  if (paidNoPaymentState.value.resetting) return
+  paidNoPaymentState.value = { visible: false, txnId: null, paymentStatus: '', amountPaid: 0, reopenData: null, confirmText: '', resetting: false }
+}
+// S95: Type-to-confirm reset to unpaid (legacy paid txns without Payment row).
+async function confirmResetToUnpaid() {
+  const st = paidNoPaymentState.value
+  if (st.resetting) return
+  if (String(st.confirmText || '').trim().toUpperCase() !== 'ΕΠΑΝΑΦΟΡΑ') return
+  if (!st.txnId) return
+  paidNoPaymentState.value.resetting = true
+  try {
+    const res = await api.post('/api/transactions/' + st.txnId + '/reset-to-unpaid')
+    if (res.data && res.data.success !== false) {
+      showToast('success', 'Η κίνηση επαναφέρθηκε σε unpaid')
+      const reopen = st.reopenData ? { ...st.reopenData } : null
+      // Reflect new unpaid state in the reopened editor.
+      if (reopen) {
+        reopen.paymentStatus  = 'unpaid'
+        reopen.amountPaid     = 0
+        reopen.amountRemaining = reopen.amount
+        reopen.paymentDate    = null
+      }
+      paidNoPaymentState.value = { visible: false, txnId: null, paymentStatus: '', amountPaid: 0, reopenData: null, confirmText: '', resetting: false }
+      await loadTransactions()
+      if (reopen) {
+        editModal.value = { show: true, saving: false, data: reopen, original: { ...reopen } }
+      }
+    } else {
+      showToast('error', (res.data && (res.data.message || res.data.error)) || 'Αποτυχία επαναφοράς')
+      paidNoPaymentState.value.resetting = false
+    }
+  } catch (e) {
+    console.error('confirmResetToUnpaid error:', e)
+    showToast('error', e.response?.data?.message || e.response?.data?.error || 'Αποτυχία επαναφοράς')
+    paidNoPaymentState.value.resetting = false
+  }
 }
 function openMarkPaid(t) {
   const txn = { ...t, entityId: ENTITIES[selectedEntity.value] }
@@ -882,9 +917,12 @@ async function saveEdit() {
     if (res.data && res.data.error === 'paid_no_payment_record') {
       paidNoPaymentState.value = {
         visible: true,
+        txnId: d.id,
         paymentStatus: res.data.paymentStatus || '',
         amountPaid: Number(res.data.amountPaid) || 0,
-        reopenData: { ...editModal.value.original }
+        reopenData: { ...editModal.value.original },
+        confirmText: '',
+        resetting: false
       }
       editModal.value.show = false
       editModal.value.saving = false
@@ -1496,22 +1534,39 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- S94B: paid_no_payment_record dialog (legacy paid txn without Payment row) -->
+    <!-- S94B + S95: paid_no_payment_record dialog with type-to-confirm reset -->
     <div v-if="paidNoPaymentState.visible" class="modal-backdrop" @click.self="cancelPaidNoPayment">
       <div class="modal paid-edit-modal">
         <div class="modal-header">
           <h3 class="edit-modal-title"><i class="fas fa-lock paid-edit-lock"></i> Δεν επιτρέπεται αλλαγή ποσού</h3>
-          <button class="modal-close" @click="cancelPaidNoPayment">×</button>
+          <button class="modal-close" @click="cancelPaidNoPayment" :disabled="paidNoPaymentState.resetting">×</button>
         </div>
         <div class="modal-body">
-          <p class="paid-edit-text">Η εγγραφή είναι ήδη εξοφλημένη χωρίς καταχωρημένη εγγραφή πληρωμής (legacy). Για να αλλάξεις το ποσό, πρέπει πρώτα να αλλάξει η κατάσταση σε unpaid από τον διαχειριστή.</p>
+          <p class="paid-edit-text">Η εγγραφή είναι ήδη εξοφλημένη χωρίς καταχωρημένη εγγραφή πληρωμής (legacy). Για να αλλάξεις το ποσό, πρέπει πρώτα να αλλάξει η κατάσταση σε unpaid.</p>
           <div class="paid-edit-box">
             <div class="paid-edit-row"><span>Κατάσταση</span><strong>{{ paidNoPaymentState.paymentStatus }}</strong></div>
             <div class="paid-edit-row"><span>Πληρωμένο ποσό</span><strong>{{ Number(paidNoPaymentState.amountPaid).toFixed(2) }} €</strong></div>
           </div>
+          <div class="paid-edit-confirm">
+            <p class="paid-edit-confirm-help">Για να επαναφέρεις την κίνηση σε unpaid, γράψε ΕΠΑΝΑΦΟΡΑ στο πεδίο.</p>
+            <input
+              v-model="paidNoPaymentState.confirmText"
+              type="text"
+              class="paid-edit-confirm-input"
+              placeholder="Πληκτρολόγησε ΕΠΑΝΑΦΟΡΑ"
+              :disabled="paidNoPaymentState.resetting"
+              autocomplete="off" />
+          </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="cancelPaidNoPayment">Άκυρο</button>
+          <button class="btn-secondary" @click="cancelPaidNoPayment" :disabled="paidNoPaymentState.resetting">Άκυρο</button>
+          <button
+            class="btn-danger paid-edit-reset"
+            @click="confirmResetToUnpaid"
+            :disabled="paidNoPaymentState.resetting || String(paidNoPaymentState.confirmText || '').trim().toUpperCase() !== 'ΕΠΑΝΑΦΟΡΑ'">
+            <span v-if="paidNoPaymentState.resetting"><span class="spinner-sm"></span> Επαναφορά...</span>
+            <span v-else><i class="fas fa-undo"></i> Επαναφορά σε unpaid</span>
+          </button>
         </div>
       </div>
     </div>
@@ -2471,4 +2526,35 @@ td.actions { vertical-align: middle; }
 .paid-edit-row strong { color: var(--text-primary); font-weight: 600; }
 .btn-danger.paid-edit-del { background: #c0392b; border-color: #c0392b; color: #fff; }
 .btn-danger.paid-edit-del:hover:not(:disabled) { background: #a93226; }
+
+/* S95: type-to-confirm reset section */
+.paid-edit-confirm {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.paid-edit-confirm-help {
+  color: var(--text-muted, #9ca3af);
+  font-size: 13px;
+  margin: 0 0 8px 0;
+}
+.paid-edit-confirm-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border, rgba(255,255,255,0.15));
+  border-radius: 6px;
+  background: var(--bg-input, rgba(0,0,0,0.25));
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+  letter-spacing: 1px;
+  font-family: monospace;
+}
+.paid-edit-confirm-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.paid-edit-reset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 </style>
