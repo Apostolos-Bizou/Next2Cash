@@ -1,17 +1,14 @@
 package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.dto.CalendarResponse;
+import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.service.CalendarService;
 import com.next2me.next2cash.service.UserAccessService;
-import com.next2me.next2cash.model.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDate;
-import java.time.YearMonth;
 import java.util.UUID;
 
 /**
@@ -21,9 +18,13 @@ import java.util.UUID;
  * - entityId=ALL is ADMIN-only and returns aggregated (group) view.
  * - entityId=&lt;uuid&gt; returns analytical (per-transaction) view, subject
  *   to UserAccessService entity scope check.
+ *
+ * Auth pattern matches DashboardController: extract user from Authorization
+ * header via UserAccessService.getCurrentUser(authHeader).
  */
 @RestController
 @RequestMapping("/api/calendar")
+@PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')")
 public class CalendarController {
 
     private final CalendarService calendarService;
@@ -37,14 +38,12 @@ public class CalendarController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')")
     public ResponseEntity<CalendarResponse> getCalendar(
             @RequestParam("entityId") String entityIdParam,
             @RequestParam("year") int year,
             @RequestParam("month") int month,
-            @AuthenticationPrincipal User user) {
+            @RequestHeader("Authorization") String authHeader) {
 
-        // Basic param validation
         if (year < 2000 || year > 2100) {
             return ResponseEntity.badRequest().build();
         }
@@ -52,10 +51,13 @@ public class CalendarController {
             return ResponseEntity.badRequest().build();
         }
 
+        User user = userAccessService.getCurrentUser(authHeader);
+
         boolean isGroupScope = "ALL".equalsIgnoreCase(entityIdParam);
         if (isGroupScope) {
-            // ADMIN-only for group view
-            if (user == null || !"ADMIN".equalsIgnoreCase(user.getRole())) {
+            // ADMIN-only for group view (role is stored as "admin" in DB)
+            String role = user == null ? "" : (user.getRole() == null ? "" : user.getRole());
+            if (!"admin".equalsIgnoreCase(role)) {
                 return ResponseEntity.status(403).build();
             }
             CalendarResponse resp = calendarService.buildGroupCalendar(year, month);
@@ -69,7 +71,6 @@ public class CalendarController {
             return ResponseEntity.badRequest().build();
         }
 
-        // Entity-scope guard
         userAccessService.assertCanAccessEntity(user, entityId);
 
         CalendarResponse resp = calendarService.buildEntityCalendar(entityId, year, month);
