@@ -369,6 +369,8 @@ const deleteConfirm = ref({ show: false, item: null, deleting: false })
 
 // Mark paid state
 const markPaidState = ref({ visible: false, transaction: null })
+// S93B-PAID-EDIT-DIALOG: shown when a PUT is blocked because the txn has a payment.
+const paidEditState = ref({ visible: false, paymentId: null, paymentAmount: null, paymentDate: '', reopenData: null, deleting: false })
 function openMarkPaid(t) {
   const txn = { ...t, entityId: ENTITIES[selectedEntity.value] }
   markPaidState.value = { visible: true, transaction: txn }
@@ -725,6 +727,37 @@ async function loadEditPattern(patternId) {
   }
 }
 
+// S93B: confirm deletion of the blocking payment, then reopen edit.
+async function confirmPaidEditDelete() {
+  const st = paidEditState.value
+  if (!st.paymentId) { paidEditState.value.visible = false; return }
+  paidEditState.value.deleting = true
+  try {
+    const res = await api.delete('/api/payments/' + st.paymentId)
+    if (res.data && res.data.success !== false) {
+      showToast('success', 'Η πληρωμή διαγράφηκε')
+      const reopen = st.reopenData
+      paidEditState.value = { visible: false, paymentId: null, paymentAmount: null, paymentDate: '', reopenData: null, deleting: false }
+      await loadTransactions()
+      if (reopen && reopen.id != null) {
+        const fresh = transactions.value.find(function (x) { return x.id === reopen.id && !x._isPaymentRow })
+        openEdit(fresh || reopen)
+      }
+    } else {
+      showToast('error', (res.data && res.data.error) || 'Αποτυχία διαγραφής')
+      paidEditState.value.deleting = false
+    }
+  } catch (ex93b) {
+    console.error('confirmPaidEditDelete failed:', ex93b)
+    showToast('error', 'Σφάλμα διαγραφής')
+    paidEditState.value.deleting = false
+  }
+}
+function cancelPaidEdit() {
+  if (paidEditState.value.deleting) return
+  paidEditState.value = { visible: false, paymentId: null, paymentAmount: null, paymentDate: '', reopenData: null, deleting: false }
+}
+
 function closeEdit() {
   if (editModal.value.saving || editModal.value.deleting) return
   editModal.value.show = false
@@ -823,7 +856,23 @@ async function saveEdit() {
       payload.projectId           = ep.isOpEx ? null : (ep.projectId || null)
       payload.confidencePct       = Number(ep.confidence) || 100
     }
-    const res = await api.put('/api/transactions/' + d.id, payload)
+    const res = await api.put('/api/transactions/' + d.id, payload, {
+      validateStatus: function (s) { return (s >= 200 && s < 300) || s === 400 }
+    })
+    // S93B: backend blocks amount edit on a paid txn -> open delete dialog.
+    if (res.data && res.data.error === 'payment_present') {
+      paidEditState.value = {
+        visible: true,
+        paymentId: res.data.paymentId,
+        paymentAmount: res.data.paymentAmount,
+        paymentDate: res.data.paymentDate || '',
+        reopenData: { ...editModal.value.original },
+        deleting: false
+      }
+      editModal.value.show = false
+      editModal.value.saving = false
+      return
+    }
     if (res.data && res.data.success !== false) {
       // Step 57-A.5: upload staged files (if any) AFTER successful PUT.
       // Continue-on-error pattern - txn is saved even if a file fails,
@@ -1407,6 +1456,29 @@ onUnmounted(() => {
     </div>
 
     <!-- ═══════ EDIT MODAL ═══════ -->
+    <div v-if="paidEditState.visible" class="modal-backdrop" @click.self="cancelPaidEdit">
+      <div class="modal paid-edit-modal">
+        <div class="modal-header">
+          <h3 class="edit-modal-title"><i class="fas fa-lock paid-edit-lock"></i> Η εγγραφή έχει εξόφληση</h3>
+          <button class="modal-close" @click="cancelPaidEdit" :disabled="paidEditState.deleting">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="paid-edit-text">Για να αλλάξεις το ποσό, πρέπει πρώτα να διαγράψεις την πληρωμή που είναι καταχωρημένη πάνω σε αυτή την εγγραφή.</p>
+          <div class="paid-edit-box">
+            <div class="paid-edit-row"><span>Ποσό πληρωμής</span><strong>{{ Number(paidEditState.paymentAmount).toFixed(2) }} €</strong></div>
+            <div class="paid-edit-row"><span>Ημερομηνία</span><strong>{{ paidEditState.paymentDate }}</strong></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="cancelPaidEdit" :disabled="paidEditState.deleting">Άκυρο</button>
+          <button class="btn-danger paid-edit-del" @click="confirmPaidEditDelete" :disabled="paidEditState.deleting">
+            <span v-if="paidEditState.deleting"><span class="spinner-sm"></span> Διαγραφή...</span>
+            <span v-else><i class="fas fa-trash"></i> Διαγραφή πληρωμής</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="editModal.show" class="modal-backdrop" @click.self="closeEdit">
       <div class="modal">
         <div class="modal-header">
@@ -2351,4 +2423,14 @@ td.actions { vertical-align: middle; }
   color: #f59e0b;
   font-weight: 700;
 }
+
+.paid-edit-modal { max-width: 440px; }
+.paid-edit-lock { color: #2E75B6; margin-right: 6px; }
+.paid-edit-text { font-size: 14px; line-height: 1.6; color: #333; margin: 0 0 16px; }
+.paid-edit-box { background: #f5f8fb; border: 0.5px solid #d5e3f0; border-radius: 8px; padding: 12px 14px; }
+.paid-edit-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+.paid-edit-row span { color: #667; }
+.paid-edit-row strong { color: #1a1a1a; font-weight: 600; }
+.btn-danger.paid-edit-del { background: #c0392b; border-color: #c0392b; color: #fff; }
+.btn-danger.paid-edit-del:hover:not(:disabled) { background: #a93226; }
 </style>
