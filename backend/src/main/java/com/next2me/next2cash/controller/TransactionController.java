@@ -247,6 +247,42 @@ public class TransactionController {
                 userAccessService.assertCanAccessEntity(user, updates.getEntityId());
             }
 
+            // ===== S94-EDIT-PAID-NO-PAYMENT-GUARD =====
+            // Block AMOUNT edits when the transaction is marked paid/received (with
+            // amount_paid > 0) but has NO Payment record. These are legacy imports
+            // and S92 DB-fixed rows where status was set without creating a Payment.
+            // Without this guard, the S93 guard does not fire (no Payment row to find)
+            // and the subsequent S93-RECALC can produce a negative amount_remaining,
+            // reintroducing exactly the broken-record class of bug that S92 fixed.
+            // Rule: status must first move to unpaid before amount can be edited.
+            // Greek string uses backslash-u escapes (file-encoding rule).
+            if (updates.getAmount() != null
+                    && t.getAmount() != null
+                    && updates.getAmount().compareTo(t.getAmount()) != 0) {
+                String ps = t.getPaymentStatus();
+                boolean isPaidStatus = ps != null &&
+                        ("paid".equalsIgnoreCase(ps) || "received".equalsIgnoreCase(ps));
+                boolean hasAmountPaid = t.getAmountPaid() != null &&
+                        t.getAmountPaid().compareTo(java.math.BigDecimal.ZERO) > 0;
+                if (isPaidStatus && hasAmountPaid) {
+                    @SuppressWarnings("unchecked")
+                    java.util.List<Payment> _s94Payments = entityManager.createQuery(
+                            "SELECT p FROM Payment p WHERE p.transactionId = :tid",
+                            Payment.class)
+                        .setParameter("tid", t.getId())
+                        .getResultList();
+                    if (_s94Payments.isEmpty()) {
+                        return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                            "success", false,
+                            "error",   "paid_no_payment_record",
+                            "message", "\u0397 \u03b5\u03b3\u03b3\u03c1\u03b1\u03c6\u03ae \u03b5\u03af\u03bd\u03b1\u03b9 \u03ae\u03b4\u03b7 \u03b5\u03be\u03bf\u03c6\u03bb\u03b7\u03bc\u03ad\u03bd\u03b7 \u03c7\u03c9\u03c1\u03af\u03c2 \u03b5\u03b3\u03b3\u03c1\u03b1\u03c6\u03ae \u03c0\u03bb\u03b7\u03c1\u03c9\u03bc\u03ae\u03c2 (legacy). \u0393\u03b9\u03b1 \u03b1\u03bb\u03bb\u03b1\u03b3\u03ae \u03c0\u03bf\u03c3\u03bf\u03cd, \u03ac\u03bb\u03bb\u03b1\u03be\u03b5 \u03c0\u03c1\u03ce\u03c4\u03b1 \u03c4\u03b7\u03bd \u03ba\u03b1\u03c4\u03ac\u03c3\u03c4\u03b1\u03c3\u03b7 \u03c3\u03b5 unpaid.",
+                            "paymentStatus", ps,
+                            "amountPaid",    t.getAmountPaid()
+                        ));
+                    }
+                }
+            }
+
             // ===== S93-EDIT-PAID-GUARD =====
             // Block AMOUNT edits when the transaction already has >=1 Payment record.
             // Root cause of stale derived fields: changing amount on a paid txn left
