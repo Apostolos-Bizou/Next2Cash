@@ -756,4 +756,97 @@ public class TransactionController {
             ));
         }).orElse(ResponseEntity.notFound().build());
     }
+
+    // ===== S95-RESET-TO-UNPAID =====
+    // Self-service action for legacy paid/received txns that have NO Payment
+    // record. Resets paymentStatus to unpaid so the user can then edit the
+    // amount (which is otherwise blocked by the S94 guard).
+    // Refuses if a Payment record exists (use S93 delete flow instead).
+    // Refuses if already unpaid.
+    @PostMapping("/{id}/reset-to-unpaid")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @Transactional
+    public ResponseEntity<?> resetToUnpaid(
+            @PathVariable Integer id,
+            @RequestHeader("Authorization") String authHeader) {
+        User user = userAccessService.getCurrentUser(authHeader);
+
+        return transactionRepository.findById(id).map(t -> {
+            // Entity scope guard (S77 pattern — same as updateTransaction line 222).
+            userAccessService.assertCanAccessEntity(user, t.getEntityId());
+
+            // Must currently be paid or received.
+            String ps = t.getPaymentStatus() == null ? "" : t.getPaymentStatus().toLowerCase();
+            if (!"paid".equals(ps) && !"received".equals(ps)) {
+                return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                    "success", false,
+                    "error",   "not_paid",
+                    "message", "Η εγγραφή δεν είναι σε κατάσταση paid/received",
+                    "paymentStatus", t.getPaymentStatus()
+                ));
+            }
+
+            // Must have no Payment record (else use S93 delete flow).
+            @SuppressWarnings("unchecked")
+            List<Payment> existing = (List<Payment>) entityManager
+                .createQuery("SELECT p FROM Payment p WHERE p.transactionId = :tid")
+                .setParameter("tid", id)
+                .getResultList();
+            if (!existing.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                    "success", false,
+                    "error",   "payment_present",
+                    "message", "Η εγγραφή έχει καταχωρημένη πληρωμή. Χρησιμοποίησε τη Διαγραφή πληρωμής.",
+                    "paymentId", existing.get(0).getId()
+                ));
+            }
+
+            // amountPaid must be > 0 (else already effectively unpaid).
+            java.math.BigDecimal ap = t.getAmountPaid();
+            if (ap == null || ap.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                    "success", false,
+                    "error",   "already_unpaid",
+                    "message", "Η εγγραφή είναι ήδη unpaid."
+                ));
+            }
+
+            // Capture pre-reset values for audit + bank recompute.
+            String prevStatus = t.getPaymentStatus();
+            java.math.BigDecimal prevAmountPaid = ap;
+            String prevPaymentMethod = t.getPaymentMethod();
+            LocalDate prevPaymentDate = t.getPaymentDate();
+
+            // Reset.
+            t.setPaymentStatus("unpaid");
+            t.setAmountPaid(java.math.BigDecimal.ZERO);
+            t.setAmountRemaining(t.getAmount() == null ? java.math.BigDecimal.ZERO : t.getAmount());
+            t.setPaymentDate(null);
+
+            Transaction saved = transactionRepository.save(t);
+
+            // Audit.
+            String details = "{\"previousStatus\":\"" + prevStatus +
+                "\",\"previousAmountPaid\":" + prevAmountPaid +
+                ",\"previousPaymentMethod\":\"" + (prevPaymentMethod == null ? "" : prevPaymentMethod) +
+                "\",\"previousPaymentDate\":\"" + (prevPaymentDate == null ? "" : prevPaymentDate) +
+                "\"}";
+            auditLogService.log(
+                saved.getEntityId(), user.getId(), user.getUsername(),
+                "TRANSACTION_RESET_TO_UNPAID", "transactions",
+                saved.getId().toString(), details);
+
+            // Bank balance recompute for the prior payment method (if any).
+            if (prevPaymentMethod != null && !prevPaymentMethod.isEmpty()) {
+                tryRecomputeBank(saved.getEntityId(), prevPaymentMethod,
+                    saved.getId(), "RESET_TO_UNPAID");
+            }
+
+            return ResponseEntity.ok(Map.<String, Object>of(
+                "success", true,
+                "data",    saved,
+                "message", "Η κίνηση επαναφέρθηκε σε unpaid"
+            ));
+        }).orElse(ResponseEntity.notFound().build());
+    }
 }
