@@ -2426,11 +2426,12 @@ td.actions { vertical-align: middle; }
 
 .paid-edit-modal { max-width: 440px; }
 .paid-edit-lock { color: #2E75B6; margin-right: 6px; }
-.paid-edit-text { font-size: 14px; line-height: 1.6; color: #333; margin: 0 0 16px; }
-.paid-edit-box { background: #f5f8fb; border: 0.5px solid #d5e3f0; border-radius: 8px; padding: 12px 14px; }
+/* S93B-DARK-THEME-FIX */
+.paid-edit-text { font-size: 14px; line-height: 1.6; color: var(--text-primary); margin: 0 0 16px; }
+.paid-edit-box { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
 .paid-edit-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
-.paid-edit-row span { color: #667; }
-.paid-edit-row strong { color: #1a1a1a; font-weight: 600; }
+.paid-edit-row span { color: var(--text-muted); }
+.paid-edit-row strong { color: var(--text-primary); font-weight: 600; }
 .btn-danger.paid-edit-del { background: #c0392b; border-color: #c0392b; color: #fff; }
 .btn-danger.paid-edit-del:hover:not(:disabled) { background: #a93226; }
 </style>
