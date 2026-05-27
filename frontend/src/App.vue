@@ -145,6 +145,7 @@ const navSections = [
   {
     label: 'ΑΝΑΦΟΡΕΣ',
     items: [
+      { to: '/calendar', section: 'calendar',     label: 'Ημερολόγιο',     icon: 'M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM16 2v4M8 2v4M3 10h18' },
       { to: '/reports', section: 'reports',        label: 'Αναφορές',        icon: 'M3 3v18h18M8 17V9M13 17V5M18 17v-7' },
       { to: '/report-builder', section: 'report-builder', label: 'Report Builder',  icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', badge: 'NEW' },
       { to: '/ai-analysis', section: 'ai-analysis',    label: 'AI Ανάλυση',      icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3', badge: 'NEW' },

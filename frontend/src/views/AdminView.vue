@@ -80,6 +80,7 @@ const ALL_SECTIONS = [
   { key: 'karteles',       label: 'Καρτέλες' },
   { key: 'recurring',      label: 'Επαναλαμβανόμενες' },
   { key: 'zip-export',     label: 'ZIP Export' },
+  { key: 'calendar',       label: 'Ημερολόγιο' },
   { key: 'reports',        label: 'Αναφορές' },
   { key: 'report-builder', label: 'Report Builder' },
   { key: 'ai-analysis',    label: 'AI Ανάλυση' },
