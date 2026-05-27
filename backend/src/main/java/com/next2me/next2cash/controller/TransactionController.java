@@ -247,6 +247,36 @@ public class TransactionController {
                 userAccessService.assertCanAccessEntity(user, updates.getEntityId());
             }
 
+            // ===== S93-EDIT-PAID-GUARD =====
+            // Block AMOUNT edits when the transaction already has >=1 Payment record.
+            // Root cause of stale derived fields: changing amount on a paid txn left
+            // amount_paid/amount_remaining out of sync. Rule: paid txn => amount is
+            // locked. User must delete the payment first, then edit the amount.
+            // Non-amount fields (description, category, etc.) are still allowed.
+            if (updates.getAmount() != null
+                    && t.getAmount() != null
+                    && updates.getAmount().compareTo(t.getAmount()) != 0) {
+                @SuppressWarnings("unchecked")
+                java.util.List<Payment> existingPayments = entityManager.createQuery(
+                        "SELECT p FROM Payment p WHERE p.transactionId = :tid",
+                        Payment.class)
+                    .setParameter("tid", t.getId())
+                    .getResultList();
+                if (!existingPayments.isEmpty()) {
+                    Payment first = existingPayments.get(0);
+                    // Greek message below uses backslash-u escapes (file-encoding rule).
+                    return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                        "success", false,
+                        "error",   "payment_present",
+                        "message", "Η εγγραφή έχει εξόφληση. Σβήσε πρώτα την πληρωμή για να αλλάξεις το ποσό.",
+                        "paymentCount", existingPayments.size(),
+                        "paymentId", first.getId(),
+                        "paymentAmount", first.getAmount(),
+                        "paymentDate", first.getPaymentDate() != null ? first.getPaymentDate().toString() : ""
+                    ));
+                }
+            }
+
             // Capture OLD state BEFORE setters run (Phase 3, Step 3.2).
             // Needed so we can recompute the previous bank account if paymentMethod or entity change.
             final UUID   oldEntityId      = t.getEntityId();
@@ -282,6 +312,16 @@ public class TransactionController {
             if (updates.getProjectId()            != null) t.setProjectId(updates.getProjectId());
             if (updates.getConfidencePct()        != null) t.setConfidencePct(updates.getConfidencePct());
             if (updates.getScenarioId()           != null) t.setScenarioId(updates.getScenarioId());
+
+            // ===== S93-RECALC ===== (paired with S93-EDIT-PAID-GUARD)
+            // For UNPAID txns (no Payment record blocked above), if amount changed,
+            // recompute amount_remaining = amount - amount_paid. Fixes the original
+            // root cause where PUT changed amount but never recalculated remaining.
+            if (updates.getAmount() != null && t.getAmount() != null) {
+                java.math.BigDecimal paid = t.getAmountPaid() != null
+                    ? t.getAmountPaid() : java.math.BigDecimal.ZERO;
+                t.setAmountRemaining(t.getAmount().subtract(paid));
+            }
 
             Transaction saved = transactionRepository.save(t);
             auditLogService.log(saved.getEntityId(), user.getId(), user.getUsername(), "TRANSACTION_UPDATE", "transactions", saved.getId().toString(), null);
