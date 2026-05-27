@@ -371,6 +371,11 @@ const deleteConfirm = ref({ show: false, item: null, deleting: false })
 const markPaidState = ref({ visible: false, transaction: null })
 // S93B-PAID-EDIT-DIALOG: shown when a PUT is blocked because the txn has a payment.
 const paidEditState = ref({ visible: false, paymentId: null, paymentAmount: null, paymentDate: '', reopenData: null, deleting: false })
+// S94B-PAID-NO-PAYMENT-DIALOG: shown when backend returns paid_no_payment_record (legacy paid txns without a Payment row).
+const paidNoPaymentState = ref({ visible: false, paymentStatus: '', amountPaid: 0, reopenData: null })
+function cancelPaidNoPayment() {
+  paidNoPaymentState.value = { visible: false, paymentStatus: '', amountPaid: 0, reopenData: null }
+}
 function openMarkPaid(t) {
   const txn = { ...t, entityId: ENTITIES[selectedEntity.value] }
   markPaidState.value = { visible: true, transaction: txn }
@@ -868,6 +873,18 @@ async function saveEdit() {
         paymentDate: res.data.paymentDate || '',
         reopenData: { ...editModal.value.original },
         deleting: false
+      }
+      editModal.value.show = false
+      editModal.value.saving = false
+      return
+    }
+    // S94B: backend blocks amount edit on a legacy paid txn that has NO Payment row -> show info dialog.
+    if (res.data && res.data.error === 'paid_no_payment_record') {
+      paidNoPaymentState.value = {
+        visible: true,
+        paymentStatus: res.data.paymentStatus || '',
+        amountPaid: Number(res.data.amountPaid) || 0,
+        reopenData: { ...editModal.value.original }
       }
       editModal.value.show = false
       editModal.value.saving = false
@@ -1475,6 +1492,26 @@ onUnmounted(() => {
             <span v-if="paidEditState.deleting"><span class="spinner-sm"></span> Διαγραφή...</span>
             <span v-else><i class="fas fa-trash"></i> Διαγραφή πληρωμής</span>
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- S94B: paid_no_payment_record dialog (legacy paid txn without Payment row) -->
+    <div v-if="paidNoPaymentState.visible" class="modal-backdrop" @click.self="cancelPaidNoPayment">
+      <div class="modal paid-edit-modal">
+        <div class="modal-header">
+          <h3 class="edit-modal-title"><i class="fas fa-lock paid-edit-lock"></i> Δεν επιτρέπεται αλλαγή ποσού</h3>
+          <button class="modal-close" @click="cancelPaidNoPayment">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="paid-edit-text">Η εγγραφή είναι ήδη εξοφλημένη χωρίς καταχωρημένη εγγραφή πληρωμής (legacy). Για να αλλάξεις το ποσό, πρέπει πρώτα να αλλάξει η κατάσταση σε unpaid από τον διαχειριστή.</p>
+          <div class="paid-edit-box">
+            <div class="paid-edit-row"><span>Κατάσταση</span><strong>{{ paidNoPaymentState.paymentStatus }}</strong></div>
+            <div class="paid-edit-row"><span>Πληρωμένο ποσό</span><strong>{{ Number(paidNoPaymentState.amountPaid).toFixed(2) }} €</strong></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="cancelPaidNoPayment">Άκυρο</button>
         </div>
       </div>
     </div>
