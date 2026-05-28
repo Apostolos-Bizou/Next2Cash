@@ -138,6 +138,35 @@
           </span>
         </div>
       </div>
+
+      <!-- ─────────── ΑΠΟΤΕΛΕΣΜΑ ανά μήνα (έσοδα − έξοδα) ─────────── -->
+      <div class="bv-section bv-result-section">
+        <div class="bv-section-label">ΑΠΟΤΕΛΕΣΜΑ (έσοδα − έξοδα)</div>
+        <div class="bv-table-wrap">
+          <table class="bv-table">
+            <thead>
+              <tr>
+                <th class="bv-cat-col">Καθαρό ανά περίοδο</th>
+                <template v-if="viewMode === 'monthly'">
+                  <th v-for="(mn, mi) in MONTH_NAMES" :key="mi" class="bv-num">{{ mn }}</th>
+                </template>
+                <th v-for="q in [1,2,3,4]" :key="'rh'+q" class="bv-num bv-q">Q{{ q }}</th>
+                <th class="bv-num bv-year">Έτος</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="bv-result-row">
+                <td class="bv-cat-col">Αποτέλεσμα</td>
+                <template v-if="viewMode === 'monthly'">
+                  <td v-for="m in 12" :key="'rm'+m" class="bv-num bv-result-cell" :class="netMonthTotal(m) >= 0 ? 'bv-green' : 'bv-red'">{{ fmtSigned(netMonthTotal(m)) }}</td>
+                </template>
+                <td v-for="q in [1,2,3,4]" :key="'rq'+q" class="bv-num bv-q bv-result-cell" :class="netQuarterTotal(q) >= 0 ? 'bv-green' : 'bv-red'">{{ fmtSigned(netQuarterTotal(q)) }}</td>
+                <td class="bv-num bv-year bv-result-cell" :class="netYearTotal() >= 0 ? 'bv-green' : 'bv-red'">{{ fmtSigned(netYearTotal()) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ─────────── TAB 2: BUDGET vs ACTUAL ─────────── -->
@@ -305,6 +334,10 @@ function catYearTotal(dir, cat) { let s = 0; for (let m = 1; m <= 12; m++) s += 
 function dirMonthTotal(dir, m) { let s = 0; for (const cat of categoriesFor(dir)) s += catMonthTotal(dir, cat, m); return s }
 function dirQuarterTotal(dir, q) { let s = 0; for (const cat of categoriesFor(dir)) s += catQuarterTotal(dir, cat, q); return s }
 function dirYearTotal(dir) { let s = 0; for (const cat of categoriesFor(dir)) s += catYearTotal(dir, cat); return s }
+// Καθαρό αποτέλεσμα (έσοδα - έξοδα) ανά μήνα/τρίμηνο/έτος
+function netMonthTotal(m) { return dirMonthTotal('income', m) - dirMonthTotal('expense', m) }
+function netQuarterTotal(q) { return dirQuarterTotal('income', q) - dirQuarterTotal('expense', q) }
+function netYearTotal() { return dirYearTotal('income') - dirYearTotal('expense') }
 
 const totalIncome = computed(() => dirYearTotal('income'))
 const totalExpense = computed(() => dirYearTotal('expense'))
@@ -590,6 +623,13 @@ watch(selectedYear, () => { loadBudget() })
 .bv-total-row td { background: #e8edf4; }
 .bv-total-row .bv-num { color: #000; font-weight: 800; font-size: 16px; }
 .bv-total-row .bv-cat-col { font-weight: 700; color: #1e293b; position: sticky; left: 0; background: #f1f5f9; }
+.bv-result-section { margin-top: 18px; }
+.bv-result-row { background: #0f172a; border-top: 3px solid #334155; }
+.bv-result-row td { background: #0f172a !important; padding: 14px 10px; }
+.bv-result-row .bv-cat-col { font-weight: 800; color: #fff !important; font-size: 16px; position: sticky; left: 0; background: #0f172a !important; }
+.bv-result-cell { font-weight: 800 !important; font-size: 18px !important; }
+.bv-result-row .bv-green { color: #4ade80 !important; }
+.bv-result-row .bv-red { color: #f87171 !important; }
 
 .bv-add-row td { padding: 6px 8px 6px 28px; }
 .bv-add-cat { margin-top: 10px; }
