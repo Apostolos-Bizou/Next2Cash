@@ -1,8 +1,8 @@
 <script setup>
-// ScenariosView.vue — S97 Scenario management (Cash Planning spec §5.8 / Principle 3)
-// Reads /api/scenarios (entity-scoped) and lets ADMIN edit revenue/expense
-// adjustment percentages + color + name. Baseline is locked at 0/0.
-// Pattern mirrors ProjectsView.vue (entity from localStorage, entity-changed listener).
+// ScenariosView.vue — S97 + S97.1 (filters)
+// Reads /api/scenarios (entity-scoped OR all-group) and lets ADMIN edit
+// revenue/expense adjustment %, color, name. Baseline locked at 0/0.
+// S97.1: filters — entity (incl. "Όλος ο Όμιλος"), type, active, name search.
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '@/api'
 
@@ -21,16 +21,35 @@ const isAdmin = computed(() => {
 })
 
 const ENTITIES = { next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972', house: 'dea1f32c-7b30-4981-b625-633da9dbe71e', polaris: '50317f44-9961-4fb4-add0-7a118e32dc14' }
+const ENTITY_NAMES = {
+  '58202b71-4ddb-45c9-8e3c-39e816bde972': 'Next2Me',
+  'dea1f32c-7b30-4981-b625-633da9dbe71e': 'House',
+  '50317f44-9961-4fb4-add0-7a118e32dc14': 'Next2Me Group'
+}
+function entityName(id) { return ENTITY_NAMES[id] || '—' }
 function currentEntityId() {
   const key = localStorage.getItem('n2c_entity') || 'next2me'
   return ENTITIES[key] || ENTITIES.next2me
 }
 
+// ── S97.1 filter state ──
+const filterEntity = ref('current')   // 'current' (active entity) or 'all' (Όλος ο Όμιλος)
+const filterType = ref('ALL')         // ALL | BASELINE | OPTIMISTIC | PESSIMISTIC | CUSTOM
+const filterActive = ref('active')    // 'active' | 'all'
+const filterName = ref('')
+
+const showGroupColumn = computed(() => filterEntity.value === 'all')
+
 async function loadScenarios() {
   loading.value = true
   error.value = ''
   try {
-    const res = await api.get('/api/scenarios', { params: { entityId: currentEntityId(), activeOnly: true } })
+    const params = {}
+    // entity scope
+    if (filterEntity.value === 'current') params.entityId = currentEntityId()
+    // active scope
+    params.activeOnly = (filterActive.value === 'active')
+    const res = await api.get('/api/scenarios', { params })
     if (res.data && res.data.success && Array.isArray(res.data.data)) {
       scenarios.value = res.data.data
     } else {
@@ -44,6 +63,18 @@ async function loadScenarios() {
     loading.value = false
   }
 }
+
+const filteredScenarios = computed(() => {
+  let list = scenarios.value
+  if (filterType.value !== 'ALL') {
+    list = list.filter(s => (s.scenarioType || '').toUpperCase() === filterType.value)
+  }
+  const q = filterName.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter(s => (s.name || '').toLowerCase().includes(q))
+  }
+  return list
+})
 
 function isBaseline(s) { return (s.scenarioType || '').toUpperCase() === 'BASELINE' || s.isDefault === true }
 
@@ -90,7 +121,15 @@ async function saveScenario() {
   }
 }
 
-function onEntityChanged() { loadScenarios() }
+function clearFilters() {
+  filterType.value = 'ALL'
+  filterName.value = ''
+  filterActive.value = 'active'
+  filterEntity.value = 'current'
+  loadScenarios()
+}
+
+function onEntityChanged() { if (filterEntity.value === 'current') loadScenarios() }
 onMounted(() => {
   loadScenarios()
   window.addEventListener('entity-changed', onEntityChanged)
@@ -110,19 +149,53 @@ onUnmounted(() => {
       <button class="btn-reload" @click="loadScenarios" :disabled="loading">↻ Ανανέωση</button>
     </div>
 
+    <!-- S97.1 Filters -->
+    <div class="sv-filters">
+      <div class="sv-filter">
+        <label>Εταιρεία</label>
+        <select v-model="filterEntity" @change="loadScenarios">
+          <option value="current">Τρέχουσα εταιρεία</option>
+          <option value="all">Όλος ο Όμιλος</option>
+        </select>
+      </div>
+      <div class="sv-filter">
+        <label>Τύπος</label>
+        <select v-model="filterType">
+          <option value="ALL">Όλοι</option>
+          <option value="BASELINE">Baseline</option>
+          <option value="OPTIMISTIC">Optimistic</option>
+          <option value="PESSIMISTIC">Pessimistic</option>
+          <option value="CUSTOM">Custom</option>
+        </select>
+      </div>
+      <div class="sv-filter">
+        <label>Κατάσταση</label>
+        <select v-model="filterActive" @change="loadScenarios">
+          <option value="active">Ενεργά</option>
+          <option value="all">Όλα</option>
+        </select>
+      </div>
+      <div class="sv-filter sv-filter-grow">
+        <label>Αναζήτηση</label>
+        <input v-model="filterName" type="text" placeholder="Όνομα σεναρίου…" class="sv-search" />
+      </div>
+      <button class="btn-clear" @click="clearFilters">Καθαρισμός</button>
+    </div>
+
     <div v-if="loading" class="sv-state">Φόρτωση σεναρίων…</div>
     <div v-else-if="error" class="sv-state sv-error">
       {{ error }}
       <button class="btn-retry" @click="loadScenarios">Δοκιμή ξανά</button>
     </div>
-    <div v-else-if="scenarios.length === 0" class="sv-state">Δεν βρέθηκαν σενάρια για αυτή την εταιρεία.</div>
+    <div v-else-if="filteredScenarios.length === 0" class="sv-state">Δεν βρέθηκαν σενάρια με αυτά τα φίλτρα.</div>
 
     <div v-else class="sv-grid">
-      <div v-for="s in scenarios" :key="s.id" class="sv-card" :style="{ borderLeftColor: s.color || '#6B7280' }">
+      <div v-for="s in filteredScenarios" :key="s.id" class="sv-card" :style="{ borderLeftColor: s.color || '#6B7280' }">
         <div class="sv-card-head">
           <span class="sv-card-name">{{ s.name }}</span>
           <span v-if="isBaseline(s)" class="sv-badge">ΠΡΟΕΠΙΛΟΓΗ</span>
         </div>
+        <div v-if="showGroupColumn" class="sv-entity-tag">{{ entityName(s.ownerEntityId) }}</div>
         <div class="sv-card-body">
           <div class="sv-row"><span>Έσοδα</span><strong :style="{color: (s.revenueAdjustPct>0?'#10b981':(s.revenueAdjustPct<0?'#ef4444':'#64748b'))}">{{ Number(s.revenueAdjustPct).toFixed(0) }}%</strong></div>
           <div class="sv-row"><span>Έξοδα</span><strong :style="{color: (s.expenseAdjustPct>0?'#ef4444':(s.expenseAdjustPct<0?'#10b981':'#64748b'))}">{{ Number(s.expenseAdjustPct).toFixed(0) }}%</strong></div>
@@ -175,15 +248,23 @@ onUnmounted(() => {
 .sv-sub { font-size:.9rem; color:#64748b; margin:4px 0 0; font-style:italic; }
 .btn-reload { padding:8px 16px; border:1px solid #d6dee8; border-radius:8px; background:#fff; color:#2E75B6; cursor:pointer; font-weight:600; white-space:nowrap; }
 .btn-reload:disabled { opacity:.5; cursor:default; }
+.sv-filters { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:20px; padding:14px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; }
+.sv-filter { display:flex; flex-direction:column; gap:4px; }
+.sv-filter label { font-size:.75rem; color:#64748b; font-weight:600; }
+.sv-filter select, .sv-search { padding:7px 10px; border:1px solid #d6dee8; border-radius:8px; font-size:.9rem; background:#fff; color:#1e293b; }
+.sv-filter-grow { flex:1; min-width:160px; }
+.sv-search { width:100%; box-sizing:border-box; }
+.btn-clear { padding:8px 14px; border:1px solid #d6dee8; border-radius:8px; background:#fff; color:#64748b; cursor:pointer; font-size:.85rem; }
 .sv-state { padding:40px; text-align:center; color:#64748b; }
 .sv-error { color:#ef4444; }
 .btn-retry { margin-left:12px; padding:6px 14px; border:1px solid #ef4444; border-radius:6px; background:#fff; color:#ef4444; cursor:pointer; }
 .sv-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; }
 .sv-card { background:#fff; border:1px solid #e2e8f0; border-left:4px solid #6B7280; border-radius:12px; padding:16px; }
-.sv-card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.sv-card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
 .sv-card-name { font-weight:700; color:#1e293b; font-size:1.05rem; }
 .sv-badge { background:#eef4fb; color:#2E75B6; font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:6px; }
-.sv-card-body { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+.sv-entity-tag { font-size:.72rem; color:#94a3b8; font-weight:600; margin-bottom:8px; text-transform:uppercase; letter-spacing:.03em; }
+.sv-card-body { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; margin-top:6px; }
 .sv-row { display:flex; align-items:center; justify-content:space-between; font-size:.9rem; color:#64748b; }
 .sv-card-foot { border-top:1px solid #f1f5f9; padding-top:10px; }
 .sv-locked { font-size:.8rem; color:#94a3b8; }
