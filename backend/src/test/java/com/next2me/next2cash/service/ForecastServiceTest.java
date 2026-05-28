@@ -6,6 +6,7 @@ import com.next2me.next2cash.model.ProjectStatus;
 import com.next2me.next2cash.model.RecurrencePattern;
 import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.repository.ProjectRepository;
+import com.next2me.next2cash.repository.ScenarioRepository;
 import com.next2me.next2cash.repository.RecurrencePatternRepository;
 import com.next2me.next2cash.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +43,7 @@ class ForecastServiceTest {
     @Mock private TransactionRepository transactionRepository;
     @Mock private RecurrencePatternRepository recurrencePatternRepository;
     @Mock private ProjectRepository projectRepository;
+    @Mock private ScenarioRepository scenarioRepository;
 
     // Real engine -- it is pure logic and already independently tested
     private final RecurrenceEngineService engine = new RecurrenceEngineService();
@@ -56,7 +58,8 @@ class ForecastServiceTest {
                 transactionRepository,
                 recurrencePatternRepository,
                 projectRepository,
-                engine
+                engine,
+                scenarioRepository
         );
         // Default empty stubs so any path won't NPE on missing mock
         lenient().when(projectRepository.findByOwnerEntityIdIn(anySet()))
