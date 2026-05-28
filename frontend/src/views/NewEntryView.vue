@@ -188,6 +188,25 @@ function applySuggestion(t) {
   showSuggestions.value = false
 }
 
+// Income category keys (new clean structure + legacy for backward compat)
+const INCOME_CATEGORIES = [
+  'ΕΣΟΔΑ ΕΚΜΕΤΑΛΛΕΥΣΗΣ',  // ΕΣΟΔΑ ΕΚΜΕΤΑΛΛΕΥΣΗΣ
+  'ΧΡΗΜΑΤΟΔΟΤΗΣΗ',                        // ΧΡΗΜΑΤΟΔΟΤΗΣΗ
+  'ΕΙΣΠΡΑΞΕΙΣ',                                       // ΕΙΣΠΡΑΞΕΙΣ (legacy)
+  'ΕΣΟΔΑ',                                                  // ΕΣΟΔΑ (legacy)
+  'ΕΣΟΔΑ B',                                                // ΕΣΟΔΑ B (legacy)
+  'ΕΣΟΔΑ Β'                                            // ΕΣΟΔΑ Β (legacy alt)
+]
+
+// Categories filtered by type (income vs expense)
+const filteredCategories = computed(() => {
+  return categories.value.filter(c => {
+    const key = c.key || c.value
+    const isIncome = INCOME_CATEGORIES.includes(key)
+    return type.value === 'income' ? isIncome : !isIncome
+  })
+})
+
 // Subcategories filtered by category
 const subcategories = computed(() => {
   if (!category.value) return []
@@ -195,6 +214,8 @@ const subcategories = computed(() => {
 })
 
 watch(category, () => { subcategory.value = '' })
+// Reset category/subcategory when switching income<->expense
+watch(type, () => { category.value = ''; subcategory.value = '' })
 
 // Next transaction ID
 async function loadNextId() {
@@ -330,6 +351,10 @@ async function save() {
       category:      category.value,
       account:       subcategory.value,
       subcategory:   subcategory.value,
+      // Auto-extract investor into counterparty when subcategory is "INVESTOR - method"
+      counterparty:  (subcategory.value && subcategory.value.includes(' - '))
+                       ? subcategory.value.split(' - ')[0].trim()
+                       : null,
       amount:        Number(amount.value),
       paymentMethod: method.value || null,
       description:   finalDescription,
@@ -544,7 +569,7 @@ onMounted(async () => {
           <label>Κατηγορία <span class="req">*</span></label>
           <select v-model="category" class="form-input">
             <option value="">— Επιλέξτε —</option>
-            <option v-for="c in categories" :key="c.key" :value="c.key">{{ c.value || c.key }}</option>
+            <option v-for="c in filteredCategories" :key="c.key" :value="c.key">{{ c.value || c.key }}</option>
           </select>
         </div>
         <div class="form-group">

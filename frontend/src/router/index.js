@@ -20,6 +20,7 @@ const router = createRouter({
     { path: '/projects',       component: () => import('@/views/ProjectsView.vue'),       meta: { section: 'projects', title: 'Projects' } },
     { path: '/projects/:id',   component: () => import('@/views/ProjectDetailView.vue'), meta: { section: 'projects', title: 'Project Detail' } },
   { path: '/scenarios',     component: () => import('@/views/ScenariosView.vue'),    meta: { section: 'scenarios', title: 'Σενάρια' } },
+  { path: '/budget',        component: () => import('@/views/BudgetView.vue'),       meta: { section: 'budget', title: 'Προϋπολογισμός' } },
     { path: '/admin',          component: () => import('@/views/AdminView.vue'),         meta: { section: 'admin', title: 'Admin Panel' } },
     { path: '/investor-reports', component: () => import('@/views/ForecastView.vue'),   meta: { section: 'investor-reports', title: 'Investor Reports' } },
     { path: '/pricing-calculator', component: () => import('@/views/PricingCalculatorView.vue'),   meta: { section: 'pricing-calculator', title: 'Pricing Calculator' } },
@@ -41,6 +42,7 @@ const SECTION_TO_ROUTE = {
   'ai-analysis': '/ai-analysis',
   'projects': '/projects',
   'scenarios': '/scenarios',
+  'budget': '/budget',
   'admin': '/admin',
   'investor-reports': '/investor-reports',
   'pricing-calculator': '/pricing-calculator',
@@ -49,7 +51,7 @@ const SECTION_TO_ROUTE = {
   'admin-banks': '/admin',
   'admin-audit': '/admin',
 }
-const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'report-builder', 'ai-analysis', 'projects', 'investor-reports', 'pricing-calculator', 'zip-export', 'admin']
+const LANDING_PRIORITY = ['dashboard', 'transactions', 'new-entry', 'payments', 'obligations', 'karteles', 'reports', 'budget', 'report-builder', 'ai-analysis', 'projects', 'investor-reports', 'pricing-calculator', 'zip-export', 'admin']
 
 function firstAllowedRoute(allowed) {
   if (!Array.isArray(allowed) || allowed.length === 0) return '/dashboard'
