@@ -85,6 +85,7 @@ const ALL_SECTIONS = [
   { key: 'report-builder', label: 'Report Builder' },
   { key: 'ai-analysis',    label: 'AI Ανάλυση' },
   { key: 'projects',       label: 'Projects Portfolio' },
+      { key: 'scenarios',      label: 'Σενάρια' },
   { key: 'investor-reports', label: '\uD83D\uDC8E Investor Reports' },
   { key: 'pricing-calculator', label: '\uD83D\uDCB0 Pricing Calculator' },
   { key: 'admin',          label: 'Admin Panel' },

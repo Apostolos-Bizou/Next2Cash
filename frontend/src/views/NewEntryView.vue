@@ -54,6 +54,29 @@ async function loadProjects() {
   }
 }
 
+// S97-SCENARIOS-LIVE: load scenarios for active entity
+async function loadScenarios() {
+  loadingScenarios.value = true
+  try {
+    const params = { activeOnly: true }
+    if (entityId.value) params.entityId = entityId.value
+    const res = await api.get('/api/scenarios', { params })
+    if (res.data && res.data.success && Array.isArray(res.data.data)) {
+      scenarios.value = res.data.data
+    } else {
+      scenarios.value = []
+    }
+    const def = scenarios.value.find(s => s.isDefault) || scenarios.value[0]
+    const stillValid = scenarios.value.some(s => s.id === scenario.value)
+    if (!stillValid) scenario.value = def ? def.id : ''
+  } catch (e) {
+    console.error('Scenarios load error:', e)
+    scenarios.value = []
+  } finally {
+    loadingScenarios.value = false
+  }
+}
+
 // Form state
 const type        = ref('expense')
 // Phase 1-F1: entry mode (ACTUAL = past/today, PLANNED = future/budget)
@@ -99,8 +122,10 @@ const isOpEx           = ref(true)
 const projects         = ref([])
 const loadingProjects  = ref(false)
 
-// Σενάριο (Scenario)
-const scenario       = ref('BASELINE')   // BASELINE / OPTIMISTIC / PESSIMISTIC
+// Σενάριο (Scenario) — S97-SCENARIOS-LIVE: holds chosen scenario UUID
+const scenario       = ref('')
+const scenarios      = ref([])
+const loadingScenarios = ref(false)
 
 // Βεβαιότητα (Confidence)
 const confidence     = ref(100)
@@ -327,8 +352,8 @@ async function save() {
       payload.recurrencePatternId  = recurrencePatternId   // null if not recurring
       payload.projectId            = isOpEx.value ? null : (projectId.value || null)
       payload.confidencePct        = Number(confidence.value) || 100
-      // scenarioId is left null for now (Phase 2 — needs forecast_scenarios table)
-      // We just store the chosen label in description suffix for future migration.
+      // S97-SCENARIOS-LIVE: persist chosen scenario UUID (null = baseline)
+      payload.scenarioId           = scenario.value || null
     }
 
     const res = await api.post('/api/transactions', payload)
@@ -400,7 +425,8 @@ function reset() {
   isOpenEnded.value = true
   projectId.value = ''
   isOpEx.value = true
-  scenario.value = 'BASELINE'
+  scenario.value = ''  // S97-SCENARIOS-LIVE
+  { const def = scenarios.value.find(s => s.isDefault) || scenarios.value[0]; if (def) scenario.value = def.id }
   confidence.value = 100
   plannedNotes.value = ''
 }
@@ -426,19 +452,18 @@ const dayOfWeekOptions = [
   { value: 7, label: 'Κυριακή' },
 ]
 
-const scenarioOptions = [
-  { value: 'BASELINE',    label: 'Baseline',    color: '#3b82f6' },
-  { value: 'OPTIMISTIC',  label: 'Optimistic',  color: '#10b981' },
-  { value: 'PESSIMISTIC', label: 'Pessimistic', color: '#ef4444' },
-]
+// S97-SCENARIOS-LIVE: scenarioOptions now come from `scenarios` (API).
 
 onMounted(async () => {
   await loadConfig()
   await loadProjects()
+  await loadScenarios()
   await loadNextId()
   window.addEventListener('entity-changed', async () => {
     selectedEntity.value = localStorage.getItem('n2c_entity') || 'next2me'
     await loadConfig()
+    await loadProjects()
+    await loadScenarios()
     await loadNextId()
   })
 })
@@ -663,14 +688,15 @@ onMounted(async () => {
           <div class="block-body">
             <div class="scenario-options">
               <button
-                v-for="s in scenarioOptions"
-                :key="s.value"
+                v-for="s in scenarios"
+                :key="s.id"
                 type="button"
-                :class="['scenario-btn', {active: scenario===s.value}]"
-                :style="scenario===s.value ? {borderColor: s.color, background: s.color + '22', color: s.color} : {}"
-                @click="scenario=s.value">
-                {{ s.label }}
+                :class="['scenario-btn', {active: scenario===s.id}]"
+                :style="scenario===s.id ? {borderColor: s.color, background: s.color + '22', color: s.color} : {}"
+                @click="scenario=s.id">
+                {{ s.name }}
               </button>
+              <span v-if="loadingScenarios" class="hint">Φόρτωση σεναρίων…</span>
             </div>
           </div>
         </div>
