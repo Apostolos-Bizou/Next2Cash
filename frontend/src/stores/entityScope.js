@@ -80,4 +80,20 @@ export function filterEntityMap(entityMap) {
   return out;
 }
 
+// S100: filter an array of API-loaded entity objects (from /api/config/entities)
+// by the current user's allowed entity UUIDs. Used by per-view dropdowns
+// (CalendarView, etc.) to prevent restricted users (e.g. investors) from
+// seeing entity names they shouldn't know about.
+//
+// arr: array of objects with an `id` field that is a UUID matching entities.id
+// idField: field name to match on (defaults to 'id')
+// Returns: filtered array (or the original if user has no restrictions)
+export function filterApiEntities(arr, idField = 'id') {
+  if (!Array.isArray(arr)) return arr;
+  const ids = allowedEntityIds();
+  if (ids === null) return arr;  // null = no restriction (admin), pass through
+  const allowedSet = new Set(ids);
+  return arr.filter(e => e && allowedSet.has(e[idField]));
+}
+
 export { KEY_TO_LABEL, UUID_TO_KEY };

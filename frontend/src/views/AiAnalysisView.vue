@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import api from '@/api'
+import { isRestrictedToSingleEntity } from '@/stores/entityScope'
 
 const selectedAnalysis = ref('Investor Report')
 const userQuestion = ref('')
@@ -25,6 +26,8 @@ function smartDefaultModeForType(typeLabel) {
 // Filters (date range + entity scope)
 const dateRange = ref('ytd')
 const entityScope = ref('all')
+// S100: hide entity dropdown entirely for restricted users (e.g. investors)
+const showEntityFilter = computed(() => !isRestrictedToSingleEntity())
 const selectedYear = ref(new Date().getFullYear())
 const customFrom = ref('')
 const customTo = ref('')
@@ -309,7 +312,7 @@ watch(selectedAnalysis, (newType) => {
               <option value="all">📊 All</option>
             </select>
           </div>
-          <div class="filter-wrap">
+          <div class="filter-wrap" v-if="showEntityFilter">
                       <select v-model="entityScope" class="filter-select" title="Εταιρία">
                         <option value="all">Όλες οι εταιρίες</option>
                         <option value="next2me">Next2me</option>

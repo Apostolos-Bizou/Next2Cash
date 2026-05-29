@@ -11,7 +11,7 @@
           <option value="ALL">📊 Όλες</option>
         </select>
 
-        <select v-model="selectedEntity" class="entity-select" :disabled="loading">
+        <select v-if="entities.length > 1 || isAdmin" v-model="selectedEntity" class="entity-select" :disabled="loading">
           <option v-if="isAdmin" value="ALL">Όλος ο Όμιλος</option>
           <option v-for="ent in entities" :key="ent.id" :value="ent.id">{{ ent.name }}</option>
         </select>
@@ -123,6 +123,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '../api'
+import { filterApiEntities } from '../stores/entityScope'
 
 let userObj = {}
 try { userObj = JSON.parse(localStorage.getItem('n2c_user') || '{}') } catch (e) { userObj = {} }
@@ -242,16 +243,22 @@ async function fetchEntities() {
     if (Array.isArray(res.data)) list = res.data
     else if (res.data && Array.isArray(res.data.data)) list = res.data.data
     else if (res.data && Array.isArray(res.data.entities)) list = res.data.entities
-    entities.value = list
+    // S100: restrict to entities the current user is allowed to see
+    entities.value = filterApiEntities(list, 'id')
     if (!selectedEntity.value) {
       const saved = localStorage.getItem('n2c_calendar_entity')
-      if (saved && (saved === 'ALL' || entities.value.some(e => e.id === saved))) {
+      // Only honor saved value if it's still in the allowed list
+      const savedAllowed = saved && (saved === 'ALL' ? isAdmin.value : entities.value.some(e => e.id === saved))
+      if (savedAllowed) {
         selectedEntity.value = saved
       } else if (isAdmin.value) {
         selectedEntity.value = 'ALL'
       } else if (entities.value.length > 0) {
         selectedEntity.value = entities.value[0].id
       }
+    } else if (selectedEntity.value !== 'ALL' && !entities.value.some(e => e.id === selectedEntity.value)) {
+      // Stale selection points to a forbidden entity — reset to first allowed
+      selectedEntity.value = entities.value.length > 0 ? entities.value[0].id : ''
     }
   } catch (e) {
     errorMsg.value = 'entities load failed: ' + ((e.response && e.response.status) || e.message)

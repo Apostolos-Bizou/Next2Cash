@@ -7,6 +7,7 @@
 // GET /api/forecast/compare. No new route/section.
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import api from '@/api'
+import { isRestrictedToSingleEntity } from '@/stores/entityScope'
 import {
   Chart, LineController, LineElement, PointElement, LinearScale,
   CategoryScale, Tooltip, Legend, Filler
@@ -55,6 +56,8 @@ const filterActive = ref('active')    // 'active' | 'all'
 const filterName = ref('')
 
 const showGroupColumn = computed(() => filterEntity.value === 'all')
+// S100: hide entity filter entirely for restricted users (e.g. investors)
+const showEntityFilter = computed(() => !isRestrictedToSingleEntity())
 
 async function loadScenarios() {
   loading.value = true
@@ -277,7 +280,7 @@ onUnmounted(() => {
     <template v-if="viewMode === 'list'">
       <!-- S97.1 Filters -->
       <div class="sv-filters">
-        <div class="sv-filter">
+        <div class="sv-filter" v-if="showEntityFilter">
           <label>Εταιρεία</label>
           <select v-model="filterEntity" @change="loadScenarios">
             <option value="current">Τρέχουσα εταιρεία</option>
