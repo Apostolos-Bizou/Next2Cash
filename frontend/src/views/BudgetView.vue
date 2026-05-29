@@ -13,6 +13,9 @@
         <button v-if="activeTab === 'builder'" class="bv-btn" :disabled="seeding" @click="autoSeed">
           {{ seeding ? '...' : '✦ Auto-seed από πέρυσι' }}
         </button>
+        <button v-if="activeTab === 'builder'" class="bv-btn" :disabled="seedingRecurring" @click="autoSeedFromRecurring" title="Γέμισε από επαναλαμβανόμενα έξοδα (μηνιαία × 12, ετήσια × 1)">
+          {{ seedingRecurring ? '...' : '🔁 Auto-seed από Recurring' }}
+        </button>
         <button v-if="activeTab === 'builder'" class="bv-btn bv-btn-primary" :disabled="saving" @click="saveBudget">
           {{ saving ? 'Αποθήκευση...' : '💾 Αποθήκευση' }}
         </button>
@@ -245,6 +248,7 @@ const viewMode = ref('monthly')
 const loading = ref(false)
 const saving = ref(false)
 const seeding = ref(false)
+const seedingRecurring = ref(false)
 
 // budget cells: key "dir|cat|sub|month" -> amount (number)
 const cells = ref({})
@@ -416,6 +420,163 @@ function removeSub(dir, cat, sub) {
   const arr = structure.value[dir][cat] || []
   const idx = arr.indexOf(sub)
   if (idx >= 0) arr.splice(idx, 1)
+}
+
+// ── Auto-seed from Recurring patterns ──────────────────────────────
+// Expands a recurrence pattern into the months it occurs in the given year.
+// Returns { months: [1..12], amountPerCell }. Empty months[] = pattern doesn't occur in this year.
+function expandPattern(pattern, txnAmount, year) {
+  if (!pattern || !pattern.frequency) return { months: [], amountPerCell: 0 }
+  const freq = pattern.frequency
+  const interval = Number(pattern.intervalCount) || 1
+  const startDate = pattern.startDate ? new Date(pattern.startDate + 'T00:00:00') : null
+  const endDate = pattern.endDate ? new Date(pattern.endDate + 'T00:00:00') : null
+  // Out-of-range guards
+  if (endDate && endDate.getFullYear() < year) return { months: [], amountPerCell: 0 }
+  if (startDate && startDate.getFullYear() > year) return { months: [], amountPerCell: 0 }
+
+  if (freq === 'MONTHLY') {
+    // Annualized: every month of the selected year, capped by end_date if it lands inside the year.
+    if (interval === 1) {
+      const endMonth = (endDate && endDate.getFullYear() === year) ? endDate.getMonth() + 1 : 12
+      const months = []
+      for (let m = 1; m <= endMonth; m++) months.push(m)
+      return { months, amountPerCell: txnAmount }
+    }
+    // interval > 1: walk the rhythm from start_date
+    if (!startDate) return { months: [], amountPerCell: 0 }
+    const months = []
+    let occY = startDate.getFullYear()
+    let occM = startDate.getMonth() // 0-indexed
+    while (occY <= year) {
+      if (occY === year) months.push(occM + 1)
+      occM += interval
+      while (occM >= 12) { occM -= 12; occY += 1 }
+    }
+    return { months, amountPerCell: txnAmount }
+  }
+
+  if (freq === 'YEARLY') {
+    if (!startDate) return { months: [], amountPerCell: 0 }
+    const baseYear = startDate.getFullYear()
+    if (baseYear > year) return { months: [], amountPerCell: 0 }
+    if ((year - baseYear) % interval !== 0) return { months: [], amountPerCell: 0 }
+    return { months: [startDate.getMonth() + 1], amountPerCell: txnAmount }
+  }
+
+  if (freq === 'QUARTERLY') {
+    if (!startDate) return { months: [], amountPerCell: 0 }
+    const months = []
+    let occY = startDate.getFullYear()
+    let occM = startDate.getMonth()
+    const step = 3 * interval
+    while (occY <= year) {
+      if (occY === year) months.push(occM + 1)
+      occM += step
+      while (occM >= 12) { occM -= 12; occY += 1 }
+    }
+    return { months, amountPerCell: txnAmount }
+  }
+
+  if (freq === 'WEEKLY') {
+    // Convert to monthly equivalent and fill all 12 months
+    return { months: [1,2,3,4,5,6,7,8,9,10,11,12], amountPerCell: (txnAmount * 52 / 12) / interval }
+  }
+  if (freq === 'DAILY') {
+    return { months: [1,2,3,4,5,6,7,8,9,10,11,12], amountPerCell: (txnAmount * 365 / 12) / interval }
+  }
+
+  return { months: [], amountPerCell: 0 }
+}
+
+async function autoSeedFromRecurring() {
+  seedingRecurring.value = true
+  try {
+    const eid = entityId()
+    const year = parseInt(selectedYear.value, 10)
+
+    // Load recurring transactions + patterns in parallel
+    const [txnRes, patRes] = await Promise.all([
+      api.get('/api/transactions', { params: { entityId: eid, perPage: 10000 } }),
+      api.get('/api/recurrence-patterns', { params: { entityId: eid } })
+    ])
+    const allTxns = Array.isArray(txnRes.data?.data) ? txnRes.data.data : (Array.isArray(txnRes.data) ? txnRes.data : [])
+    const pats = Array.isArray(patRes.data?.data) ? patRes.data.data : (Array.isArray(patRes.data) ? patRes.data : [])
+
+    // Only expense templates that are recurring, active, non-zero
+    const templates = allTxns.filter(t =>
+      t.isRecurring === true &&
+      t.type === 'expense' &&
+      (t.recordStatus || 'active').toLowerCase() !== 'void' &&
+      Number(t.amount) > 0
+    )
+
+    const patternById = {}
+    for (const p of pats) if (p && p.id) patternById[p.id] = p
+
+    // Expand each template into seed entries
+    const seedData = []  // { cat, sub, month, amount, description }
+    const distinctDescriptions = new Set()
+    for (const t of templates) {
+      const pat = patternById[t.recurrencePatternId]
+      if (!pat) continue
+      const { months, amountPerCell } = expandPattern(pat, Number(t.amount), year)
+      if (!months.length || amountPerCell <= 0) continue
+      const cat = t.category || '(χωρίς κατηγορία)'
+      const sub = t.subcategory || ''
+      distinctDescriptions.add(t.description || cat)
+      for (const m of months) {
+        seedData.push({ cat, sub, month: m, amount: amountPerCell, description: t.description })
+      }
+    }
+
+    if (seedData.length === 0) {
+      alert('Δεν βρέθηκαν επαναλαμβανόμενα έξοδα για το έτος ' + year + '.')
+      return
+    }
+
+    // Pre-compute targets per cell (sum patterns landing on same cat+sub+month)
+    const targets = {}  // key -> { cat, sub, month, amount, currentValue }
+    for (const s of seedData) {
+      const k = cellKey('expense', s.cat, s.sub, s.month)
+      if (!targets[k]) {
+        targets[k] = { cat: s.cat, sub: s.sub, month: s.month, amount: 0, currentValue: Number(cells.value[k]) || 0 }
+      }
+      targets[k].amount += s.amount
+    }
+    const targetKeys = Object.keys(targets)
+    const totalCells = targetKeys.length
+    const occupiedCells = targetKeys.filter(k => targets[k].currentValue > 0).length
+    const totalAmount = targetKeys.reduce((s, k) => s + targets[k].amount, 0)
+
+    // Summary + confirm
+    let summary =
+      'Βρέθηκαν ' + distinctDescriptions.size + ' επαναλαμβανόμενα έξοδα.\n' +
+      'Θα γεμιστούν ' + totalCells + ' κελιά / ' +
+      Math.round(totalAmount).toLocaleString('el-GR') + '€ συνολικά για το ' + year + '.\n\n'
+    if (occupiedCells > 0) {
+      summary += occupiedCells + ' κελιά έχουν ήδη τιμές και θα ΑΝΤΙΚΑΤΑΣΤΑΘΟΥΝ.\n\n'
+    }
+    summary += 'OK = Συνέχεια   |   Άκυρο = Σταμάτησε'
+
+    if (!confirm(summary)) return
+
+    // Apply: ensure structure + open category + set cell (replace mode)
+    for (const k of targetKeys) {
+      const tgt = targets[k]
+      if (!structure.value.expense[tgt.cat]) structure.value.expense[tgt.cat] = []
+      if (!structure.value.expense[tgt.cat].includes(tgt.sub)) structure.value.expense[tgt.cat].push(tgt.sub)
+      openCats.value['expense|' + tgt.cat] = true
+      cells.value[k] = tgt.amount
+    }
+
+    alert('Έγιναν seed ' + totalCells + ' κελιά. Πάτησε 💾 Αποθήκευση για να αποθηκευτούν μόνιμα.')
+  } catch (e) {
+    console.error('autoSeedFromRecurring error:', e)
+    alert('Σφάλμα auto-seed από recurring. Δες την κονσόλα του browser.')
+  } finally {
+    seedingRecurring.value = false
+  }
 }
 
 // ── Auto-seed ─────────────────────────────────────────────────────
