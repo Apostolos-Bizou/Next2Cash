@@ -32,6 +32,13 @@ const selectedCategory = ref('all')
 const selectedMethod = ref('all')
 const attachmentsState = ref({ visible: false, transaction: null })
 
+// S102 — "Επόμενες 7 ημέρες" toggle (default OFF)
+const showUpcoming = ref(false)
+
+// S102 — date helpers for PLANNED past-due / upcoming
+const _today = () => new Date().toISOString().slice(0, 10)
+const _in7   = () => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10) }
+
 function openAttachments(t) {
   attachmentsState.value = { visible: true, transaction: t }
 }
@@ -80,8 +87,22 @@ async function loadObligations() {
       params: { entityId, page: 0, perPage: 10000 }
     })
     if (res.data.success) {
+      // S102 — include PLANNED past-due always; PLANNED next-7-days filtered later by toggle
+      const today = _today()
+      const in7   = _in7()
       allObligations.value = res.data.data
-        .filter(t => t.recordStatus !== 'void' && t.type === 'expense' && (t.entryMode || 'ACTUAL') === 'ACTUAL')
+        .filter(t => {
+          if (t.recordStatus === 'void') return false
+          if (t.type !== 'expense') return false
+          const mode = t.entryMode || 'ACTUAL'
+          if (mode === 'ACTUAL') return true
+          if (mode !== 'PLANNED') return false
+          if (!t.docDate) return false
+          if (t.paymentStatus === 'paid') return false   // defensive: skip already-paid PLANNED
+          const isOverdue  = t.docDate <= today
+          const isUpcoming = !isOverdue && t.docDate <= in7
+          return isOverdue || isUpcoming
+        })
         .map(t => {
           const amount = parseFloat(t.amount || 0)
           const paid = parseFloat(t.amountPaid || 0)
@@ -90,6 +111,12 @@ async function loadObligations() {
           if (status !== 'unpaid' && status !== 'urgent') {
             if (paid > 0 && paid < amount) status = 'partial'
             if (paid >= amount && amount > 0) status = 'paid'
+          }
+          // S102 — kind classifies row visual treatment
+          const _isPlanned = (t.entryMode === 'PLANNED')
+          let kind = 'actual'
+          if (_isPlanned) {
+            kind = (t.docDate && t.docDate <= _today()) ? 'planned-overdue' : 'planned-upcoming'
           }
           return {
             id: t.id,
@@ -100,6 +127,7 @@ async function loadObligations() {
             account: t.account || '',
             paymentMethod: t.paymentMethod || '',
             amount, paid, remaining, status,
+            kind,
             _raw: t
           }
         })
@@ -239,6 +267,8 @@ function universalMatch(t, searchRaw) {
 
 const filteredObligations = computed(() => {
   return allObligations.value.filter(o => {
+    // S102 — gate planned-upcoming behind toggle (default OFF)
+    if (o.kind === 'planned-upcoming' && !showUpcoming.value) return false
     if (selectedStatus.value === 'unpaid_urgent') {
       if (o.status !== 'unpaid' && o.status !== 'urgent') return false
     } else if (selectedStatus.value !== 'all' && o.status !== selectedStatus.value) {
@@ -269,10 +299,15 @@ const methods = computed(() => {
 
 const stats = computed(() => {
   const all = allObligations.value
-  const unpaid = all.filter(o => o.status === 'unpaid')
-  const urgent = all.filter(o => o.status === 'urgent')
-  const partial = all.filter(o => o.status === 'partial')
-  const paid = all.filter(o => o.status === 'paid')
+  // S102 — separate ACTUAL vs PLANNED so existing KPIs are unchanged
+  const actual = all.filter(o => o.kind === 'actual')
+  const overdue = all.filter(o => o.kind === 'planned-overdue')
+  const upcoming = all.filter(o => o.kind === 'planned-upcoming')
+
+  const unpaid = actual.filter(o => o.status === 'unpaid')
+  const urgent = actual.filter(o => o.status === 'urgent')
+  const partial = actual.filter(o => o.status === 'partial')
+  const paid = actual.filter(o => o.status === 'paid')
   const unpaidAll = [...unpaid, ...urgent]
   const cash = unpaidAll.filter(o => ['Μετρητά', 'Απόδειξη'].includes(o.paymentMethod))
   const bank = unpaidAll.filter(o => !['Μετρητά', 'Απόδειξη'].includes(o.paymentMethod) && o.paymentMethod)
@@ -281,13 +316,16 @@ const stats = computed(() => {
   const sumRem = arr => arr.reduce((s, o) => s + o.remaining, 0)
 
   return {
-    totalCount: all.length, totalAmount: sum(all),
+    totalCount: actual.length, totalAmount: sum(actual),
     paidCount: paid.length, paidAmount: sum(paid),
     unpaidCount: unpaidAll.length, unpaidAmount: sumRem(unpaidAll),
     cashCount: cash.length, cashAmount: sumRem(cash),
     bankCount: bank.length, bankAmount: sumRem(bank),
     partialCount: partial.length, partialAmount: sumRem(partial),
-    urgentCount: urgent.length, urgentAmount: sumRem(urgent)
+    urgentCount: urgent.length, urgentAmount: sumRem(urgent),
+    // S102 — new KPIs
+    overdueCount: overdue.length, overdueAmount: sum(overdue),
+    upcomingCount: upcoming.length, upcomingAmount: sum(upcoming)
   }
 })
 
@@ -339,6 +377,36 @@ const fmtDate = (d) => {
   if (!d) return ''
   const parts = d.split('-')
   return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0].slice(2)}` : d
+}
+
+// S102 — helpers for kind-based badge/row classes + days offset
+const badgeLabel = (o) => {
+  if (o.kind === 'planned-overdue')  return 'ΛΗΞΙΠΡΟΘΕΣΜΗ'
+  if (o.kind === 'planned-upcoming') return 'ΕΠΕΡΧΟΜΕΝΗ'
+  return statusLabel(o.status)
+}
+const badgeClass = (o) => {
+  if (o.kind === 'planned-overdue')  return 'badge-overdue'
+  if (o.kind === 'planned-upcoming') return 'badge-upcoming'
+  return statusClass(o.status)
+}
+const rowClass = (o) => {
+  if (o.kind === 'planned-overdue')  return 'row-overdue'
+  if (o.kind === 'planned-upcoming') return 'row-upcoming'
+  return o.status === 'urgent' ? 'row-urgent' : ''
+}
+const daysOffset = (o) => {
+  if (!o.docDate) return ''
+  const today = _today()
+  if (o.docDate > today) {
+    const days = Math.round((new Date(o.docDate) - new Date(today)) / 86400000)
+    return days === 1 ? 'σε 1 μέρα' : ('σε ' + days + ' μέρες')
+  }
+  if (o.docDate < today) {
+    const days = Math.round((new Date(today) - new Date(o.docDate)) / 86400000)
+    return days === 1 ? '1 μέρα πίσω' : (days + ' μέρες πίσω')
+  }
+  return 'σήμερα'
 }
 
 function onEntityChanged() {
@@ -402,6 +470,18 @@ onUnmounted(() => {
         <div class="kpi-amount">{{ fmt(stats.urgentAmount) }}</div>
         <div class="kpi-count">{{ stats.urgentCount }} κιν.</div>
       </div>
+      <!-- S102 — ΛΗΞΙΠΡΟΘΕΣΜΕΣ (visible only when overdueCount > 0) -->
+      <div v-if="stats.overdueCount > 0" class="kpi-card overdue">
+        <div class="kpi-label">⚠ ΛΗΞΙΠΡΟΘΕΣΜΕΣ</div>
+        <div class="kpi-amount">{{ fmt(stats.overdueAmount) }}</div>
+        <div class="kpi-count">{{ stats.overdueCount }} κιν. · PLANNED</div>
+      </div>
+      <!-- S102 — ΕΠΕΡΧΟΜΕΝΕΣ 7Η (visible only when toggle ON) -->
+      <div v-if="showUpcoming" class="kpi-card upcoming">
+        <div class="kpi-label">⏱ ΕΠΕΡΧΟΜΕΝΕΣ 7Η</div>
+        <div class="kpi-amount">{{ fmt(stats.upcomingAmount) }}</div>
+        <div class="kpi-count">{{ stats.upcomingCount }} κιν.</div>
+      </div>
     </div>
 
     <div class="tabs">
@@ -427,6 +507,7 @@ onUnmounted(() => {
         <select v-model="selectedMethod" class="filter-select">
           <option v-for="m in methods" :key="m" :value="m">{{ m === 'all' ? 'Όλες μέθοδοι' : m }}</option>
         </select>
+        <button class="btn-7day" :class="{ active: showUpcoming }" @click="showUpcoming = !showUpcoming" :title="showUpcoming ? 'Κρύψε επερχόμενες' : 'Δείξε επερχόμενες 7η'">⏱ Επόμενες 7 ημέρες</button>
         <button class="btn-refresh" @click="loadObligations" :disabled="loading">{{ loading ? '⏳' : '↻ Ανανέωση' }}</button>
       </div>
 
@@ -444,7 +525,7 @@ onUnmounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="o in filteredObligations" :key="o.id" :class="o.status === 'urgent' ? 'row-urgent' : ''">
+            <tr v-for="o in filteredObligations" :key="o.id" :class="rowClass(o)">
               <td class="id-col">#{{ o.entityNumber }}</td>
               <td>{{ fmtDate(o.docDate) }}</td>
               <td class="desc-col">{{ o.description }}</td>
@@ -453,10 +534,13 @@ onUnmounted(() => {
               <td class="num red">{{ fmt(o.amount) }}</td>
               <td class="num hide-sm">{{ fmt(o.paid) }}</td>
               <td class="num red">{{ fmt(o.remaining) }}</td>
-              <td class="hide-sm"><span class="badge" :class="statusClass(o.status)">{{ statusLabel(o.status) }}</span></td>
+              <td class="hide-sm">
+                <span class="badge" :class="badgeClass(o)">{{ badgeLabel(o) }}</span>
+                <div v-if="o.kind !== 'actual'" class="days-offset" :class="o.kind">{{ daysOffset(o) }}</div>
+              </td>
               <td class="actions">
                 <button
-                  v-if="canModify && (o.status === 'unpaid' || o.status === 'urgent')"
+                  v-if="canModify && o.kind === 'actual' && (o.status === 'unpaid' || o.status === 'urgent')"
                   class="btn-bolt"
                   :class="{ 'is-urgent': o.status === 'urgent' }"
                   @click="toggleUrgent(o)"
@@ -547,7 +631,7 @@ onUnmounted(() => {
 
 <style scoped>
 .obligations-page { padding: 24px; color: #e0e6ed; position: relative; }
-.kpi-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 20px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; margin-bottom: 20px; }
 .kpi-card { background: #1e3448; border-radius: 8px; padding: 14px 16px; border-top: 3px solid #4FC3A1; }
 .kpi-card.green { border-top-color: #4FC3A1; }
 .kpi-card.red { border-top-color: #ef5350; }
@@ -608,6 +692,24 @@ onUnmounted(() => {
 .btn-mark-paid { background: #4FC3A1; border: none; color: #0d1f2d; padding: 5px 12px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn-mark-paid:hover { background: #5fd4b3; }
 .paid-indicator { color: #4FC3A1; font-size: 0.78rem; font-weight: 600; }
+
+/* S102 — PLANNED past-due + upcoming styling */
+.kpi-card.overdue { border-top-color: #ef5350; background: #2a1a1f; }
+.kpi-card.overdue .kpi-amount { color: #ef5350; }
+.kpi-card.upcoming { border-top-color: #29b6f6; background: #1a2434; }
+.kpi-card.upcoming .kpi-amount { color: #29b6f6; }
+.row-overdue { border-left: 4px solid #ef5350 !important; background: rgba(239,83,80,0.05); }
+.row-overdue:hover { background: rgba(239,83,80,0.10) !important; }
+.row-upcoming { border-left: 4px solid #29b6f6 !important; background: rgba(41,182,246,0.04); opacity: 0.92; }
+.row-upcoming:hover { background: rgba(41,182,246,0.08) !important; opacity: 1; }
+.badge-overdue { background: rgba(239,83,80,0.18); color: #ef5350; }
+.badge-upcoming { background: rgba(41,182,246,0.18); color: #29b6f6; }
+.days-offset { font-size: 0.7rem; margin-top: 3px; }
+.days-offset.planned-overdue { color: #ef5350; }
+.days-offset.planned-upcoming { color: #29b6f6; }
+.btn-7day { background: #1e3448; border: 1px solid #2a4a6a; color: #8899aa; padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+.btn-7day:hover { color: #29b6f6; border-color: #29b6f6; }
+.btn-7day.active { background: rgba(41,182,246,0.15); color: #29b6f6; border-color: #29b6f6; font-weight: 600; }
 
 /* Toast */
 .toast { position: fixed; bottom: 24px; right: 24px; background: #1e3448; border: 1px solid #2a4a6a; border-radius: 8px; padding: 14px 20px; font-size: 0.9rem; z-index: 2000; box-shadow: 0 4px 20px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; min-width: 240px; color: #e0e6ed; }
