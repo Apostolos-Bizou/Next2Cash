@@ -682,21 +682,7 @@ onUnmounted(() => {
 .sub-row td { padding-left: 24px; }
 .pl-20 { padding-left: 24px !important; color: #8899aa; }
 .total-row { background: #1a2f45; }
-/* S102.4 — stable vertical stack via block-display + fixed width */
-/* Each button is a block element 110px wide — same size & position whether 1, 2, or 3 buttons render. */
-/* Avoids display:flex on <td> (which detached items when sibling cell grew). */
 .actions { white-space: nowrap; }
-.actions > .btn-bolt,
-.actions > .btn-mark-paid,
-.actions > .btn-attach-ob,
-.actions > .paid-indicator {
-  display: block;
-  width: 110px;
-  margin: 0 0 4px 0 !important;
-  text-align: center;
-  box-sizing: border-box;
-}
-.actions > *:last-child { margin-bottom: 0 !important; }
 .row-urgent { border-left: 3px solid #ff6400 !important; background: rgba(255,100,0,0.04); }
 .row-urgent:hover { background: rgba(255,100,0,0.08) !important; }
 .btn-bolt { background: rgba(255,100,0,0.1); border: 1px solid rgba(255,100,0,0.35); color: #ff6400; padding: 5px 10px; border-radius: 5px; font-size: 0.95rem; cursor: pointer; margin-right: 4px; transition: all 0.15s; line-height: 1; }
