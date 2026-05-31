@@ -682,7 +682,9 @@ onUnmounted(() => {
 .sub-row td { padding-left: 24px; }
 .pl-20 { padding-left: 24px !important; color: #8899aa; }
 .total-row { background: #1a2f45; }
-.actions { white-space: nowrap; }
+/* S102.1 — vertical stack so action column never wraps horizontally */
+.actions { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; white-space: nowrap; }
+.actions > * { margin: 0 !important; }
 .row-urgent { border-left: 3px solid #ff6400 !important; background: rgba(255,100,0,0.04); }
 .row-urgent:hover { background: rgba(255,100,0,0.08) !important; }
 .btn-bolt { background: rgba(255,100,0,0.1); border: 1px solid rgba(255,100,0,0.35); color: #ff6400; padding: 5px 10px; border-radius: 5px; font-size: 0.95rem; cursor: pointer; margin-right: 4px; transition: all 0.15s; line-height: 1; }
