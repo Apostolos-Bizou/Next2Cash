@@ -682,7 +682,13 @@ onUnmounted(() => {
 .sub-row td { padding-left: 24px; }
 .pl-20 { padding-left: 24px !important; color: #8899aa; }
 .total-row { background: #1a2f45; }
-.actions { white-space: nowrap; }
+/* S102.5 — CSS Grid 3 columns: reserved 40px for bolt, auto for mark-paid, 40px for attach */
+/* When bolt button doesn't render, column 1 stays empty so mark-paid stays in same x-position. */
+.actions { display: grid; grid-template-columns: 40px auto 40px; column-gap: 4px; align-items: center; justify-content: start; white-space: nowrap; }
+.actions > .btn-bolt { grid-column: 1; margin: 0 !important; justify-self: stretch; }
+.actions > .btn-mark-paid,
+.actions > .paid-indicator { grid-column: 2; margin: 0 !important; }
+.actions > .btn-attach-ob { grid-column: 3; margin: 0 !important; justify-self: stretch; }
 .row-urgent { border-left: 3px solid #ff6400 !important; background: rgba(255,100,0,0.04); }
 .row-urgent:hover { background: rgba(255,100,0,0.08) !important; }
 .btn-bolt { background: rgba(255,100,0,0.1); border: 1px solid rgba(255,100,0,0.35); color: #ff6400; padding: 5px 10px; border-radius: 5px; font-size: 0.95rem; cursor: pointer; margin-right: 4px; transition: all 0.15s; line-height: 1; }
