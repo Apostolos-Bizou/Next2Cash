@@ -609,9 +609,11 @@ const filteredTransactions = computed(() => {
     // S67 Task 3: PLANNED transactions excluded from actuality views.
     // Virtual payment rows inherit parent.entryMode so they follow the same gating.
     if (!((t.entryMode || 'ACTUAL') === 'ACTUAL')) return false
-    // Phase K: view filter (transactions vs payments vs all)
-    if (viewFilter.value === 'transactions' && t.recordSource === 'PAYMENT') return false
-    if (viewFilter.value === 'payments'     && t.recordSource !== 'PAYMENT') return false
+    // S104: payment rows are hidden in the Καρτέλες view entirely.
+    // They remain visible in TransactionsView (Κινήσεις). The card totals were
+    // never affected (income/expense KPIs sum transactions only; payments are a
+    // separate aggregate), so this is a purely visual de-duplication.
+    if (t.recordSource === 'PAYMENT') return false
     if (typeFilter.value !== 'all' && t.type !== typeFilter.value) return false
     if (statusFilter.value !== 'all' && t.paymentStatus !== statusFilter.value) return false
     if (dateFrom.value && t.docDate < dateFrom.value) return false
@@ -731,27 +733,9 @@ const ruleLabel = computed(() => {
           </div>
         </div>
 
-        <!-- Phase K: View filter chips -->
-        <div class="view-chips" v-if="selectedCard">
-          <button
-            class="view-chip"
-            :class="{ active: viewFilter === 'all' }"
-            @click="viewFilter = 'all'">
-            Όλα ({{ transactions.length }})
-          </button>
-          <button
-            class="view-chip"
-            :class="{ active: viewFilter === 'transactions' }"
-            @click="viewFilter = 'transactions'">
-            Κινήσεις ({{ transactions.filter(t => t.recordSource !== 'PAYMENT').length }})
-          </button>
-          <button
-            class="view-chip view-chip-payments"
-            :class="{ active: viewFilter === 'payments' }"
-            @click="viewFilter = 'payments'">
-            {{ paymentsTabLabel }} ({{ transactions.filter(t => t.recordSource === 'PAYMENT').length }})
-          </button>
-        </div>
+        <!-- S104: Phase K view-filter chips removed — payment rows are no longer
+             shown in the Καρτέλες view, so the all/transactions/payments toggle
+             is obsolete. Payment rows stay visible in TransactionsView. -->
 
         <!-- Filters -->
         <div class="filters-bar" v-if="selectedCard">
