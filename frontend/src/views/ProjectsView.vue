@@ -31,7 +31,18 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'CANCELLED', label: 'Ακυρωμένο' },
 ]
 
+// Lifecycle maturity order (most mature first) — mirrors the Notion Group HQ portfolio
+const LIFECYCLE_ORDER = {
+  LIVE: 1,
+  IN_DEVELOPMENT: 2,
+  TESTING: 3,
+  PLANNING: 4,
+  PAUSED: 5,
+  CANCELLED: 6,
+}
+
 const SORT_OPTIONS = [
+  { value: 'lifecycle', label: 'Κύκλος ζωής' },
   { value: 'name', label: 'Όνομα (Α-Ω)' },
   { value: 'budget_desc', label: 'Budget (φθίνον)' },
   { value: 'budget_asc', label: 'Budget (αύξον)' },
@@ -39,7 +50,7 @@ const SORT_OPTIONS = [
 ]
 
 const statusFilter = ref('all')
-const sortBy = ref('name')
+const sortBy = ref('lifecycle')
 const isViewerProjectsRO = computed(() => isViewer())
 const showInactive = ref(false)  // viewers can never toggle this on
 
@@ -238,6 +249,14 @@ const filteredProjects = computed(() => {
       break
     case 'status':
       list.sort((a, b) => (a.status || '').localeCompare(b.status || ''))
+      break
+    case 'lifecycle':
+      list.sort((a, b) => {
+        const ra = LIFECYCLE_ORDER[a.status] || 99
+        const rb = LIFECYCLE_ORDER[b.status] || 99
+        if (ra !== rb) return ra - rb
+        return (a.name || '').localeCompare(b.name || '', 'el')
+      })
       break
     case 'name':
     default:
