@@ -94,7 +94,7 @@ const ENTITY_OPTIONS_S78 = [
   { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', name: 'House' },
   { id: '50317f44-9961-4fb4-add0-7a118e32dc14', name: 'Next2Me Group' },
 ];
-// S78-HOTFIX-STATUS-APPLIED: only PLANNING + LIVE are accepted by backend
+// S103: backend accepts all 6 lifecycle statuses (S78 hotfix comment was stale)
 const STATUS_OPTIONS_S78 = [
   { value: 'PLANNING',       label: 'Σχεδιασμός' },
   { value: 'IN_DEVELOPMENT', label: 'Υπό Ανάπτυξη' },
@@ -135,7 +135,7 @@ function openEditModal(p) {
     name: p.name || '',
     description: p.description || '',
     ownerEntityId: p.ownerEntityId || ENTITY_OPTIONS_S78[0].id,
-    status: (p.status === 'PLANNING' || p.status === 'LIVE') ? p.status : 'PLANNING', // S78-HOTFIX-STATUS-APPLIED
+    status: p.status || 'PLANNING', // S103: load actual status (was S78 hotfix that coerced non-PLANNING/LIVE to PLANNING)
     totalBudget: Number(p.totalBudget || 0),
     expectedMonthlyRevenue: Number(p.expectedMonthlyRevenue || 0),
     startDate: p.startDate || '',
