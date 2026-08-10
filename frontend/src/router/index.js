@@ -16,7 +16,7 @@ const router = createRouter({
     { path: '/calendar',       component: () => import('@/views/CalendarView.vue'),     meta: { section: 'calendar', title: 'Ημερολόγιο' } },
   { path: '/reports',        component: () => import('@/views/ReportsView.vue'),       meta: { section: 'reports', title: 'Αναφορές' } },
     { path: '/report-builder', component: () => import('@/views/ReportBuilderView.vue'), meta: { section: 'report-builder', title: 'Report Builder' } },
-    { path: '/dispatch-archive', component: () => import('@/views/DispatchArchiveView.vue'), meta: { section: 'report-builder', title: 'Αρχείο Αποστολών' } },
+    { path: '/dispatch-archive', component: () => import('@/views/DispatchArchiveView.vue'), meta: { section: 'report-builder', roles: ['admin', 'user'], title: 'Αρχείο Αποστολών' } },
     { path: '/ai-analysis',    component: () => import('@/views/AiAnalysisView.vue'),    meta: { section: 'ai-analysis', title: 'AI Ανάλυση' } },
     { path: '/projects',       component: () => import('@/views/ProjectsView.vue'),       meta: { section: 'projects', title: 'Projects' } },
     { path: '/projects/:id',   component: () => import('@/views/ProjectDetailView.vue'), meta: { section: 'projects', title: 'Project Detail' } },
@@ -74,6 +74,15 @@ router.beforeEach((to) => {
   // Section-level authorization
   let user = null
   try { user = JSON.parse(userRaw) } catch { return '/login' }
+  // S105: role-restricted routes (e.g. dispatch archive) — enforced regardless
+  // of section, since VIEWER/ACCOUNTANT may share a section but are excluded.
+  const routeRoles = to.meta && to.meta.roles
+  if (routeRoles) {
+    const role = (user.role || '').toLowerCase()
+    if (!routeRoles.includes(role)) {
+      return to.path === '/report-builder' ? '/dashboard' : '/report-builder'
+    }
+  }
   // null/undefined allowedSections = full access (admin/legacy users)
   if (!user.allowedSections) return
   let allowed = null

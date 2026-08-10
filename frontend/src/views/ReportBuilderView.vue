@@ -4,6 +4,12 @@ import api from '@/api'
 import { previewDispatch, createDispatch, buildDispatchPayload, getDispatchStatus } from '@/api/dispatches'
 import PdfPreviewModal from '@/components/PdfPreviewModal.vue'
 import DispatchDialog from '@/components/DispatchDialog.vue'
+import { useUserStore } from '@/stores/user'
+
+// S105: dispatch actions (preview/send) are admin/user only — VIEWER (Σίμος)
+// keeps the read-only builder but never sees these buttons. Backend also 403s.
+const userStore = useUserStore()
+const canDispatch = computed(() => ['admin', 'user'].includes((userStore.profile?.role || '').toLowerCase()))
 
 /* ── Entity mapping ── */
 const ENTITY_MAP = {
@@ -654,8 +660,8 @@ watch(selectedEntryMode, (v) => {
           <span class="footer-stats">{{ sectionCount }} κινήσεις σε {{ sections.length }} sections — Έτοιμο</span>
           <div class="footer-actions">
             <button class="btn-footer" @click="exportExcel">⊞ Excel</button>
-            <button class="btn-footer" @click="previewViaServer">👁 Προεπισκόπηση</button>
-            <button class="btn-footer accent" @click="openSendDialog">📤 Αποστολή</button>
+            <button v-if="canDispatch" class="btn-footer" @click="previewViaServer">👁 Προεπισκόπηση</button>
+            <button v-if="canDispatch" class="btn-footer accent" @click="openSendDialog">📤 Αποστολή</button>
           </div>
         </div>
 
