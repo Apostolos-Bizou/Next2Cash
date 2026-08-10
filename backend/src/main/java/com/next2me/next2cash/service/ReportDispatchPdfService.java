@@ -271,7 +271,10 @@ public class ReportDispatchPdfService {
         // available width, holds its header + typical cell on ONE line
         // (measured against DejaVuSans metrics — see S105 width audit).
         // ID  ΗΜ/ΝΙΑ ΠΕΡΙΓΡ ΚΑΤΗΓ ΜΕΘΟΔ ΠΟΣΟ ΠΛΗΡΩΜ ΥΠΟΛ ΗΜ/ΝΙΑΠΛ STATUS
-        table.setWidths(new float[]{42f, 72f, 138f, 92f, 76f, 70f, 82f, 72f, 86f, 84f});
+        // ΚΑΤΗΓΟΡΙΑ widened 92->102 so "ΧΡΗΜΑΤΟΔΟΤΗΣΗ" (needs ~95pt) stays on one
+        // line; space taken from ΠΕΡΙΓΡΑΦΗ (138->132) and ΗΜ/ΝΙΑ ΠΛΗΡ. (86->82),
+        // both of which had slack (S105 width audit).
+        table.setWidths(new float[]{42f, 72f, 132f, 102f, 76f, 70f, 82f, 72f, 82f, 84f});
         table.setHeaderRows(1); // repeat header on every page (pagination)
 
         String[] headers = {"ID", "ΗΜ/ΝΙΑ", "ΠΕΡΙΓΡΑΦΗ", "ΚΑΤΗΓΟΡΙΑ", "ΜΕΘΟΔΟΣ",

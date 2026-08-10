@@ -126,4 +126,21 @@ class ReportDispatchPdfServiceTest {
 
         assertEquals(total, pagesWithFooter, "'σελίδα' must appear on every one of " + total + " pages");
     }
+
+    // ─── Long category must not wrap (ΧΡΗΜΑΤΟΔΟΤΗΣΗ) ─────────────────────────
+
+    @Test
+    void render_longCategory_staysOnOneLine() throws Exception {
+        Transaction t = tx(4802, "income", "128 - ΒΑΡΙΑΣ ΕΣΟΔΑ ΜΕΤΡΗΤΑ",
+                "1000.00", "1000.00", "0.00", "received", LocalDate.of(2026, 7, 30));
+        t.setCategory("ΧΡΗΜΑΤΟΔΟΤΗΣΗ"); // the widest real category
+
+        byte[] bytes = pdf.render("Τεστ Κατηγορίας", "Λεωνίδας", LocalDate.of(2026, 7, 31), List.of(t));
+        PdfReader reader = new PdfReader(bytes);
+        String text = pageText(reader, 1);
+        reader.close();
+
+        // Contiguous contains() fails if it wrapped to "ΧΡΗΜΑΤΟΔΟΤΗΣ" + "Η".
+        assertTrue(text.contains("ΧΡΗΜΑΤΟΔΟΤΗΣΗ"), "ΚΑΤΗΓΟΡΙΑ column too narrow — category wrapped");
+    }
 }
