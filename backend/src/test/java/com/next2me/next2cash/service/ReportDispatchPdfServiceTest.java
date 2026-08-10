@@ -148,6 +148,8 @@ class ReportDispatchPdfServiceTest {
 
     @Test
     void stripLeadingId_removesExactIdPrefixOnly() {
+        // real case: entityNumber 127 + "127 - EPASS" → "EPASS"
+        assertEquals("EPASS", ReportDispatchPdfService.stripLeadingId(127, "127 - EPASS"));
         // "{id} - " form
         assertEquals("ΕΣΟΔΑ", ReportDispatchPdfService.stripLeadingId(4811, "4811 - ΕΣΟΔΑ"));
         // "{id}-" form (no spaces)
@@ -158,5 +160,22 @@ class ReportDispatchPdfServiceTest {
         assertEquals("ΕΣΟΔΑ ΒΑΡΙΑΣ", ReportDispatchPdfService.stripLeadingId(4811, "ΕΣΟΔΑ ΒΑΡΙΑΣ"));
         // a longer number that merely starts with the id → unchanged
         assertEquals("48110 - X", ReportDispatchPdfService.stripLeadingId(4811, "48110 - X"));
+    }
+
+    // ─── Wiring: strip uses entityNumber (the ID column), not transaction id ──
+
+    @Test
+    void render_stripsEntityNumberPrefix_notTransactionId() throws Exception {
+        // id 90619 (serial) but entityNumber 127 — the description prefix is 127.
+        Transaction t = tx(90619, "expense", "127 - EPASS", "70.00", "70.00", "0.00", "paid", LocalDate.of(2026, 8, 3));
+        t.setEntityNumber(127);
+
+        byte[] bytes = pdf.render("Τεστ Προθέματος", "Λεωνίδας", LocalDate.of(2026, 8, 4), List.of(t));
+        PdfReader reader = new PdfReader(bytes);
+        String text = pageText(reader, 1);
+        reader.close();
+
+        assertTrue(text.contains("EPASS"), "description missing");
+        assertFalse(text.contains("127 - EPASS"), "entityNumber prefix not stripped (strip compared the wrong field)");
     }
 }

@@ -302,12 +302,14 @@ public class ReportDispatchPdfService {
                 Color bg = (i % 2 == 1) ? ZEBRA : Color.WHITE;
                 com.lowagie.text.Font signFont = income ? greenBody : redBody;
 
-                String idStr = t.getEntityNumber() != null ? String.valueOf(t.getEntityNumber())
-                        : (t.getId() != null ? String.valueOf(t.getId()) : "—");
+                // The ID column shows entityNumber (fallback id). The description's
+                // leading prefix duplicates THAT number, so strip against the same.
+                Integer idNum = t.getEntityNumber() != null ? t.getEntityNumber() : t.getId();
+                String idStr = idNum != null ? String.valueOf(idNum) : "—";
                 addBodyCell(table, bg, bodyFont, idStr, Element.ALIGN_LEFT);
                 addBodyCell(table, bg, bodyFont,
                         t.getDocDate() != null ? t.getDocDate().format(DATE_DISPLAY) : "—", Element.ALIGN_LEFT);
-                addBodyCell(table, bg, bodyFont, safe(stripLeadingId(t.getId(), t.getDescription())), Element.ALIGN_LEFT);
+                addBodyCell(table, bg, bodyFont, safe(stripLeadingId(idNum, t.getDescription())), Element.ALIGN_LEFT);
                 addBodyCell(table, bg, bodyFont, safe(t.getCategory()), Element.ALIGN_LEFT);
                 addBodyCell(table, bg, bodyFont, nonEmpty(t.getPaymentMethod()), Element.ALIGN_LEFT);
 

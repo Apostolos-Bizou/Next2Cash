@@ -71,16 +71,21 @@ function stripLeadingId(id, desc) {
 /* ── mapped transactions (TX-like) ── */
 const txList = computed(() => allTransactions.value
   .filter(t => (t.recordStatus || 'active') === 'active')
-  .map(t => ({
-    id: t.id,
-    no: t.entityNumber != null ? t.entityNumber : t.id,
-    d: docDisplay(t.docDate),
-    t: stripLeadingId(t.id, t.description || ''),
-    cat: t.category || '',
-    a: t.type === 'income' ? (Number(t.amount) || 0) : -(Number(t.amount) || 0),
-    paid: t.paymentStatus === 'paid' || t.paymentStatus === 'received',
-    m: t.paymentMethod || '',
-  })))
+  .map(t => {
+    // The #ID column shows entityNumber (fallback id); the description prefix
+    // duplicates THAT number, so strip against the same field.
+    const no = t.entityNumber != null ? t.entityNumber : t.id
+    return {
+      id: t.id,
+      no,
+      d: docDisplay(t.docDate),
+      t: stripLeadingId(no, t.description || ''),
+      cat: t.category || '',
+      a: t.type === 'income' ? (Number(t.amount) || 0) : -(Number(t.amount) || 0),
+      paid: t.paymentStatus === 'paid' || t.paymentStatus === 'received',
+      m: t.paymentMethod || '',
+    }
+  }))
 const txById = computed(() => { const m = new Map(); txList.value.forEach(t => m.set(t.id, t)); return m })
 const T = (id) => txById.value.get(id)
 const where = (id) => Object.keys(sections).find(k => sections[k].includes(id))
@@ -489,7 +494,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
                 <th class="c-stat">ΚΑΤΑΣΤΑΣΗ</th><th class="c-send">ΑΠΟΣΤΟΛΗ</th><th class="c-amt">ΠΟΣΟ</th><th class="c-x"></th></tr></thead>
               <tbody>
                 <tr v-for="t in s.rows" :key="t.id">
-                  <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
+                  <td class="c-id">{{ t.no }}</td><td class="c-date">{{ t.d }}</td>
                   <td>{{ t.t }} <span class="tag">{{ t.cat }}</span></td>
                   <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
                   <td class="c-send">
@@ -590,7 +595,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
           <tbody>
             <tr v-for="t in pool" :key="t.id" class="pick-row" :class="{ used: !!where(t.id), checked: isChecked(t.id) }" @click="toggle(t.id)">
               <td class="c-chk"><div class="cbox">{{ (where(t.id) || isChecked(t.id)) ? '✓' : '' }}</div></td>
-              <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
+              <td class="c-id">{{ t.no }}</td><td class="c-date">{{ t.d }}</td>
               <td><div class="desc"><span>{{ t.t }}</span><span class="tag">{{ t.cat }}</span>
                 <span v-if="where(t.id)" class="st inrep">✓ ΣΤΟ REPORT · {{ where(t.id) === 'income' ? 'Εισπράξεις' : 'Έξοδα' }}</span></div></td>
               <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
@@ -659,7 +664,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
         <div class="m-body"><table><thead><tr>
           <th class="c-id">#ID</th><th class="c-date">ΗΜ/ΝΙΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th class="c-stat">ΚΑΤΑΣΤΑΣΗ</th><th class="c-amt">ΠΟΣΟ</th></tr></thead>
           <tbody><tr v-for="t in detailData.rows" :key="t.id">
-            <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
+            <td class="c-id">{{ t.no }}</td><td class="c-date">{{ t.d }}</td>
             <td>{{ t.t }} <span class="tag">{{ t.cat }}</span></td>
             <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
             <td class="c-amt" :class="t.a < 0 ? 'amt-neg' : 'amt-pos'">{{ eur(t.a) }}</td></tr></tbody></table></div>
