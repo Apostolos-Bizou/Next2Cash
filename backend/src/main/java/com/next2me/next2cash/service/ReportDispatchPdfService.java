@@ -267,7 +267,11 @@ public class ReportDispatchPdfService {
 
         PdfPTable table = new PdfPTable(10);
         table.setWidthPercentage(100);
-        table.setWidths(new float[]{5f, 8f, 25f, 12f, 10f, 9f, 9f, 9f, 10f, 10f});
+        // Relative widths chosen so each column, once normalized to the 786pt
+        // available width, holds its header + typical cell on ONE line
+        // (measured against DejaVuSans metrics — see S105 width audit).
+        // ID  ΗΜ/ΝΙΑ ΠΕΡΙΓΡ ΚΑΤΗΓ ΜΕΘΟΔ ΠΟΣΟ ΠΛΗΡΩΜ ΥΠΟΛ ΗΜ/ΝΙΑΠΛ STATUS
+        table.setWidths(new float[]{42f, 72f, 146f, 92f, 76f, 70f, 82f, 72f, 86f, 76f});
         table.setHeaderRows(1); // repeat header on every page (pagination)
 
         String[] headers = {"ID", "ΗΜ/ΝΙΑ", "ΠΕΡΙΓΡΑΦΗ", "ΚΑΤΗΓΟΡΙΑ", "ΜΕΘΟΔΟΣ",
@@ -342,6 +346,7 @@ public class ReportDispatchPdfService {
         box.setWidthPercentage(45f);
         box.setHorizontalAlignment(Element.ALIGN_RIGHT);
         box.setWidths(new float[]{2f, 1f});
+        box.setKeepTogether(true); // never split the ΣΥΝΟΨΗ block across pages
 
         PdfPCell title = new PdfPCell(new Phrase("ΣΥΝΟΨΗ", hdrFont));
         title.setColspan(2);
