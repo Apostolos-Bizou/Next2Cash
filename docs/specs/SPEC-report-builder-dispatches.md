@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS report_dispatches (
 
 CREATE TABLE IF NOT EXISTS report_dispatch_items (
   dispatch_id     UUID NOT NULL REFERENCES report_dispatches(id) ON DELETE CASCADE,
-  transaction_id  UUID NOT NULL REFERENCES transactions(id),
+  transaction_id  INTEGER NOT NULL REFERENCES transactions(id),  -- transactions.id = serial INTEGER, ΟΧΙ UUID (codebase audit S105)
   PRIMARY KEY (dispatch_id, transaction_id)
 );
 
@@ -117,7 +117,7 @@ Migration policy Next2Cash: **manual idempotent SQL μέσω psql**, όχι Flyw
 | Repository | `ReportDispatchRepository.java` |
 | Service | `ReportDispatchService.java` |
 | Controller | `ReportDispatchController.java` |
-| PDF | επέκταση `ReportExportService` |
+| PDF | **νέο** `ReportDispatchPdfService`, modelled στο `CardExportService` (OpenPDF + embedded DejaVuSans). ΟΧΙ επέκταση του `ReportExportService` — εκείνο είναι AI-analysis exporter (iText7, ADMIN-only, δέχεται `AiQueryHistory`), λάθος domain (codebase audit S105) |
 
 **Endpoints:**
 
@@ -126,8 +126,9 @@ GET    /api/report-dispatches?entity_id=&from=&to=&q=
 GET    /api/report-dispatches/{id}
 GET    /api/report-dispatches/{id}/pdf        → stream από Blob
 POST   /api/report-dispatches                 → παράγει PDF + αρχειοθετεί
+POST   /api/report-dispatches/preview         → stream PDF, ΚΑΜΙΑ εγγραφή (no writes, no Blob)
 DELETE /api/report-dispatches/{id}            → ADMIN μόνο
-GET    /api/transactions/dispatch-status?ids= → batch για badges
+GET    /api/transactions/dispatch-status?ids= → batch για badges (ids = INTEGER csv)
 ```
 
 ### 3.3 Frontend
@@ -148,7 +149,7 @@ Logosynthesi). Να μπει σε κοινό σημείο, όχι μόνο στ�
 
 | # | Κανόνας | Έλεγχος |
 |---|---|---|
-| 1 | `VIEWER` **μόνο** σε GET. Ο Σίμος Βαρίας δεν καταχωρίζει αποστολή | `Select-String -Path "src\main\java\**\*Controller.java" -Pattern "VIEWER" -Context 0,2` → όλες σε `@GetMapping` |
+| 1 | `VIEWER` **εκτός ΟΛΩΝ** των `/api/report-dispatches/*` — και από τα GET. Ο Σίμος Βαρίας δεν βλέπει καθόλου το αρχείο αποστολών. Όλα τα endpoints `@PreAuthorize("hasAnyRole('ADMIN','USER')")`, κανένα με `VIEWER` | `Select-String -Path "src\main\java\**\ReportDispatchController.java" -Pattern "VIEWER"` → **0 hits** |
 | 2 | `PLANNED` κινήσεις **δεν** αρχειοθετούνται ως απεσταλμένες | Φίλτρο στο service, όχι στο UI |
 | 3 | `UserAccessService.getCurrentUser()` + `canAccessEntity()` σε κάθε νέο endpoint | Code review |
 | 4 | `filterApiEntities()` σε κάθε frontend κλήση entities | Code review |
