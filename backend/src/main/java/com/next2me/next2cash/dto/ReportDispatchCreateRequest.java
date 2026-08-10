@@ -25,6 +25,10 @@ public class ReportDispatchCreateRequest {
     private String note;
     private List<Item> items;
 
+    /** Whether to attach the dispatched transactions' documents as a ZIP.
+     *  Default true (null treated as true). Level 4.5. */
+    private Boolean includeDocs;
+
     @Data
     @NoArgsConstructor
     public static class Item {

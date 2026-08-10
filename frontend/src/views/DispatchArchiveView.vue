@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useUserStore } from '@/stores/user'
-import { listDispatches, getDispatchPdf, deleteDispatch, openPdfBlob } from '@/api/dispatches'
+import { listDispatches, getDispatchPdf, getDispatchDocuments, deleteDispatch, openPdfBlob, downloadBlob } from '@/api/dispatches'
 
 const userStore = useUserStore()
 const isAdmin = computed(() => (userStore.profile?.role || '').toLowerCase() === 'admin')
@@ -40,6 +40,18 @@ async function viewPdf(row) {
     openPdfBlob(blob)
   } catch (e) {
     alert(e.response?.status === 404 ? 'Το PDF δεν βρέθηκε.' : 'Αποτυχία λήψης PDF.')
+  } finally {
+    busyId.value = ''
+  }
+}
+
+async function viewDocs(row) {
+  busyId.value = row.id
+  try {
+    const blob = await getDispatchDocuments(row.id)
+    downloadBlob(blob, 'dispatch-' + row.id + '-docs.zip', 'application/zip')
+  } catch (e) {
+    alert(e.response?.status === 404 ? 'Δεν υπάρχουν παραστατικά.' : 'Αποτυχία λήψης παραστατικών.')
   } finally {
     busyId.value = ''
   }
@@ -110,6 +122,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
           </td>
           <td class="da-actions">
             <button class="da-btn" :disabled="!row.hasPdf || busyId === row.id" @click="viewPdf(row)">👁 Προβολή</button>
+            <button v-if="row.hasDocs" class="da-btn" :disabled="busyId === row.id" @click="viewDocs(row)">📎 Παραστατικά</button>
             <button v-if="isAdmin" class="da-btn da-del" :disabled="busyId === row.id" @click="remove(row)">🗑 Διαγραφή</button>
           </td>
         </tr>

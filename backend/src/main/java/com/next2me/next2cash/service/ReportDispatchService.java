@@ -68,45 +68,95 @@ public class ReportDispatchService {
     // ─── CREATE (render → upload → insert) ──────────────────────────────────
 
     @Transactional
-    public ReportDispatch create(User currentUser, UUID entityId,
-                                 ReportDispatchCreateRequest req, String ip) {
+    public DispatchCreateResult create(User currentUser, UUID entityId,
+                                       ReportDispatchCreateRequest req, String ip) {
         List<Transaction> ordered = validate(currentUser, entityId, req);
 
         String title = req.getTitle().trim();
         String recipient = req.getRecipient().trim();
         LocalDate sentDate = req.getSentDate() != null ? req.getSentDate() : LocalDate.now();
+        boolean includeDocs = req.getIncludeDocs() == null || Boolean.TRUE.equals(req.getIncludeDocs());
 
-        // 1. Render the PDF.
+        // 1. Render + upload the report PDF first. Id generated up front so the
+        //    blob paths embed it, and we never INSERT before an upload succeeds.
         byte[] pdf = pdfService.render(title, recipient, sentDate, ordered);
-
-        // 2. Upload FIRST — id generated up front so the blob path can embed it.
         UUID dispatchId = UUID.randomUUID();
         String blobPath = buildBlobPath(entityId, sentDate, dispatchId);
-        blobStore.upload(blobPath, pdf); // throws on failure → no INSERT below
+        blobStore.upload(blobPath, pdf); // throws on failure → nothing else has happened
 
-        // 3. Only now insert the header + items.
-        ReportDispatch dispatch = new ReportDispatch();
-        dispatch.setId(dispatchId);
-        dispatch.setEntityId(entityId);
-        dispatch.setTitle(title);
-        dispatch.setRecipient(recipient);
-        dispatch.setSentDate(sentDate);
-        dispatch.setNote(req.getNote());
-        dispatch.setBlobPath(blobPath);
-        dispatch.setCreatedBy(currentUser.getId());
-        ReportDispatch saved = dispatchRepository.save(dispatch);
-
-        List<ReportDispatchItem> toSave = new ArrayList<>(ordered.size());
-        for (Transaction t : ordered) {
-            toSave.add(new ReportDispatchItem(saved.getId(), t.getId()));
+        // 2. Attachments ZIP (Level 4.5) — non-fatal, streaming, never empty.
+        List<String> docPaths = collectDocumentPaths(ordered);
+        int documentsFound = docPaths.size();
+        int documentsAttached = 0;
+        String docsBlobPath = null;
+        if (includeDocs && documentsFound > 0) {
+            String destZip = buildDocsBlobPath(entityId, sentDate, dispatchId);
+            ReportDispatchBlobStore.ZipResult zr = blobStore.zipAndUpload(destZip, docPaths);
+            documentsAttached = zr.included();
+            if (documentsAttached > 0) {
+                docsBlobPath = destZip;
+            }
+            if (!zr.failed().isEmpty()) {
+                log.warn("dispatch {}: {} of {} document blobs could not be attached: {}",
+                        dispatchId, zr.failed().size(), documentsFound, zr.failed());
+            }
         }
-        itemRepository.saveAll(toSave);
 
-        auditLogService.log(entityId, currentUser.getId(), currentUser.getUsername(),
-                "DISPATCH_CREATE", "report_dispatches", saved.getId().toString(),
-                "title=" + title + "; recipient=" + recipient + "; items=" + ordered.size(), ip);
+        // 3. Insert header + items. If anything here fails AFTER the uploads,
+        //    delete the blobs — no orphan blob, no partial row.
+        try {
+            ReportDispatch dispatch = new ReportDispatch();
+            dispatch.setId(dispatchId);
+            dispatch.setEntityId(entityId);
+            dispatch.setTitle(title);
+            dispatch.setRecipient(recipient);
+            dispatch.setSentDate(sentDate);
+            dispatch.setNote(req.getNote());
+            dispatch.setBlobPath(blobPath);
+            dispatch.setDocsBlobPath(docsBlobPath);
+            dispatch.setCreatedBy(currentUser.getId());
+            ReportDispatch saved = dispatchRepository.save(dispatch);
 
-        return saved;
+            List<ReportDispatchItem> toSave = new ArrayList<>(ordered.size());
+            for (Transaction t : ordered) {
+                toSave.add(new ReportDispatchItem(saved.getId(), t.getId()));
+            }
+            itemRepository.saveAll(toSave);
+
+            auditLogService.log(entityId, currentUser.getId(), currentUser.getUsername(),
+                    "DISPATCH_CREATE", "report_dispatches", saved.getId().toString(),
+                    "title=" + title + "; recipient=" + recipient + "; items=" + ordered.size()
+                            + "; docs=" + documentsAttached + "/" + documentsFound, ip);
+
+            return new DispatchCreateResult(saved, ordered.size(), documentsFound,
+                    documentsAttached, includeDocs);
+        } catch (RuntimeException e) {
+            blobStore.deleteIfExists(blobPath);
+            if (docsBlobPath != null) blobStore.deleteIfExists(docsBlobPath);
+            throw e;
+        }
+    }
+
+    /** Result of a create, carrying the visible attachment counts for the UI. */
+    public record DispatchCreateResult(
+            ReportDispatch dispatch,
+            int transactionsTotal,
+            int documentsFound,
+            int documentsAttached,
+            boolean docsRequested
+    ) {}
+
+    private List<String> collectDocumentPaths(List<Transaction> txns) {
+        List<String> paths = new ArrayList<>();
+        for (Transaction t : txns) {
+            String ids = t.getBlobFileIds();
+            if (ids == null || ids.isBlank()) continue;
+            for (String p : ids.split(",")) {
+                String tp = p.trim();
+                if (!tp.isEmpty()) paths.add(tp);
+            }
+        }
+        return paths;
     }
 
     // ─── PREVIEW (render only — no DB, no Blob) ──────────────────────────────
@@ -132,19 +182,20 @@ public class ReportDispatchService {
         List<ReportDispatchItem> items = itemRepository.findByIdDispatchId(dispatchId);
         int itemCount = items.size();
 
+        // Delete BOTH blobs (report PDF + attachments ZIP), tolerant of missing.
         String blobPath = dispatch.getBlobPath();
-        boolean blobDeleted = false;
-        if (blobPath != null && !blobPath.isBlank()) {
-            blobDeleted = blobStore.deleteIfExists(blobPath); // tolerant: never throws
-        }
+        String docsPath = dispatch.getDocsBlobPath();
+        boolean pdfDeleted = blobPath != null && !blobPath.isBlank() && blobStore.deleteIfExists(blobPath);
+        boolean docsDeleted = docsPath != null && !docsPath.isBlank() && blobStore.deleteIfExists(docsPath);
 
         itemRepository.deleteAll(items);
         dispatchRepository.delete(dispatch);
 
         auditLogService.log(entityId, currentUser.getId(), currentUser.getUsername(),
                 "DISPATCH_DELETE", "report_dispatches", dispatchId.toString(),
-                "items=" + itemCount + "; blob=" + (blobPath == null ? "none"
-                        : (blobDeleted ? "deleted" : "delete_skipped_or_missing")), ip);
+                "items=" + itemCount
+                        + "; pdf=" + (blobPath == null ? "none" : (pdfDeleted ? "deleted" : "missing"))
+                        + "; docs=" + (docsPath == null ? "none" : (docsDeleted ? "deleted" : "missing")), ip);
     }
 
     /** Download the stored PDF bytes for a dispatch. Caller must scope access first. */
@@ -287,10 +338,18 @@ public class ReportDispatchService {
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private String buildBlobPath(UUID entityId, LocalDate sentDate, UUID dispatchId) {
-        String entityCode = companyEntityRepository.findById(entityId)
-                .map(CompanyEntity::getCode).orElse("UNKNOWN");
         return String.format(Locale.ROOT, "dispatches/%s/%04d/%02d/%s.pdf",
-                entityCode, sentDate.getYear(), sentDate.getMonthValue(), dispatchId);
+                entityCode(entityId), sentDate.getYear(), sentDate.getMonthValue(), dispatchId);
+    }
+
+    private String buildDocsBlobPath(UUID entityId, LocalDate sentDate, UUID dispatchId) {
+        return String.format(Locale.ROOT, "dispatches/%s/%04d/%02d/%s-docs.zip",
+                entityCode(entityId), sentDate.getYear(), sentDate.getMonthValue(), dispatchId);
+    }
+
+    private String entityCode(UUID entityId) {
+        return companyEntityRepository.findById(entityId)
+                .map(CompanyEntity::getCode).orElse("UNKNOWN");
     }
 
     private String normalizeSection(String s) {

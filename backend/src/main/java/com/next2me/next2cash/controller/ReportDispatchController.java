@@ -6,9 +6,11 @@ import com.next2me.next2cash.model.ReportDispatchItem;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.ReportDispatchItemRepository;
 import com.next2me.next2cash.repository.ReportDispatchRepository;
+import com.next2me.next2cash.service.ReportDispatchBlobStore;
 import com.next2me.next2cash.service.ReportDispatchService;
 import com.next2me.next2cash.service.UserAccessService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -52,6 +54,7 @@ public class ReportDispatchController {
     private final ReportDispatchService dispatchService;
     private final ReportDispatchRepository dispatchRepository;
     private final ReportDispatchItemRepository itemRepository;
+    private final ReportDispatchBlobStore blobStore;
     private final UserAccessService userAccessService;
 
     // ─── GET list ─────────────────────────────────────────────────────────
@@ -107,6 +110,36 @@ public class ReportDispatchController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"dispatch-" + id + ".pdf\"")
                 .body(pdf);
+    }
+
+    // ─── GET documents ZIP (stream from Blob; 404 if none) ──────────────────
+
+    // Streams the ZIP straight from Blob to the servlet output stream — SYNCHRONOUS
+    // (no StreamingResponseBody). Async dispatch would bypass JwtAuthFilter (a
+    // OncePerRequestFilter that skips async), losing auth; a direct write keeps
+    // the whole security chain in play while still never buffering the ZIP.
+    @GetMapping("/{id}/documents")
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    public void getDocuments(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id,
+            HttpServletResponse response) throws java.io.IOException {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        ReportDispatch d = loadScoped(user, id);
+
+        String docsPath = d.getDocsBlobPath();
+        if (docsPath == null || docsPath.isBlank()) {
+            response.setStatus(HttpStatus.NOT_FOUND.value());
+            response.setHeader("X-Error", "documents_not_available");
+            return;
+        }
+        response.setStatus(HttpStatus.OK.value());
+        response.setContentType("application/zip");
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"dispatch-" + id + "-docs.zip\"");
+        blobStore.downloadTo(docsPath, response.getOutputStream());
+        response.getOutputStream().flush();
     }
 
     // ─── POST preview (stream, NO writes to DB or Blob) ─────────────────────
@@ -172,9 +205,16 @@ public class ReportDispatchController {
             HttpServletRequest request) {
 
         User user = userAccessService.getCurrentUser(authHeader);
-        ReportDispatch d = dispatchService.create(user, entityId, body, clientIp(request));
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "success", true, "data", toDetailDto(d)));
+        ReportDispatchService.DispatchCreateResult r =
+                dispatchService.create(user, entityId, body, clientIp(request));
+
+        Map<String, Object> data = toDetailDto(r.dispatch());
+        data.put("transactionsTotal", r.transactionsTotal());
+        data.put("documentsFound", r.documentsFound());
+        data.put("documentsAttached", r.documentsAttached());
+        data.put("documentsIncluded", r.documentsAttached() > 0); // true if the ZIP was attached
+        data.put("docsRequested", r.docsRequested());
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("success", true, "data", data));
     }
 
     // ─── DELETE (ADMIN only) ─────────────────────────────────────────────────
@@ -215,6 +255,7 @@ public class ReportDispatchController {
         m.put("sentDate",   d.getSentDate());
         m.put("note",       d.getNote());
         m.put("hasPdf",     d.getBlobPath() != null && !d.getBlobPath().isBlank());
+        m.put("hasDocs",    d.getDocsBlobPath() != null && !d.getDocsBlobPath().isBlank());
         m.put("createdBy",  d.getCreatedBy());
         m.put("createdAt",  d.getCreatedAt());
         return m;

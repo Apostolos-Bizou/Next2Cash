@@ -334,10 +334,27 @@ async function submitSend(form) {
   sending.value = true
   try {
     const payload = buildDispatchPayload({ ...form, items: collectItems() })
-    await createDispatch(payload)
+    const result = await createDispatch(payload)
     sendOpen.value = false
-    toast.value = 'Η αναφορά στάλθηκε και αρχειοθετήθηκε.'
-    setTimeout(() => { toast.value = '' }, 4000)
+
+    // Build a message that makes the (non-fatal) attachment outcome visible.
+    let msg = 'Η αναφορά στάλθηκε και αρχειοθετήθηκε.'
+    let warn = false
+    if (result && result.docsRequested && result.documentsFound > 0) {
+      const attached = result.documentsAttached || 0
+      const missing = result.documentsFound - attached
+      if (attached === 0) {
+        msg += ' ⚠ Τα παραστατικά ΔΕΝ συμπεριλήφθηκαν (' + missing + ' δεν βρέθηκαν).'
+        warn = true
+      } else if (missing > 0) {
+        msg += ' ⚠ ' + missing + ' από ' + result.documentsFound + ' παραστατικά δεν μπήκαν.'
+        warn = true
+      } else {
+        msg += ' (' + attached + ' παραστατικά)'
+      }
+    }
+    toast.value = msg
+    setTimeout(() => { toast.value = '' }, warn ? 8000 : 4000)
     await refreshDispatched()
   } catch (e) {
     alert(mapErr(e, 'Αποτυχία αποστολής'))

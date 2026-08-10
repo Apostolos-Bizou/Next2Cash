@@ -15,13 +15,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -80,7 +83,7 @@ class ReportDispatchControllerTest extends BaseIntegrationTest {
         r.setRecipient("Λογιστήριο");
         r.setSentDate(LocalDate.of(2026, 1, 31));
         r.setItems(List.of(item));
-        return dispatchService.create(admin, entityId, r, null);
+        return dispatchService.create(admin, entityId, r, null).dispatch();
     }
 
     private String createBody(Integer txId) {
@@ -313,5 +316,50 @@ class ReportDispatchControllerTest extends BaseIntegrationTest {
                 .contentType("application/json")
                 .content(createBody(e.getId())))
             .andExpect(status().isForbidden());
+    }
+
+    // ─── L4.5 · /documents endpoint ─────────────────────────────────────────
+
+    @Test
+    void getDocuments_present_returns200Zip() throws Exception {
+        doNothing().when(blobStore).downloadTo(anyString(), any());
+        ReportDispatch d = seedWithDocs(next2me.getId());
+
+        mockMvc.perform(get("/api/report-dispatches/" + d.getId() + "/documents")
+                .header("Authorization", tdb.bearerToken(admin)))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.parseMediaType("application/zip")));
+    }
+
+    @Test
+    void getDocuments_nullDocs_returns404() throws Exception {
+        ReportDispatch d = seedDispatch(next2me.getId()); // no attachments → docsBlobPath null
+        mockMvc.perform(get("/api/report-dispatches/" + d.getId() + "/documents")
+                .header("Authorization", tdb.bearerToken(admin)))
+            .andExpect(status().isNotFound())
+            .andExpect(header().string("X-Error", "documents_not_available"));
+    }
+
+    @Test
+    void viewer_getDocuments_forbidden() throws Exception {
+        User simos = tdb.createViewer("simos");
+        tdb.assignEntities(simos, next2meGroup);
+        ReportDispatch d = seedWithDocs(next2meGroup.getId());
+        mockMvc.perform(get("/api/report-dispatches/" + d.getId() + "/documents")
+                .header("Authorization", tdb.bearerToken(simos)))
+            .andExpect(status().isForbidden());
+    }
+
+    private ReportDispatch seedWithDocs(UUID entityId) {
+        ReportDispatch d = new ReportDispatch();
+        d.setId(UUID.randomUUID());
+        d.setEntityId(entityId);
+        d.setTitle("with-docs");
+        d.setRecipient("Λογιστήριο");
+        d.setSentDate(LocalDate.of(2026, 1, 31));
+        d.setCreatedBy(admin.getId());
+        d.setBlobPath("dispatches/NEXT2ME/2026/01/x.pdf");
+        d.setDocsBlobPath("dispatches/NEXT2ME/2026/01/x-docs.zip");
+        return dispatchRepository.save(d);
     }
 }

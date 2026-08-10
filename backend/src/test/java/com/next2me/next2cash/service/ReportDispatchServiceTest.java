@@ -79,6 +79,13 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
         return txn(entityId, "expense", "100.00", "ACTUAL", "active");
     }
 
+    /** Active expense carrying attachment blob paths (comma-separated). */
+    private Transaction expenseWithDocs(UUID entityId, String blobIds) {
+        Transaction t = txn(entityId, "expense", "100.00", "ACTUAL", "active");
+        t.setBlobFileIds(blobIds);
+        return transactionRepository.save(t);
+    }
+
     private ReportDispatchCreateRequest.Item item(Integer txId, String section) {
         ReportDispatchCreateRequest.Item i = new ReportDispatchCreateRequest.Item();
         i.setTransactionId(txId);
@@ -185,7 +192,7 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
         ReportDispatchCreateRequest r = req("T", "Λογιστήριο", LocalDate.now(),
                 item(e.getId(), "EXPENSE"), item(e.getId(), "EXPENSE"));
 
-        ReportDispatch saved = service.create(admin, entity.getId(), r, null);
+        ReportDispatch saved = service.create(admin, entity.getId(), r, null).dispatch();
         assertEquals(1, itemRepository.findByIdDispatchId(saved.getId()).size());
     }
 
@@ -210,7 +217,7 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
         Transaction b = expense(entity.getId());
         ReportDispatch saved = service.create(admin, entity.getId(),
                 req("T", "Λογιστήριο", LocalDate.now(),
-                        item(a.getId(), "EXPENSE"), item(b.getId(), "EXPENSE")), null);
+                        item(a.getId(), "EXPENSE"), item(b.getId(), "EXPENSE")), null).dispatch();
         assertEquals(2, itemRepository.findByIdDispatchId(saved.getId()).size());
 
         service.delete(admin, entity.getId(), saved.getId(), null);
@@ -227,11 +234,11 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
         Transaction e1 = expense(entity.getId());
         ReportDispatch jan = service.create(admin, entity.getId(),
                 req("Απολογισμός Ιανουαρίου", "Λεωνίδας", LocalDate.of(2026, 1, 31),
-                        item(e1.getId(), "EXPENSE")), null);
+                        item(e1.getId(), "EXPENSE")), null).dispatch();
         Transaction e2 = expense(entity.getId());
         ReportDispatch mar = service.create(admin, entity.getId(),
                 req("Report Μαρτίου", "Σίμος", LocalDate.of(2026, 3, 31),
-                        item(e2.getId(), "EXPENSE")), null);
+                        item(e2.getId(), "EXPENSE")), null).dispatch();
 
         // A dispatch in another entity must never appear.
         CompanyEntity other = tdb.createEntity("HOUSE", "House");
@@ -287,7 +294,7 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
         Transaction exp = expense(entity.getId());
         ReportDispatch saved = service.create(admin, entity.getId(),
                 req("Μικτό Report", "Λογιστήριο", LocalDate.of(2026, 5, 1),
-                        item(inc.getId(), "INCOME"), item(exp.getId(), "EXPENSE")), null);
+                        item(inc.getId(), "INCOME"), item(exp.getId(), "EXPENSE")), null).dispatch();
 
         assertNotNull(saved.getId());
         assertNotNull(saved.getBlobPath(), "Level 4 uploads a PDF and stores its path");
@@ -328,6 +335,57 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
 
         assertEquals(0, dispatchRepository.count(), "no dispatch may exist after upload failure");
         assertEquals(0, itemRepository.count(), "no items may exist after upload failure");
+    }
+
+    // ─── L4.5 · 16. includeDocs + attachments → docs ZIP attached ──────────
+
+    @Test
+    void create_includeDocs_withAttachments_attachesZip() {
+        when(blobStore.zipAndUpload(anyString(), any()))
+                .thenReturn(new ReportDispatchBlobStore.ZipResult(2, List.of()));
+        Transaction e = expenseWithDocs(entity.getId(), "next2me/2026/01/1/a.pdf,next2me/2026/01/1/b.pdf");
+        ReportDispatchCreateRequest r = req("T", "Λογιστήριο", LocalDate.of(2026, 5, 1),
+                item(e.getId(), "EXPENSE"));
+        r.setIncludeDocs(true);
+
+        ReportDispatchService.DispatchCreateResult res = service.create(admin, entity.getId(), r, null);
+
+        assertEquals(2, res.documentsFound());
+        assertEquals(2, res.documentsAttached());
+        assertNotNull(res.dispatch().getDocsBlobPath());
+        assertTrue(res.dispatch().getDocsBlobPath().endsWith("-docs.zip"));
+        verify(blobStore, times(1)).zipAndUpload(anyString(), any());
+    }
+
+    // ─── L4.5 · 17. docs requested but nothing attached → NON-FATAL ────────
+
+    @Test
+    void create_docsYieldNothing_isNonFatal_visibleCounts() {
+        when(blobStore.zipAndUpload(anyString(), any()))
+                .thenReturn(new ReportDispatchBlobStore.ZipResult(0, List.of("next2me/2026/01/1/a.pdf")));
+        Transaction e = expenseWithDocs(entity.getId(), "next2me/2026/01/1/a.pdf");
+        ReportDispatchCreateRequest r = req("T", "Λογιστήριο", LocalDate.now(), item(e.getId(), "EXPENSE"));
+
+        ReportDispatchService.DispatchCreateResult res = service.create(admin, entity.getId(), r, null);
+
+        assertNull(res.dispatch().getDocsBlobPath(), "no ZIP path when nothing was included");
+        assertEquals(1, res.documentsFound());
+        assertEquals(0, res.documentsAttached());   // UI: ζητήθηκαν αλλά δεν μπήκαν (1 έλειψε)
+        assertEquals(1, dispatchRepository.count(), "dispatch is still created (non-fatal)");
+    }
+
+    // ─── L4.5 · 18. includeDocs=false → docs skipped entirely ──────────────
+
+    @Test
+    void create_includeDocsFalse_skipsDocs() {
+        Transaction e = expenseWithDocs(entity.getId(), "next2me/2026/01/1/a.pdf");
+        ReportDispatchCreateRequest r = req("T", "Λογιστήριο", LocalDate.now(), item(e.getId(), "EXPENSE"));
+        r.setIncludeDocs(false);
+
+        ReportDispatchService.DispatchCreateResult res = service.create(admin, entity.getId(), r, null);
+
+        assertNull(res.dispatch().getDocsBlobPath());
+        verify(blobStore, never()).zipAndUpload(anyString(), any());
     }
 
     // ─── 13. Recipient autocomplete, distinct + most recent first ─────────

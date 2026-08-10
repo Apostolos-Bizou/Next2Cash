@@ -14,6 +14,7 @@ const title = ref('')
 const recipient = ref('')
 const note = ref('')
 const sentDate = ref('')
+const includeDocs = ref(true)
 const recipients = ref([])
 const error = ref('')
 
@@ -29,6 +30,7 @@ watch(() => props.open, (v) => {
     recipient.value = ''
     note.value = ''
     sentDate.value = todayIso()
+    includeDocs.value = true
     error.value = ''
     loadRecipients()
   }
@@ -50,6 +52,7 @@ function submit() {
     recipient: recipient.value.trim(),
     note: note.value.trim(),
     sentDate: sentDate.value,
+    includeDocs: includeDocs.value,
   })
 }
 </script>
@@ -77,6 +80,11 @@ function submit() {
 
         <label class="dd-label">ΣΗΜΕΙΩΣΗ (προαιρετικό)</label>
         <textarea v-model="note" class="dd-input dd-textarea" placeholder="Σημείωση προς παραλήπτη..."></textarea>
+
+        <label class="dd-check">
+          <input type="checkbox" v-model="includeDocs" />
+          <span>Να συμπεριληφθούν τα παραστατικά (ZIP)</span>
+        </label>
 
         <div class="dd-count">{{ itemCount }} κινήσεις θα σταλούν</div>
         <div v-if="error" class="dd-error">{{ error }}</div>
@@ -107,6 +115,8 @@ function submit() {
   padding: 8px 10px; border-radius: 6px; font-size: 0.85rem; outline: none; width: 100%; box-sizing: border-box; }
 .dd-input:focus { border-color: #4FC3A1; }
 .dd-textarea { min-height: 60px; resize: vertical; }
+.dd-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; cursor: pointer; font-size: 0.82rem; color: #c8d8e8; }
+.dd-check input { accent-color: #4FC3A1; width: 16px; height: 16px; }
 .dd-count { margin-top: 12px; font-size: 0.78rem; color: #4FC3A1; font-weight: 600; }
 .dd-error { margin-top: 6px; font-size: 0.78rem; color: #ef5350; }
 .dd-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;

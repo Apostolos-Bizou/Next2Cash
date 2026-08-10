@@ -50,6 +50,12 @@ export async function getDispatchPdf(id) {
   return res.data
 }
 
+/** Download the attachments ZIP of a dispatch. Returns a Blob. */
+export async function getDispatchDocuments(id) {
+  const res = await api.get('/api/report-dispatches/' + id + '/documents', { responseType: 'blob' })
+  return res.data
+}
+
 /** Delete a dispatch (ADMIN only — backend enforces). */
 export async function deleteDispatch(id) {
   await api.delete('/api/report-dispatches/' + id)
@@ -80,7 +86,7 @@ export async function getDispatchStatus(ids) {
  * Section is derived from the transaction SIGN (income → INCOME, else EXPENSE),
  * matching the backend's enforced rule. Deduped by id.
  */
-export function buildDispatchPayload({ title, recipient, note, sentDate, items }) {
+export function buildDispatchPayload({ title, recipient, note, sentDate, items, includeDocs }) {
   const seen = new Set()
   const out = []
   for (const it of items) {
@@ -90,12 +96,27 @@ export function buildDispatchPayload({ title, recipient, note, sentDate, items }
     const section = (it.type === 'income' || it.amount >= 0) ? 'INCOME' : 'EXPENSE'
     out.push({ transactionId: id, section })
   }
-  return { title, recipient, note: note || null, sentDate, items: out }
+  return {
+    title, recipient, note: note || null, sentDate, items: out,
+    includeDocs: includeDocs !== false, // default true
+  }
 }
 
 /** Open a PDF Blob in a new browser tab (revokes the URL shortly after). */
 export function openPdfBlob(blob) {
   const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
   window.open(url, '_blank')
+  setTimeout(() => URL.revokeObjectURL(url), 60000)
+}
+
+/** Trigger a browser download of a Blob under the given filename. */
+export function downloadBlob(blob, filename, type) {
+  const url = URL.createObjectURL(new Blob([blob], { type: type || 'application/octet-stream' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
   setTimeout(() => URL.revokeObjectURL(url), 60000)
 }

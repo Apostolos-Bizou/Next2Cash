@@ -52,6 +52,11 @@ public class ReportDispatch {
     @Column(name = "blob_path", columnDefinition = "TEXT")
     private String blobPath;
 
+    /** Azure Blob path of the ZIP of the dispatched transactions' attachments
+     *  (S105 Level 4.5). Null when not requested or no attachments were found. */
+    @Column(name = "docs_blob_path", columnDefinition = "TEXT")
+    private String docsBlobPath;
+
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 
