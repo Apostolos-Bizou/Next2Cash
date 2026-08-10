@@ -340,17 +340,25 @@ const _loadJSZip = () => {
   })
   return _jsZipPromise
 }
-async function downloadSectionFiles(k) {
-  const txnIds = sections[k].filter(id => id > 0)
-  if (!txnIds.length) { alert('Δεν υπάρχουν κινήσεις σε αυτή την ενότητα.'); return }
+// Which transactions in the report carry attachments (transactions.blobFileIds).
+const txDocsMap = computed(() => {
+  const m = new Map(); allTransactions.value.forEach(t => m.set(t.id, (t.blobFileIds || '').trim())); return m
+})
+const reportHasDocs = computed(() =>
+  [...sections.income, ...sections.expense].some(id => (txDocsMap.value.get(id) || '') !== ''))
+
+// Core: fetch attachments of the given transaction ids and download them as one ZIP.
+async function zipTransactionFiles(txnIds, zipName) {
+  const ids = txnIds.filter(id => id > 0)
+  if (!ids.length) { alert('Δεν υπάρχουν κινήσεις.'); return }
   const allFiles = []
-  for (const id of txnIds) {
+  for (const id of ids) {
     try {
       const res = await api.get('/api/documents/by-transaction/' + id)
       ;(res.data?.data || []).forEach(f => { if (f.downloadUrl && f.fileName) allFiles.push({ url: f.downloadUrl, name: f.fileName, txnId: id }) })
-    } catch (err) { console.warn('[downloadSectionFiles] tx#' + id + ' failed:', err) }
+    } catch (err) { console.warn('[zipTransactionFiles] tx#' + id + ' failed:', err) }
   }
-  if (!allFiles.length) { alert('Δεν βρέθηκαν αρχεία για τις κινήσεις της ενότητας.'); return }
+  if (!allFiles.length) { alert('Δεν βρέθηκαν αρχεία για αυτές τις κινήσεις.'); return }
   let JSZip
   try { JSZip = await _loadJSZip() } catch { alert('Αποτυχία φόρτωσης JSZip.'); return }
   const zip = new JSZip(), usedNames = new Map()
@@ -364,10 +372,12 @@ async function downloadSectionFiles(k) {
   }))
   if (!results.filter(Boolean).length) { alert('Αποτυχία λήψης αρχείων.'); return }
   const zipBlob = await zip.generateAsync({ type: 'blob' })
-  const today = new Date().toISOString().split('T')[0]
   const url = URL.createObjectURL(zipBlob), a = document.createElement('a')
-  a.href = url; a.download = `Report_${k}_${today}.zip`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+  a.href = url; a.download = zipName; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
 }
+const today = () => new Date().toISOString().split('T')[0]
+async function downloadSectionFiles(k) { await zipTransactionFiles(sections[k], `Report_${k}_${today()}.zip`) }
+async function downloadAllFiles() { await zipTransactionFiles([...sections.income, ...sections.expense], `Report_all_${today()}.zip`) }
 
 /* ── errors ── */
 function mapErr(e, fallback) {
@@ -445,6 +455,8 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
           <button class="btn" @click="toggleSummary">{{ showSummary ? '− Σύνοψη' : '+ Σύνοψη' }}</button>
           <button v-if="canDispatch" class="btn" :disabled="!totalCount" @click="preview">📄 Προεπισκόπηση PDF</button>
           <button v-if="canDispatch" class="btn btn-sent" :disabled="!totalCount" @click="openDispatch">✉ Αποστολή &amp; αρχειοθέτηση</button>
+          <button class="btn" :disabled="!reportHasDocs" @click="downloadAllFiles"
+                  title="ZIP με τα παραστατικά όλων των κινήσεων του report">📥 Λήψη όλων των αρχείων</button>
           <span class="count-hint">{{ hint }}</span>
         </div>
 
@@ -468,7 +480,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
               <tbody>
                 <tr v-for="t in s.rows" :key="t.id">
                   <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
-                  <td>{{ t.no }} - {{ t.t }} <span class="tag">{{ t.cat }}</span></td>
+                  <td>{{ t.t }} <span class="tag">{{ t.cat }}</span></td>
                   <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
                   <td class="c-send">
                     <template v-if="!sentInfo(t.id).sent"><span class="st no">○ ΜΗ ΑΠΕΣΤΑΛΜΕΝΟ</span></template>
@@ -569,7 +581,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
             <tr v-for="t in pool" :key="t.id" class="pick-row" :class="{ used: !!where(t.id), checked: isChecked(t.id) }" @click="toggle(t.id)">
               <td class="c-chk"><div class="cbox">{{ (where(t.id) || isChecked(t.id)) ? '✓' : '' }}</div></td>
               <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
-              <td><div class="desc"><span>{{ t.no }} - {{ t.t }}</span><span class="tag">{{ t.cat }}</span>
+              <td><div class="desc"><span>{{ t.t }}</span><span class="tag">{{ t.cat }}</span>
                 <span v-if="where(t.id)" class="st inrep">✓ ΣΤΟ REPORT · {{ where(t.id) === 'income' ? 'Εισπράξεις' : 'Έξοδα' }}</span></div></td>
               <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
               <td class="c-send">
@@ -638,7 +650,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
           <th class="c-id">#ID</th><th class="c-date">ΗΜ/ΝΙΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th class="c-stat">ΚΑΤΑΣΤΑΣΗ</th><th class="c-amt">ΠΟΣΟ</th></tr></thead>
           <tbody><tr v-for="t in detailData.rows" :key="t.id">
             <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
-            <td>{{ t.no }} - {{ t.t }} <span class="tag">{{ t.cat }}</span></td>
+            <td>{{ t.t }} <span class="tag">{{ t.cat }}</span></td>
             <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
             <td class="c-amt" :class="t.a < 0 ? 'amt-neg' : 'amt-pos'">{{ eur(t.a) }}</td></tr></tbody></table></div>
         <div class="m-foot">
