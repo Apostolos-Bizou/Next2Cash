@@ -78,6 +78,18 @@
 - Θέμα **ανοιχτό/σκούρο** σε όλες τις οθόνες, με προεπιλογή από το λειτουργικό
 - Το χαρτί του PDF μένει λευκό και στα δύο θέματα
 
+### 2.6 Παραστατικά στην αποστολή (Level 4.5)
+
+- Checkbox «Να συμπεριληφθούν τα παραστατικά» στο dialog αποστολής, **προεπιλογή ναι**.
+- Server-side: μαζεύει τα `blob_file_ids` των κινήσεων, τα ζιπάρει **streaming**
+  (temp file → `uploadFromFile`, ποτέ όλα στη μνήμη· 40 κινήσεις με σαρώσεις = 100+ MB),
+  αποθηκεύει σε **ξεχωριστό `docs_blob_path`** (`{...}/{dispatchId}-docs.zip`).
+- **Non-fatal ΑΛΛΑ ορατό:** αν λείπουν/αποτύχουν blobs, η αποστολή προχωράει· η απόκριση
+  επιστρέφει `transactionsTotal / documentsFound / documentsAttached / documentsIncluded`
+  και το UI λέει ρητά αν/πόσα παραστατικά δεν μπήκαν. **Ποτέ άδειο ZIP** (0 → `null`).
+- **Cleanup:** αν σκάσει το INSERT μετά τα uploads, σβήνονται **και τα δύο** blobs.
+- **DELETE** αποστολής σβήνει **και τα δύο** blobs (tolerant σε missing).
+
 ---
 
 ## 3. Τεχνικό σχέδιο
@@ -93,6 +105,7 @@ CREATE TABLE IF NOT EXISTS report_dispatches (
   sent_date       DATE NOT NULL,
   note            TEXT,
   blob_path       TEXT,              -- Azure Blob: το παραχθέν PDF
+  docs_blob_path  TEXT,              -- Azure Blob: ZIP παραστατικών (Level 4.5, migration s105_docs.sql)
   created_by      UUID NOT NULL REFERENCES users(id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -125,7 +138,8 @@ Migration policy Next2Cash: **manual idempotent SQL μέσω psql**, όχι Flyw
 GET    /api/report-dispatches?entity_id=&from=&to=&q=
 GET    /api/report-dispatches/{id}
 GET    /api/report-dispatches/{id}/pdf        → stream από Blob
-POST   /api/report-dispatches                 → παράγει PDF + αρχειοθετεί
+GET    /api/report-dispatches/{id}/documents  → stream ZIP παραστατικών από Blob (Level 4.5, 404 αν κανένα)
+POST   /api/report-dispatches                 → παράγει PDF (+ ZIP παραστατικών) + αρχειοθετεί
 POST   /api/report-dispatches/preview         → stream PDF, ΚΑΜΙΑ εγγραφή (no writes, no Blob)
 DELETE /api/report-dispatches/{id}            → ADMIN μόνο
 GET    /api/transactions/dispatch-status?ids= → batch για badges (ids = INTEGER csv)
