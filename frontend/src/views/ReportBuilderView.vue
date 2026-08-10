@@ -1,6 +1,9 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
+import { previewDispatch, createDispatch, buildDispatchPayload, getDispatchStatus } from '@/api/dispatches'
+import PdfPreviewModal from '@/components/PdfPreviewModal.vue'
+import DispatchDialog from '@/components/DispatchDialog.vue'
 
 /* ── Entity mapping ── */
 const ENTITY_MAP = {
@@ -23,6 +26,14 @@ const loading = ref(false)
 
 const sections = ref([])
 const allTransactions = ref([])
+
+// S105 dispatch flow
+const previewBlob = ref(null)
+const sendOpen = ref(false)
+const sending = ref(false)
+const dispatchedIds = ref(new Set())
+const toast = ref('')
+const isDispatched = (id) => dispatchedIds.value.has(id)
 
 // Dynamic categories/subcategories from API
 const categoriesList = ref([])
@@ -389,6 +400,66 @@ const exportPDF = () => {
 
 const exportExcel = () => alert('Export Excel — θα συνδεθεί στη φάση 2')
 
+/* ── S105: server-side preview + dispatch ── */
+function collectItems() {
+  const seen = new Set()
+  const out = []
+  sections.value.forEach(sec => sec.items.forEach(t => {
+    if (!seen.has(t.id)) { seen.add(t.id); out.push(t) }
+  }))
+  return out
+}
+
+function mapErr(e, fallback) {
+  const s = e.response?.status
+  if (s === 400) return 'Μη έγκυρα δεδομένα: ' + (e.response?.data?.message || e.response?.data?.reason || 'ελέγξτε τις κινήσεις')
+  if (s === 403) return 'Δεν έχετε δικαίωμα για αυτή την ενέργεια.'
+  return fallback
+}
+
+async function previewViaServer() {
+  const items = collectItems()
+  if (items.length === 0) { alert('Δεν υπάρχουν κινήσεις στο report'); return }
+  try {
+    const payload = buildDispatchPayload({
+      title: reportTitle.value || 'Αναφορά',
+      recipient: 'Προεπισκόπηση',
+      note: reportDesc.value,
+      sentDate: new Date().toISOString().slice(0, 10),
+      items,
+    })
+    previewBlob.value = await previewDispatch(payload)
+  } catch (e) {
+    alert(mapErr(e, 'Αποτυχία προεπισκόπησης'))
+  }
+}
+
+function openSendDialog() {
+  if (collectItems().length === 0) { alert('Δεν υπάρχουν κινήσεις στο report'); return }
+  sendOpen.value = true
+}
+
+async function submitSend(form) {
+  sending.value = true
+  try {
+    const payload = buildDispatchPayload({ ...form, items: collectItems() })
+    await createDispatch(payload)
+    sendOpen.value = false
+    toast.value = 'Η αναφορά στάλθηκε και αρχειοθετήθηκε.'
+    setTimeout(() => { toast.value = '' }, 4000)
+    await refreshDispatched()
+  } catch (e) {
+    alert(mapErr(e, 'Αποτυχία αποστολής'))
+  } finally {
+    sending.value = false
+  }
+}
+
+async function refreshDispatched() {
+  const ids = allTransactions.value.map(t => t.id).filter(Boolean)
+  dispatchedIds.value = await getDispatchStatus(ids)
+}
+
 /* ── Download section files (client-side ZIP via JSZip CDN) ── */
 let _jsZipPromise = null
 const _loadJSZip = () => {
@@ -514,10 +585,11 @@ const fmtDate = (d) => {
 onMounted(async () => {
   await loadTransactions()
   loadConfig()
+  refreshDispatched()
   window.addEventListener('storage', (e) => {
-    if (e.key === 'n2c_entity') { loadTransactions(); loadConfig() }
+    if (e.key === 'n2c_entity') { loadTransactions().then(refreshDispatched); loadConfig() }
   })
-  window.addEventListener('entity-changed', () => { loadTransactions(); loadConfig() })
+  window.addEventListener('entity-changed', () => { loadTransactions().then(refreshDispatched); loadConfig() })
 })
 // S69: Persist entry mode choice to localStorage
 watch(selectedEntryMode, (v) => {
@@ -696,9 +768,9 @@ watch(selectedEntryMode, (v) => {
         <div class="rb-footer">
           <span class="footer-stats">{{ sectionCount }} κινήσεις σε {{ sections.length }} sections — Έτοιμο</span>
           <div class="footer-actions">
-            <button class="btn-footer" @click="exportExcel">📊 Αρχεία</button>
             <button class="btn-footer" @click="exportExcel">⊞ Excel</button>
-            <button class="btn-footer accent" @click="exportPDF">📄 PDF</button>
+            <button class="btn-footer" @click="previewViaServer">👁 Προεπισκόπηση</button>
+            <button class="btn-footer accent" @click="openSendDialog">📤 Αποστολή</button>
           </div>
         </div>
 
@@ -735,7 +807,7 @@ watch(selectedEntryMode, (v) => {
             <input type="checkbox" :checked="isItemSelected(item.id)" @click.stop="toggleItem(item)" />
             <div class="panel-item-info">
               <div class="panel-item-desc">{{ item.desc }}</div>
-              <div class="panel-item-meta">{{ item.id }} · {{ fmtDate(item.date) }} · {{ item.category }}</div>
+              <div class="panel-item-meta">{{ item.id }} · {{ fmtDate(item.date) }} · {{ item.category }}<span v-if="isDispatched(item.id)" class="sent-badge">σταλμένο</span></div>
             </div>
             <div class="panel-item-amount" :class="item.amount >= 0 ? 'income-col' : 'expense-col'">
               {{ item.amount >= 0 ? '+' : '' }}{{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(item.amount) }} €
@@ -758,6 +830,11 @@ watch(selectedEntryMode, (v) => {
       </div>
 
     </div>
+
+    <PdfPreviewModal :blob="previewBlob" @close="previewBlob = null" />
+    <DispatchDialog :open="sendOpen" :default-title="reportTitle" :item-count="sectionCount"
+                    :busy="sending" @close="sendOpen = false" @submit="submitSend" />
+    <div v-if="toast" class="rb-toast">{{ toast }}</div>
   </div>
 </template>
 
@@ -962,5 +1039,16 @@ watch(selectedEntryMode, (v) => {
   background-color: #3a2818;
   border-color: #ff8c42;
   color: #ffb380;
+}
+
+/* S105: dispatch badges + toast */
+.sent-badge {
+  margin-left: 8px; background: rgba(41,182,246,0.16); color: #29b6f6;
+  padding: 1px 6px; border-radius: 8px; font-size: 0.62rem; font-weight: 700;
+}
+.rb-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #4FC3A1; color: #0d1e2e; padding: 10px 20px; border-radius: 8px;
+  font-weight: 700; font-size: 0.85rem; z-index: 3000; box-shadow: 0 6px 20px rgba(0,0,0,0.35);
 }
 </style>

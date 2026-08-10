@@ -148,6 +148,7 @@ const navSections = [
       { to: '/calendar', section: 'calendar',     label: 'Ημερολόγιο',     icon: 'M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM16 2v4M8 2v4M3 10h18' },
       { to: '/reports', section: 'reports',        label: 'Αναφορές',        icon: 'M3 3v18h18M8 17V9M13 17V5M18 17v-7' },
       { to: '/report-builder', section: 'report-builder', label: 'Report Builder',  icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', badge: 'NEW' },
+      { to: '/dispatch-archive', section: 'report-builder', label: 'Αρχείο Αποστολών', icon: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z', badge: 'NEW' },
       { to: '/ai-analysis', section: 'ai-analysis',    label: 'AI Ανάλυση',      icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3', badge: 'NEW' },
       { to: '/projects', section: 'projects',       label: 'Projects',        icon: 'M3 7h18M3 12h18M3 17h18M7 4v16M17 4v16', badge: 'NEW' },
           { to: '/scenarios', section: 'scenarios',     label: 'Σενάρια',        icon: 'M3 3v18h18M7 14l3-3 3 3 5-5', badge: 'NEW' },

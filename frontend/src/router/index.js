@@ -16,6 +16,7 @@ const router = createRouter({
     { path: '/calendar',       component: () => import('@/views/CalendarView.vue'),     meta: { section: 'calendar', title: 'Ημερολόγιο' } },
   { path: '/reports',        component: () => import('@/views/ReportsView.vue'),       meta: { section: 'reports', title: 'Αναφορές' } },
     { path: '/report-builder', component: () => import('@/views/ReportBuilderView.vue'), meta: { section: 'report-builder', title: 'Report Builder' } },
+    { path: '/dispatch-archive', component: () => import('@/views/DispatchArchiveView.vue'), meta: { section: 'report-builder', title: 'Αρχείο Αποστολών' } },
     { path: '/ai-analysis',    component: () => import('@/views/AiAnalysisView.vue'),    meta: { section: 'ai-analysis', title: 'AI Ανάλυση' } },
     { path: '/projects',       component: () => import('@/views/ProjectsView.vue'),       meta: { section: 'projects', title: 'Projects' } },
     { path: '/projects/:id',   component: () => import('@/views/ProjectDetailView.vue'), meta: { section: 'projects', title: 'Project Detail' } },
