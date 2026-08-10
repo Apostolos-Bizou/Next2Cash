@@ -159,7 +159,7 @@ public class ReportDispatchPdfService {
         line.setLineColor(NAVY);
         line.setLineWidth(1.5f);
         doc.add(line);
-        doc.add(new Paragraph(" "));
+        doc.add(thinGap());
     }
 
     // ─── Title block (ΤΙΤΛΟΣ ΑΝΑΦΟΡΑΣ + recipient + sent date) ───────────────
@@ -191,7 +191,7 @@ public class ReportDispatchPdfService {
         wrap.addCell(cell);
 
         doc.add(wrap);
-        doc.add(new Paragraph(" "));
+        doc.add(thinGap());
     }
 
     // ─── KPI band ───────────────────────────────────────────────────────────
@@ -210,7 +210,7 @@ public class ReportDispatchPdfService {
         kpis.addCell(kpiCell(bf, k.net.signum() >= 0 ? GREEN : RED, "ΚΑΘΑΡΟ ΥΠΟΛΟΙΠΟ", formatMoney(k.net), ""));
 
         doc.add(kpis);
-        doc.add(new Paragraph(" "));
+        doc.add(thinGap());
     }
 
     private PdfPCell kpiCell(BaseFont bf, Color valueColor, String label, String value, String sub) {
@@ -271,7 +271,7 @@ public class ReportDispatchPdfService {
         // available width, holds its header + typical cell on ONE line
         // (measured against DejaVuSans metrics — see S105 width audit).
         // ID  ΗΜ/ΝΙΑ ΠΕΡΙΓΡ ΚΑΤΗΓ ΜΕΘΟΔ ΠΟΣΟ ΠΛΗΡΩΜ ΥΠΟΛ ΗΜ/ΝΙΑΠΛ STATUS
-        table.setWidths(new float[]{42f, 72f, 146f, 92f, 76f, 70f, 82f, 72f, 86f, 76f});
+        table.setWidths(new float[]{42f, 72f, 138f, 92f, 76f, 70f, 82f, 72f, 86f, 84f});
         table.setHeaderRows(1); // repeat header on every page (pagination)
 
         String[] headers = {"ID", "ΗΜ/ΝΙΑ", "ΠΕΡΙΓΡΑΦΗ", "ΚΑΤΗΓΟΡΙΑ", "ΜΕΘΟΔΟΣ",
@@ -338,7 +338,7 @@ public class ReportDispatchPdfService {
     // ─── ΣΥΝΟΨΗ block ───────────────────────────────────────────────────────
 
     private void addSummaryBlock(Document doc, BaseFont bf, Kpis k) throws DocumentException {
-        doc.add(new Paragraph(" "));
+        doc.add(thinGap());
         com.lowagie.text.Font labelFont = new com.lowagie.text.Font(bf, 10, com.lowagie.text.Font.BOLD, NAVY);
         com.lowagie.text.Font hdrFont   = new com.lowagie.text.Font(bf, 11, com.lowagie.text.Font.BOLD, NAVY);
 
@@ -458,6 +458,13 @@ public class ReportDispatchPdfService {
 
     // ─── Helpers ────────────────────────────────────────────────────────────
 
+    /** Thin vertical gap between sections — a fraction of a blank line. */
+    private Paragraph thinGap() {
+        Paragraph p = new Paragraph(" ");
+        p.setLeading(5f);
+        return p;
+    }
+
     private BaseFont loadBaseFont() {
         try (InputStream is = new ClassPathResource(FONT_PATH).getInputStream()) {
             byte[] fontBytes = is.readAllBytes();
@@ -490,7 +497,7 @@ public class ReportDispatchPdfService {
             case "received" -> "Εισπράχθηκε";
             case "unpaid"   -> "Απλήρωτη";
             case "urgent"   -> "⚡ Εκκρεμής";
-            case "partial"  -> "Μερ. Πληρωμένη";
+            case "partial"  -> "Μερική";
             default         -> status;
         };
     }
