@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -136,6 +137,28 @@ public class ReportDispatchController {
         User user = userAccessService.getCurrentUser(authHeader);
         List<String> data = dispatchService.recipients(user, entityId);
         return ResponseEntity.ok(Map.of("success", true, "data", data));
+    }
+
+    // ─── GET dispatch-status (batch, for badges) ────────────────────────────
+
+    @GetMapping("/dispatch-status")
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    public ResponseEntity<?> dispatchStatus(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId,
+            @RequestParam(required = false) String ids) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        List<Integer> idList = new ArrayList<>();
+        if (ids != null && !ids.isBlank()) {
+            for (String s : ids.split(",")) {
+                String t = s.trim();
+                if (t.isEmpty()) continue;
+                try { idList.add(Integer.valueOf(t)); } catch (NumberFormatException ignore) { /* skip */ }
+            }
+        }
+        Set<Integer> dispatched = dispatchService.dispatchStatus(user, entityId, idList);
+        return ResponseEntity.ok(Map.of("success", true, "data", dispatched));
     }
 
     // ─── POST create ────────────────────────────────────────────────────────

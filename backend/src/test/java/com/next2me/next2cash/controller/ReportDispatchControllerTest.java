@@ -267,6 +267,39 @@ class ReportDispatchControllerTest extends BaseIntegrationTest {
             .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.APPLICATION_PDF));
     }
 
+    // ─── dispatch-status batch endpoint ─────────────────────────────────────
+
+    @Test
+    void admin_dispatchStatus_returnsDispatchedIds() throws Exception {
+        Transaction a = expense(next2me.getId());
+        Transaction b = expense(next2me.getId()); // not dispatched
+        ReportDispatchCreateRequest.Item item = new ReportDispatchCreateRequest.Item();
+        item.setTransactionId(a.getId());
+        item.setSection("EXPENSE");
+        ReportDispatchCreateRequest r = new ReportDispatchCreateRequest();
+        r.setTitle("T"); r.setRecipient("Λογιστήριο");
+        r.setSentDate(LocalDate.of(2026, 1, 31)); r.setItems(List.of(item));
+        dispatchService.create(admin, next2me.getId(), r, null);
+
+        mockMvc.perform(get("/api/report-dispatches/dispatch-status")
+                .header("Authorization", tdb.bearerToken(admin))
+                .param("entityId", next2me.getId().toString())
+                .param("ids", a.getId() + "," + b.getId()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", org.hamcrest.Matchers.contains(a.getId())));
+    }
+
+    @Test
+    void viewer_dispatchStatus_forbidden() throws Exception {
+        User simos = tdb.createViewer("simos");
+        tdb.assignEntities(simos, next2meGroup);
+        mockMvc.perform(get("/api/report-dispatches/dispatch-status")
+                .header("Authorization", tdb.bearerToken(simos))
+                .param("entityId", next2meGroup.getId().toString())
+                .param("ids", "1,2,3"))
+            .andExpect(status().isForbidden());
+    }
+
     // ─── VIEWER 403 on preview too ──────────────────────────────────────────
 
     @Test
