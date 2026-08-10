@@ -143,4 +143,20 @@ class ReportDispatchPdfServiceTest {
         // Contiguous contains() fails if it wrapped to "ΧΡΗΜΑΤΟΔΟΤΗΣ" + "Η".
         assertTrue(text.contains("ΧΡΗΜΑΤΟΔΟΤΗΣΗ"), "ΚΑΤΗΓΟΡΙΑ column too narrow — category wrapped");
     }
+
+    // ─── stripLeadingId: display-only id-prefix removal ────────────────────
+
+    @Test
+    void stripLeadingId_removesExactIdPrefixOnly() {
+        // "{id} - " form
+        assertEquals("ΕΣΟΔΑ", ReportDispatchPdfService.stripLeadingId(4811, "4811 - ΕΣΟΔΑ"));
+        // "{id}-" form (no spaces)
+        assertEquals("ΕΣΟΔΑ", ReportDispatchPdfService.stripLeadingId(4811, "4811-ΕΣΟΔΑ"));
+        // leading number is NOT this id → unchanged
+        assertEquals("2024/0345 - τιμολόγιο", ReportDispatchPdfService.stripLeadingId(4811, "2024/0345 - τιμολόγιο"));
+        // no prefix → unchanged
+        assertEquals("ΕΣΟΔΑ ΒΑΡΙΑΣ", ReportDispatchPdfService.stripLeadingId(4811, "ΕΣΟΔΑ ΒΑΡΙΑΣ"));
+        // a longer number that merely starts with the id → unchanged
+        assertEquals("48110 - X", ReportDispatchPdfService.stripLeadingId(4811, "48110 - X"));
+    }
 }

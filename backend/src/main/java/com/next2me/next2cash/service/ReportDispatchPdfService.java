@@ -307,7 +307,7 @@ public class ReportDispatchPdfService {
                 addBodyCell(table, bg, bodyFont, idStr, Element.ALIGN_LEFT);
                 addBodyCell(table, bg, bodyFont,
                         t.getDocDate() != null ? t.getDocDate().format(DATE_DISPLAY) : "—", Element.ALIGN_LEFT);
-                addBodyCell(table, bg, bodyFont, safe(t.getDescription()), Element.ALIGN_LEFT);
+                addBodyCell(table, bg, bodyFont, safe(stripLeadingId(t.getId(), t.getDescription())), Element.ALIGN_LEFT);
                 addBodyCell(table, bg, bodyFont, safe(t.getCategory()), Element.ALIGN_LEFT);
                 addBodyCell(table, bg, bodyFont, nonEmpty(t.getPaymentMethod()), Element.ALIGN_LEFT);
 
@@ -476,6 +476,20 @@ public class ReportDispatchPdfService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to load DejaVuSans font: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Display-only: strip a leading "{id} - " or "{id}-" prefix from the
+     * description when it EXACTLY duplicates this transaction's id (already shown
+     * in the ID column). Never a general "number at the start" — only the id.
+     * Stored data is untouched.
+     */
+    static String stripLeadingId(Integer id, String desc) {
+        if (id == null || desc == null) return desc;
+        String sid = String.valueOf(id);
+        if (desc.startsWith(sid + " - ")) return desc.substring(sid.length() + 3);
+        if (desc.startsWith(sid + "-"))   return desc.substring(sid.length() + 1);
+        return desc;
     }
 
     private static BigDecimal zero() { return new BigDecimal("0.00"); }

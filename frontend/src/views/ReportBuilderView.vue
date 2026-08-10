@@ -58,6 +58,15 @@ const plain = (n) => fmtNum(n) + ' €'
 const grShort = (iso) => { const [y, m, d] = String(iso).split('-'); return `${d}/${m}/${y.slice(2)}` }
 const grFull = (iso) => { const [y, m, d] = String(iso).split('-'); return `${d}/${m}/${y}` }
 const docDisplay = (iso) => { if (!iso) return '—'; const [y, m, d] = String(iso).split('-'); return `${d}/${m}/${y}` }
+// Display-only: strip a leading "{id} - " or "{id}-" that duplicates the id
+// column — only when the leading token EXACTLY equals this transaction's id.
+function stripLeadingId(id, desc) {
+  if (id == null || desc == null) return desc
+  const sid = String(id)
+  if (desc.startsWith(sid + ' - ')) return desc.slice(sid.length + 3)
+  if (desc.startsWith(sid + '-')) return desc.slice(sid.length + 1)
+  return desc
+}
 
 /* ── mapped transactions (TX-like) ── */
 const txList = computed(() => allTransactions.value
@@ -66,7 +75,7 @@ const txList = computed(() => allTransactions.value
     id: t.id,
     no: t.entityNumber != null ? t.entityNumber : t.id,
     d: docDisplay(t.docDate),
-    t: t.description || '',
+    t: stripLeadingId(t.id, t.description || ''),
     cat: t.category || '',
     a: t.type === 'income' ? (Number(t.amount) || 0) : -(Number(t.amount) || 0),
     paid: t.paymentStatus === 'paid' || t.paymentStatus === 'received',
