@@ -1,374 +1,332 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
-import { previewDispatch, createDispatch, buildDispatchPayload, getDispatchStatus } from '@/api/dispatches'
-import PdfPreviewModal from '@/components/PdfPreviewModal.vue'
-import DispatchDialog from '@/components/DispatchDialog.vue'
+import '@/assets/theme.css'
 import { useUserStore } from '@/stores/user'
+import PdfPreviewModal from '@/components/PdfPreviewModal.vue'
+import DispatchArchiveView from '@/views/DispatchArchiveView.vue'
+import {
+  listDispatches, getDispatch, createDispatch, previewDispatch, getDispatchPdf,
+  deleteDispatch, getRecipients, buildDispatchPayload,
+} from '@/api/dispatches'
 
-// S105: dispatch actions (preview/send) are admin/user only — VIEWER (Σίμος)
-// keeps the read-only builder but never sees these buttons. Backend also 403s.
+const ENTITY_MAP = {
+  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
+  house: 'dea1f32c-7b30-4981-b625-633da9dbe71e',
+  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
+}
+const entityId = () => ENTITY_MAP[localStorage.getItem('n2c_entity') || 'next2me'] || ENTITY_MAP.next2me
+
+const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 const canDispatch = computed(() => ['admin', 'user'].includes((userStore.profile?.role || '').toLowerCase()))
 
-/* ── Entity mapping ── */
-const ENTITY_MAP = {
-  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
-  house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
+/* ── theme ── */
+const theme = ref(localStorage.getItem('n2c_rb_theme')
+  || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'))
+function toggleTheme() {
+  theme.value = theme.value === 'dark' ? 'light' : 'dark'
+  try { localStorage.setItem('n2c_rb_theme', theme.value) } catch (e) { /* ignore */ }
 }
 
-/* ── State ── */
+/* ── tabs ── */
+const activeTab = ref(route.path === '/dispatch-archive' && canDispatch.value ? 'arc' : 'report')
+function go(v) {
+  activeTab.value = v
+  const target = v === 'arc' ? '/dispatch-archive' : '/report-builder'
+  if (route.path !== target) router.push(target)
+}
+watch(() => route.path, (p) => {
+  activeTab.value = (p === '/dispatch-archive' && canDispatch.value) ? 'arc' : 'report'
+})
+
+/* ── state ── */
 const reportTitle = ref('')
 const reportDesc = ref('')
-const selectedCategory = ref('all')
-const selectedSubcategory = ref('all')
-const dateFrom = ref('')
-const dateTo = ref('')
-const selectedMethod = ref('all')
-const displayMode = ref('both')
-const groupByCategory = ref(false)
-const loading = ref(false)
-
-const sections = ref([])
 const allTransactions = ref([])
-
-// S105 dispatch flow
-const previewBlob = ref(null)
-const sendOpen = ref(false)
-const sending = ref(false)
-const dispatchedIds = ref(new Set())
-const toast = ref('')
-const isDispatched = (id) => dispatchedIds.value.has(id)
-
-// Dynamic categories/subcategories from API
 const categoriesList = ref([])
-const subcategoriesList = ref([])
+const sections = reactive({ income: [], expense: [] })
+const showSummary = ref(true)
+const dispatchIndex = ref([])
 
-// Right panel
-const itemFilter = ref('')
-const itemFilterTab = ref('all')
-const selectedItems = ref([])
-const isPanelOpen = ref(true)
+/* ── formatting ── */
+const fmtNum = (n) => Math.abs(n).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+const eur = (n) => (n < 0 ? '- ' : '+ ') + fmtNum(n) + ' €'
+const plain = (n) => fmtNum(n) + ' €'
+const grShort = (iso) => { const [y, m, d] = String(iso).split('-'); return `${d}/${m}/${y.slice(2)}` }
+const grFull = (iso) => { const [y, m, d] = String(iso).split('-'); return `${d}/${m}/${y}` }
+const docDisplay = (iso) => { if (!iso) return '—'; const [y, m, d] = String(iso).split('-'); return `${d}/${m}/${y}` }
 
-// S69: Mode toggle for right panel only (actual/planned/all)
-// Sections already built remain untouched when mode changes
-const selectedEntryMode = ref(localStorage.getItem('reportBuilderViewMode') || 'actual')
-
-// Display mode options
-const displayModes = [
-  { value: 'both',    label: 'Έσοδα + Έξοδα' },
-  { value: 'income',  label: 'Μόνο Έσοδα' },
-  { value: 'expense', label: 'Μόνο Έξοδα' },
-]
-
-// Payment methods (static — same as legacy)
-const methods = [
-  { value: 'all',            label: 'Όλες' },
-  { value: 'Μετρητά',       label: 'Μετρητά' },
-  { value: 'Τράπεζα',       label: 'Τράπεζα' },
-  { value: 'Απόδειξη',  label: 'Απόδειξη' },
-  { value: 'HSBC',           label: 'HSBC' },
-  { value: 'Πειραιώς',  label: 'Πειραιώς' },
-  { value: 'Πορτοφόλι', label: 'Πορτοφόλι' },
-  { value: 'Revolut GBP',   label: 'Revolut GBP' },
-  { value: 'Revolut USD',   label: 'Revolut USD' },
-  { value: 'Revolut EUR',   label: 'Revolut EUR' },
-]
-
-/* ── Fetch transactions ── */
-async function loadTransactions() {
-  const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
-  const entityId = ENTITY_MAP[entityKey]
-  if (!entityId) return
-
-  loading.value = true
-  try {
-    const res = await api.get('/api/transactions', {
-      params: { entityId, page: 0, perPage: 9999 }
-    })
-    const data = res.data?.data || res.data || []
-    allTransactions.value = (Array.isArray(data) ? data : []).filter(
-      t => (t.recordStatus || 'active') === 'active'
-    )
-  } catch (err) {
-    console.error('ReportBuilder: failed to load transactions', err)
-    allTransactions.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-/* ── Fetch categories from config ── */
-async function loadConfig() {
-  const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
-  const entityId = ENTITY_MAP[entityKey]
-  if (!entityId) return
-
-  try {
-    const res = await api.get('/api/config/items', { params: { entityId } })
-    const items = res.data?.data || res.data || []
-    categoriesList.value = items.filter(i => i.configType === 'category' && i.isActive !== false)
-    subcategoriesList.value = items.filter(i => i.configType === 'subcategory' && i.isActive !== false)
-  } catch (err) {
-    console.error('ReportBuilder: failed to load config', err)
-    // Fallback: extract unique categories from transactions
-    if (allTransactions.value.length > 0) {
-      const cats = [...new Set(allTransactions.value.map(t => t.category).filter(Boolean))]
-      categoriesList.value = cats.map((name, i) => ({ id: i, configKey: name, configValue: name, configType: 'category', isActive: true }))
-      const subs = [...new Set(allTransactions.value.map(t => t.subcategory).filter(Boolean))]
-      subcategoriesList.value = subs.map((name, i) => ({ id: i, configKey: name, configValue: name, configType: 'subcategory', isActive: true }))
-    }
-  }
-}
-
-/* ── Filtered items for right panel ── */
-const panelItems = computed(() => {
-  let items = allTransactions.value.map(t => ({
+/* ── mapped transactions (TX-like) ── */
+const txList = computed(() => allTransactions.value
+  .filter(t => (t.recordStatus || 'active') === 'active')
+  .map(t => ({
     id: t.id,
-    date: t.docDate || '',
-    desc: t.description || t.comments || '',
-    category: t.category || '',
-    subcategory: t.subcategory || '',
-    amount: t.type === 'income' ? Number(t.amount) || 0 : -(Number(t.amount) || 0),
-    type: t.type,
-    paymentMethod: t.paymentMethod || '',
-    paymentStatus: t.paymentStatus || 'unpaid',
-    amountPaid: Number(t.amountPaid) || 0,
-    amountRemaining: Number(t.amountRemaining) || 0,
-    paymentDate: t.paymentDate || '',
-    blobFileIds: t.blobFileIds || '',
-  }))
+    no: t.entityNumber != null ? t.entityNumber : t.id,
+    d: docDisplay(t.docDate),
+    t: t.description || '',
+    cat: t.category || '',
+    a: t.type === 'income' ? (Number(t.amount) || 0) : -(Number(t.amount) || 0),
+    paid: t.paymentStatus === 'paid' || t.paymentStatus === 'received',
+    m: t.paymentMethod || '',
+  })))
+const txById = computed(() => { const m = new Map(); txList.value.forEach(t => m.set(t.id, t)); return m })
+const T = (id) => txById.value.get(id)
+const where = (id) => Object.keys(sections).find(k => sections[k].includes(id))
 
-  // Apply sidebar filters
-  if (selectedCategory.value !== 'all') {
-    items = items.filter(i => i.category === selectedCategory.value)
+/* ── sent index (from dispatch list + detail) ── */
+const sentOf = (id) => dispatchIndex.value
+  .filter(d => (d.transactionIds || []).includes(id))
+  .sort((a, b) => (a.sentDate < b.sentDate ? 1 : -1))
+const isSent = (id) => sentOf(id).length > 0
+function sentInfo(id) {
+  const s = sentOf(id)
+  if (!s.length) return { sent: false }
+  const l = s[0]
+  return {
+    sent: true, count: s.length, first: l,
+    title: s.map(x => grShort(x.sentDate) + ' → ' + x.recipient).join(' · '),
   }
-  if (selectedSubcategory.value !== 'all') {
-    items = items.filter(i => i.subcategory === selectedSubcategory.value)
-  }
-  if (dateFrom.value) {
-    items = items.filter(i => i.date >= dateFrom.value)
-  }
-  if (dateTo.value) {
-    items = items.filter(i => i.date <= dateTo.value)
-  }
-  if (selectedMethod.value !== 'all') {
-    items = items.filter(i => i.paymentMethod === selectedMethod.value)
-  }
-  if (displayMode.value === 'income') {
-    items = items.filter(i => i.type === 'income')
-  } else if (displayMode.value === 'expense') {
-    items = items.filter(i => i.type === 'expense')
-  }
+}
 
-  // S69: Apply entry mode filter (actual/planned/all) on right panel only
-  if (selectedEntryMode.value === 'actual') {
-    items = items.filter(i => {
-      const t = allTransactions.value.find(tx => tx.id === i.id)
-      return !t || (t.entryMode || 'ACTUAL').toUpperCase() === 'ACTUAL'
-    })
-  } else if (selectedEntryMode.value === 'planned') {
-    items = items.filter(i => {
-      const t = allTransactions.value.find(tx => tx.id === i.id)
-      return t && (t.entryMode || '').toUpperCase() === 'PLANNED'
-    })
-  }
-  // 'all' = no filter
-
-  // Sort by date desc
-  items.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-
-  return items
+/* ── section views ── */
+const sectionsView = computed(() => (['income', 'expense']).map(k => {
+  const rows = sections[k].map(T).filter(Boolean)
+  const total = rows.reduce((a, t) => a + t.a, 0)
+  const un = rows.filter(t => !isSent(t.id)).length
+  return { key: k, name: k === 'income' ? 'Εισπράξεις' : 'Έξοδα', rows, total, un }
+}))
+const totalCount = computed(() => sections.income.length + sections.expense.length)
+const hint = computed(() => {
+  const n = totalCount.value
+  return `${2 + (showSummary.value ? 1 : 0)} ενότητες · ${n} ${n === 1 ? 'κίνηση' : 'κινήσεις'}`
 })
 
-const filteredItems = computed(() => {
-  let items = panelItems.value
-
-  // Search filter
-  if (itemFilter.value) {
-    const q = itemFilter.value.toLowerCase()
-    items = items.filter(i => {
-      const dateStr = i.date ? i.date.split('-').reverse().join('/') : ''
-      return i.desc.toLowerCase().includes(q) || String(i.id).includes(q) || dateStr.includes(q) || (i.category || '').toLowerCase().includes(q)
-    })
+/* ── summary ── */
+const summary = computed(() => {
+  const inc = sections.income.map(T).filter(Boolean)
+  const exp = sections.expense.map(T).filter(Boolean)
+  const sIn = inc.reduce((a, t) => a + t.a, 0)
+  const sEx = exp.reduce((a, t) => a + t.a, 0)
+  const net = sIn + sEx
+  const all = [...inc, ...exp]
+  const nS = all.filter(t => isSent(t.id)).length
+  const abs = (x) => x.reduce((a, t) => a + Math.abs(t.a), 0)
+  const eS = exp.filter(t => isSent(t.id)), eN = exp.filter(t => !isSent(t.id)), due = exp.filter(t => !t.paid)
+  return {
+    inc, exp, sIn, sEx, net, allLen: all.length, nS,
+    eSsum: abs(eS), eNsum: abs(eN), eNlen: eN.length, dueSum: abs(due), dueLen: due.length,
   }
-
-  // Tab filter
-  if (itemFilterTab.value === 'income')  items = items.filter(i => i.amount > 0)
-  if (itemFilterTab.value === 'expense') items = items.filter(i => i.amount < 0)
-  if (itemFilterTab.value === 'urgent')  items = items.filter(i => i.paymentStatus === 'urgent' || i.paymentStatus === 'unpaid')
-
-  return items
 })
 
-/* ── Computed ── */
-const sectionCount = computed(() => sections.value.reduce((s, sec) => s + sec.items.length, 0))
-const totalIncome = computed(() => sections.value.filter(s => s.type === 'income').flatMap(s => s.items).reduce((s, i) => s + Math.abs(i.amount), 0))
-const totalExpense = computed(() => sections.value.filter(s => s.type === 'expense').flatMap(s => s.items).reduce((s, i) => s + Math.abs(i.amount), 0))
+/* ── toast ── */
+const toastState = reactive({ show: false, a: '', b: '', actLabel: '', hasAct: false })
+let toastFn = null, toastTimer = null
+function toast(a, b, act) {
+  toastState.a = a; toastState.b = b
+  toastState.hasAct = !!act
+  if (act) { toastState.actLabel = act.label; toastFn = act.fn }
+  toastState.show = true
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 9000)
+}
+function toastAct() { if (toastFn) { const f = toastFn; toastFn = null; hideToast(); f() } }
+function hideToast() { toastState.show = false }
 
-const isItemSelected = (id) => selectedItems.value.includes(id)
+/* ── add / remove ── */
+let lastRemoved = null
+function removeRow(k, id) {
+  const i = sections[k].indexOf(id); if (i < 0) return
+  sections[k].splice(i, 1); lastRemoved = { k, id, i }
+  const t = T(id)
+  toast(`Αφαιρέθηκε: ${t.no} - ${t.t}`, `${eur(t.a)} · από «${k === 'income' ? 'Εισπράξεις' : 'Έξοδα'}»`,
+    { label: 'Αναίρεση', fn: undo })
+  if (picker.open) refreshPickSel()
+}
+function clearSection(k) {
+  const rm = [...sections[k]]; sections[k].splice(0)
+  lastRemoved = { k, bulk: rm }
+  toast(`Καθαρίστηκε η ενότητα «${k === 'income' ? 'Εισπράξεις' : 'Έξοδα'}»`, `${rm.length} κινήσεις αφαιρέθηκαν`,
+    { label: 'Αναίρεση', fn: undo })
+}
+function undo() {
+  if (!lastRemoved) return
+  if (lastRemoved.bulk) { sections[lastRemoved.k].splice(0, sections[lastRemoved.k].length, ...lastRemoved.bulk) }
+  else sections[lastRemoved.k].splice(lastRemoved.i, 0, lastRemoved.id)
+  lastRemoved = null; hideToast()
+}
+function toggleSummary() { showSummary.value = !showSummary.value }
 
-const toggleItem = (item) => {
-  if (isItemSelected(item.id)) {
-    selectedItems.value = selectedItems.value.filter(id => id !== item.id)
-  } else {
-    selectedItems.value.push(item.id)
-  }
+/* ── picker ── */
+const picker = reactive({ open: false, tab: 'all', q: '', cat: '', used: 'all', sent: 'all', pay: 'all' })
+const selIds = ref([])
+function openPicker(k) {
+  selIds.value = []
+  picker.open = true; picker.tab = k === 'income' ? 'in' : 'out'
+  picker.q = ''; picker.cat = ''; picker.used = 'all'; picker.sent = 'all'; picker.pay = 'all'
+}
+function closePicker() { picker.open = false }
+const pickerCats = computed(() => [...new Set(txList.value.map(t => t.cat).filter(Boolean))].sort())
+const pickCounts = computed(() => ({
+  all: txList.value.length,
+  in: txList.value.filter(t => t.a > 0).length,
+  out: txList.value.filter(t => t.a < 0).length,
+}))
+const pool = computed(() => txList.value.filter(t => {
+  if (picker.tab === 'in' && t.a < 0) return false
+  if (picker.tab === 'out' && t.a > 0) return false
+  if (picker.cat && t.cat !== picker.cat) return false
+  const used = !!where(t.id)
+  if (picker.used === 'free' && used) return false
+  if (picker.used === 'used' && !used) return false
+  if (picker.sent === 'no' && isSent(t.id)) return false
+  if (picker.sent === 'yes' && !isSent(t.id)) return false
+  if (picker.pay === 'paid' && !t.paid) return false
+  if (picker.pay === 'due' && t.paid) return false
+  const q = picker.q.trim().toLowerCase()
+  if (q && !`${t.no} ${t.t} ${t.id}`.toLowerCase().includes(q)) return false
+  return true
+}))
+const isChecked = (id) => selIds.value.includes(id)
+function toggle(id) {
+  const w = where(id)
+  if (w) { toast('Η κίνηση είναι ήδη στο report', `Στην ενότητα «${w === 'income' ? 'Εισπράξεις' : 'Έξοδα'}» — αφαίρεσέ την από εκεί`, null); return }
+  selIds.value = isChecked(id) ? selIds.value.filter(x => x !== id) : [...selIds.value, id]
+}
+function refreshPickSel() { selIds.value = selIds.value.filter(id => !where(id)) }
+function selectAllVisible() {
+  const add = pool.value.filter(t => !where(t.id)).map(t => t.id)
+  selIds.value = [...new Set([...selIds.value, ...add])]
+}
+function splitBySign(ids) { const inc = [], exp = []; ids.forEach(id => (T(id).a >= 0 ? inc : exp).push(id)); return { inc, exp } }
+function routeLabel(inc, exp) {
+  const p = []; if (inc.length) p.push(`${inc.length} στις Εισπράξεις`); if (exp.length) p.push(`${exp.length} στα Έξοδα`); return p.join(' · ')
+}
+const addBtnLabel = computed(() => {
+  if (!selIds.value.length) return 'Προσθήκη'
+  const { inc, exp } = splitBySign(selIds.value)
+  return `Προσθήκη ${selIds.value.length} — ${routeLabel(inc, exp)}`
+})
+function addSelected() {
+  const { inc, exp } = splitBySign(selIds.value)
+  sections.income.push(...inc); sections.expense.push(...exp)
+  const n = selIds.value.length; selIds.value = []; closePicker(); lastRemoved = null
+  toast(`Προστέθηκαν ${n} ${n === 1 ? 'κίνηση' : 'κινήσεις'}`, routeLabel(inc, exp), null)
 }
 
-const addSelectedToReport = () => {
-  if (selectedItems.value.length === 0) return
-
-  // Collect all existing IDs across all sections (dedup)
-  const existingIds = new Set()
-  sections.value.forEach(s => s.items.forEach(i => existingIds.add(String(i.id))))
-
-  const itemsToAdd = panelItems.value.filter(i =>
-    selectedItems.value.includes(i.id) && !existingIds.has(String(i.id))
-  )
-  if (itemsToAdd.length === 0) {
-    selectedItems.value = []
-    return
-  }
-
-  // Auto-distribute: income -> income section, expense -> expense section
-  const incomeTxns = itemsToAdd.filter(i => i.type === 'income')
-  const expenseTxns = itemsToAdd.filter(i => i.type !== 'income')
-
-  if (incomeTxns.length > 0) {
-    let incSec = sections.value.find(s => s.type === 'income')
-    if (!incSec) {
-      addSection('income')
-      incSec = sections.value[sections.value.length - 1]
-    }
-    incomeTxns.forEach(item => {
-      if (!incSec.items.find(i => i.id === item.id)) {
-        incSec.items.push({ ...item })
-      }
-    })
-    incSec.items.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-  }
-
-  if (expenseTxns.length > 0) {
-    let expSec = sections.value.find(s => s.type === 'expense')
-    if (!expSec) {
-      addSection('expense')
-      expSec = sections.value[sections.value.length - 1]
-    }
-    expenseTxns.forEach(item => {
-      if (!expSec.items.find(i => i.id === item.id)) {
-        expSec.items.push({ ...item })
-      }
-    })
-    expSec.items.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-  }
-
-  selectedItems.value = []
-}
-
-/* ── Section Actions ── */
-const addSection = (type) => {
-  sections.value.push({
-    id: Date.now(),
-    type,
-    label: type === 'income' ? 'Εισπράξεις' : type === 'expense' ? 'Έξοδα' : 'Σύνοψη',
-    items: []
-  })
-}
-
-const removeSection = (id) => {
-  sections.value = sections.value.filter(s => s.id !== id)
-}
-
-/* ── Apply Filters (re-filter panel) ── */
-const applyFilters = () => {
-  // Filters are reactive via computed — this is just UX feedback
-  selectedItems.value = []
-}
-
-// S105: the old client-side window.print() PDF export was removed — PDFs are
-// now generated + stored server-side (Προεπισκόπηση / Αποστολή below).
-const exportExcel = () => alert('Export Excel — θα συνδεθεί στη φάση 2')
-
-/* ── S105: server-side preview + dispatch ── */
-function collectItems() {
-  const seen = new Set()
-  const out = []
-  sections.value.forEach(sec => sec.items.forEach(t => {
-    if (!seen.has(t.id)) { seen.add(t.id); out.push(t) }
-  }))
-  return out
-}
-
-function mapErr(e, fallback) {
-  const s = e.response?.status
-  if (s === 400) return 'Μη έγκυρα δεδομένα: ' + (e.response?.data?.message || e.response?.data?.reason || 'ελέγξτε τις κινήσεις')
-  if (s === 403) return 'Δεν έχετε δικαίωμα για αυτή την ενέργεια.'
-  return fallback
-}
-
-async function previewViaServer() {
-  const items = collectItems()
-  if (items.length === 0) { alert('Δεν υπάρχουν κινήσεις στο report'); return }
+/* ── preview (real backend PDF) ── */
+const previewBlob = ref(null)
+const previewTitle = ref('Προεπισκόπηση PDF')
+async function preview() {
+  const items = [...sections.income, ...sections.expense].map(id => ({ id, amount: T(id).a }))
+  if (!items.length) return
   try {
     const payload = buildDispatchPayload({
-      title: reportTitle.value || 'Αναφορά',
-      recipient: 'Προεπισκόπηση',
-      note: reportDesc.value,
-      sentDate: new Date().toISOString().slice(0, 10),
-      items,
+      title: reportTitle.value || 'Αναφορά', recipient: 'Προεπισκόπηση', note: reportDesc.value,
+      sentDate: new Date().toISOString().slice(0, 10), items, includeDocs: false,
     })
+    previewTitle.value = 'Προεπισκόπηση PDF — δεν έχει σταλεί ακόμα'
     previewBlob.value = await previewDispatch(payload)
-  } catch (e) {
-    alert(mapErr(e, 'Αποτυχία προεπισκόπησης'))
-  }
+  } catch (e) { alert(mapErr(e, 'Αποτυχία προεπισκόπησης')) }
 }
-
-function openSendDialog() {
-  if (collectItems().length === 0) { alert('Δεν υπάρχουν κινήσεις στο report'); return }
-  sendOpen.value = true
-}
-
-async function submitSend(form) {
-  sending.value = true
+async function openStoredPdf(id) {
+  const d = dispatchIndex.value.find(x => x.id === id); if (!d) return
   try {
-    const payload = buildDispatchPayload({ ...form, items: collectItems() })
-    const result = await createDispatch(payload)
-    sendOpen.value = false
+    previewTitle.value = d.title
+    previewBlob.value = await getDispatchPdf(id)
+  } catch (e) { alert(e.response?.status === 404 ? 'Το PDF δεν βρέθηκε.' : 'Αποτυχία λήψης PDF.') }
+}
 
-    // Build a message that makes the (non-fatal) attachment outcome visible.
-    let msg = 'Η αναφορά στάλθηκε και αρχειοθετήθηκε.'
-    let warn = false
-    if (result && result.docsRequested && result.documentsFound > 0) {
-      const attached = result.documentsAttached || 0
-      const missing = result.documentsFound - attached
-      if (attached === 0) {
-        msg += ' ⚠ Τα παραστατικά ΔΕΝ συμπεριλήφθηκαν (' + missing + ' δεν βρέθηκαν).'
-        warn = true
-      } else if (missing > 0) {
-        msg += ' ⚠ ' + missing + ' από ' + result.documentsFound + ' παραστατικά δεν μπήκαν.'
-        warn = true
-      } else {
-        msg += ' (' + attached + ' παραστατικά)'
-      }
+/* ── dispatch dialog ── */
+const send = reactive({ open: false, title: '', rcp: '', date: '', note: '', scEx: true, scIn: false, includeDocs: true, busy: false })
+const recipients = ref([])
+function openDispatch() {
+  if (!totalCount.value) return
+  send.title = reportTitle.value; send.rcp = ''; send.note = ''
+  send.date = new Date().toISOString().slice(0, 10)
+  send.scEx = sections.expense.length > 0; send.scIn = sections.income.length > 0 && sections.expense.length === 0
+  if (!send.scEx && !send.scIn) { send.scIn = sections.income.length > 0 }
+  send.includeDocs = true
+  getRecipients().then(r => { recipients.value = r }).catch(() => { recipients.value = [] })
+  send.open = true
+}
+function scopeIds() {
+  let i = []
+  if (send.scEx) i = i.concat(sections.expense)
+  if (send.scIn) i = i.concat(sections.income)
+  return i
+}
+const sendSummaryText = computed(() => {
+  const ids = scopeIds()
+  if (!ids.length) return { warn: true, html: '⚠ Δεν έχεις επιλέξει τίποτα να σταλεί.' }
+  const again = ids.filter(isSent).length
+  let s = `Θα δημιουργηθεί PDF με ${ids.length} κινήσεις και θα αρχειοθετηθεί στις Αποστολές.`
+  if (again) s += ` ⚠ Οι ${again} έχουν ξανασταλεί — προστίθεται νέα εγγραφή, δεν χάνεται η προηγούμενη.`
+  return { warn: false, html: s }
+})
+const scExAmt = computed(() => `${sections.expense.length} · ${plain(sections.expense.reduce((a, id) => a + Math.abs(T(id).a), 0))}`)
+const scInAmt = computed(() => `${sections.income.length} · ${plain(sections.income.reduce((a, id) => a + Math.abs(T(id).a), 0))}`)
+async function confirmDispatch() {
+  const ids = scopeIds()
+  if (!ids.length) { toast('Δεν επιλέχθηκε τίποτα', 'Τσέκαρε Έξοδα ή Εισπράξεις', null); return }
+  if (!send.title.trim()) { toast('Λείπει ο τίτλος', 'Χωρίς τίτλο δεν θα το βρίσκεις στο αρχείο', null); return }
+  if (!send.rcp.trim()) { toast('Λείπει ο παραλήπτης', 'Γράψε πού το στέλνεις', null); return }
+  send.busy = true
+  try {
+    const items = ids.map(id => ({ id, amount: T(id).a }))
+    const payload = buildDispatchPayload({
+      title: send.title.trim(), recipient: send.rcp.trim(), note: send.note.trim(),
+      sentDate: send.date, items, includeDocs: send.includeDocs,
+    })
+    const res = await createDispatch(payload)
+    send.open = false
+    let msg = `Αρχειοθετήθηκε: «${send.title.trim()}»`, sub = `${ids.length} κινήσεις → ${send.rcp.trim()}`
+    if (res && res.docsRequested && res.documentsFound > 0) {
+      const att = res.documentsAttached || 0, miss = res.documentsFound - att
+      if (att === 0) sub += ` · ⚠ παραστατικά ΔΕΝ μπήκαν (${miss} δεν βρέθηκαν)`
+      else if (miss > 0) sub += ` · ⚠ ${miss}/${res.documentsFound} παραστατικά δεν μπήκαν`
+      else sub += ` · ${att} παραστατικά`
     }
-    toast.value = msg
-    setTimeout(() => { toast.value = '' }, warn ? 8000 : 4000)
-    await refreshDispatched()
-  } catch (e) {
-    alert(mapErr(e, 'Αποτυχία αποστολής'))
-  } finally {
-    sending.value = false
+    await loadDispatchIndex()
+    const newId = res?.id
+    toast(msg, sub, newId ? { label: 'Άνοιγμα PDF', fn: () => openStoredPdf(newId) } : null)
+  } catch (e) { alert(mapErr(e, 'Αποτυχία αποστολής')) } finally { send.busy = false }
+}
+
+/* ── detail ── */
+const detail = reactive({ open: false, id: null })
+const detailData = computed(() => {
+  const d = dispatchIndex.value.find(x => x.id === detail.id)
+  if (!d) return null
+  const rows = (d.transactionIds || []).map(T).filter(Boolean)
+  const sIn = rows.filter(t => t.a > 0).reduce((a, t) => a + t.a, 0)
+  const sEx = rows.filter(t => t.a < 0).reduce((a, t) => a + t.a, 0)
+  return { d, rows, sIn, sEx }
+})
+function openDetail(id) { detail.id = id; detail.open = true }
+async function doDelete() {
+  const d = dispatchIndex.value.find(x => x.id === detail.id); if (!d) return
+  if (!confirm(`Διαγραφή της αποστολής «${d.title}»;`)) return
+  try {
+    await deleteDispatch(d.id); detail.open = false
+    await loadDispatchIndex()
+    toast(`Διαγράφηκε η αποστολή «${d.title}»`, `${(d.transactionIds || []).length} κινήσεις επανήλθαν σε «μη απεσταλμένο»`, null)
+  } catch (e) { alert(e.response?.status === 403 ? 'Μόνο ο διαχειριστής μπορεί να διαγράψει.' : 'Αποτυχία διαγραφής.') }
+}
+
+/* ── archive enriched list ── */
+const archiveList = computed(() => dispatchIndex.value.map(d => {
+  const rows = (d.transactionIds || []).map(T).filter(Boolean)
+  return {
+    ...d, n: (d.transactionIds || []).length,
+    sentDateFull: grFull(d.sentDate),
+    sumIn: rows.filter(t => t.a > 0).reduce((a, t) => a + t.a, 0),
+    sumEx: rows.filter(t => t.a < 0).reduce((a, t) => a + Math.abs(t.a), 0),
   }
-}
+}))
 
-async function refreshDispatched() {
-  const ids = allTransactions.value.map(t => t.id).filter(Boolean)
-  dispatchedIds.value = await getDispatchStatus(ids)
-}
-
-/* ── Download section files (client-side ZIP via JSZip CDN) ── */
+/* ── per-section ZIP (kept from before) ── */
 let _jsZipPromise = null
 const _loadJSZip = () => {
   if (_jsZipPromise) return _jsZipPromise
@@ -382,581 +340,321 @@ const _loadJSZip = () => {
   })
   return _jsZipPromise
 }
-
-const downloadSectionFiles = async (section) => {
-  if (!section || !section.items || section.items.length === 0) {
-    alert('Δεν υπάρχουν κινήσεις σε αυτό το section.')
-    return
-  }
-
-  const txnIds = section.items.map(i => i.id).filter(id => id > 0)
-  if (txnIds.length === 0) {
-    alert('Δεν βρέθηκαν IDs συναλλαγών.')
-    return
-  }
-
-  // Step 1: gather all SAS URLs from /by-transaction/{id}
+async function downloadSectionFiles(k) {
+  const txnIds = sections[k].filter(id => id > 0)
+  if (!txnIds.length) { alert('Δεν υπάρχουν κινήσεις σε αυτή την ενότητα.'); return }
   const allFiles = []
   for (const id of txnIds) {
     try {
       const res = await api.get('/api/documents/by-transaction/' + id)
-      const files = res.data?.data || []
-      files.forEach(f => {
-        if (f.downloadUrl && f.fileName) {
-          allFiles.push({ url: f.downloadUrl, name: f.fileName, txnId: id })
-        }
-      })
-    } catch (err) {
-      console.warn('[downloadSectionFiles] tx#' + id + ' failed:', err)
-    }
+      ;(res.data?.data || []).forEach(f => { if (f.downloadUrl && f.fileName) allFiles.push({ url: f.downloadUrl, name: f.fileName, txnId: id }) })
+    } catch (err) { console.warn('[downloadSectionFiles] tx#' + id + ' failed:', err) }
   }
-
-  if (allFiles.length === 0) {
-    alert('Δεν βρέθηκαν αρχεία για τις κινήσεις του section.')
-    return
-  }
-
-  // Step 2: load JSZip + fetch all blobs in parallel
+  if (!allFiles.length) { alert('Δεν βρέθηκαν αρχεία για τις κινήσεις της ενότητας.'); return }
   let JSZip
-  try {
-    JSZip = await _loadJSZip()
-  } catch (err) {
-    alert('Αποτυχία φόρτωσης JSZip. Δοκιμάστε ξανά.')
-    return
-  }
-
-  const zip = new JSZip()
-  const usedNames = new Map()
-
-  const fetchPromises = allFiles.map(async (f) => {
+  try { JSZip = await _loadJSZip() } catch { alert('Αποτυχία φόρτωσης JSZip.'); return }
+  const zip = new JSZip(), usedNames = new Map()
+  const results = await Promise.all(allFiles.map(async (f) => {
     try {
-      const r = await fetch(f.url)
-      if (!r.ok) throw new Error('HTTP ' + r.status)
-      const blob = await r.blob()
-      let name = f.name
-      const count = usedNames.get(name) || 0
-      if (count > 0) {
-        const dot = name.lastIndexOf('.')
-        const base = dot > 0 ? name.substring(0, dot) : name
-        const ext = dot > 0 ? name.substring(dot) : ''
-        name = base + '_' + f.txnId + ext
-      }
-      usedNames.set(f.name, count + 1)
-      zip.file(name, blob)
-      return true
-    } catch (err) {
-      console.warn('[downloadSectionFiles] fetch failed for ' + f.name + ':', err)
-      return false
-    }
-  })
-
-  const results = await Promise.all(fetchPromises)
-  const successCount = results.filter(Boolean).length
-
-  if (successCount === 0) {
-    alert('Αποτυχία λήψης αρχείων από το Azure Blob Storage.')
-    return
-  }
-
+      const r = await fetch(f.url); if (!r.ok) throw new Error('HTTP ' + r.status)
+      const blob = await r.blob(); let name = f.name; const count = usedNames.get(name) || 0
+      if (count > 0) { const dot = name.lastIndexOf('.'); const base = dot > 0 ? name.substring(0, dot) : name; const ext = dot > 0 ? name.substring(dot) : ''; name = base + '_' + f.txnId + ext }
+      usedNames.set(f.name, count + 1); zip.file(name, blob); return true
+    } catch { return false }
+  }))
+  if (!results.filter(Boolean).length) { alert('Αποτυχία λήψης αρχείων.'); return }
   const zipBlob = await zip.generateAsync({ type: 'blob' })
-  const sectionLabel = (section.label || 'section').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)
   const today = new Date().toISOString().split('T')[0]
-  const zipName = 'Report_' + sectionLabel + '_' + today + '.zip'
-
-  const url = URL.createObjectURL(zipBlob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = zipName
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-
-  if (successCount < allFiles.length) {
-    console.warn('[downloadSectionFiles] ' + successCount + '/' + allFiles.length + ' files included')
-  }
+  const url = URL.createObjectURL(zipBlob), a = document.createElement('a')
+  a.href = url; a.download = `Report_${k}_${today}.zip`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
 }
 
-const fmt = (n) => {
-  const abs = Math.abs(n)
-  const str = new Intl.NumberFormat('el-GR', { minimumFractionDigits: 2 }).format(abs) + ' €'
-  return n >= 0 ? '+ ' + str : '- ' + str
+/* ── errors ── */
+function mapErr(e, fallback) {
+  const s = e.response?.status
+  if (s === 400) return 'Μη έγκυρα δεδομένα: ' + (e.response?.data?.message || e.response?.data?.reason || 'ελέγξτε τις κινήσεις')
+  if (s === 403) return 'Δεν έχετε δικαίωμα για αυτή την ενέργεια.'
+  return fallback
 }
 
-const fmtDate = (d) => {
-  if (!d) return '—'
-  const parts = d.split('-')
-  return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : d
+/* ── loaders ── */
+async function loadTransactions() {
+  try {
+    const res = await api.get('/api/transactions', { params: { entityId: entityId(), page: 0, perPage: 9999 } })
+    const data = res.data?.data || res.data || []
+    allTransactions.value = Array.isArray(data) ? data : []
+  } catch { allTransactions.value = [] }
 }
+async function loadConfig() {
+  try {
+    const res = await api.get('/api/config/items', { params: { entityId: entityId() } })
+    const items = res.data?.data || []
+    categoriesList.value = items.filter(i => i.configType === 'category' && i.isActive !== false)
+  } catch { categoriesList.value = [] }
+}
+async function loadDispatchIndex() {
+  if (!canDispatch.value) { dispatchIndex.value = []; return }
+  try {
+    const list = await listDispatches()
+    const detailed = await Promise.all(list.map(async (d) => {
+      try { const full = await getDispatch(d.id); return { ...d, transactionIds: full?.transactionIds || [] } }
+      catch { return { ...d, transactionIds: [] } }
+    }))
+    dispatchIndex.value = detailed
+  } catch { dispatchIndex.value = [] }
+}
+async function reloadAll() { await loadTransactions(); loadConfig(); await loadDispatchIndex() }
 
-/* ── Lifecycle ── */
+let onEntity
 onMounted(async () => {
-  await loadTransactions()
-  loadConfig()
-  refreshDispatched()
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'n2c_entity') { loadTransactions().then(refreshDispatched); loadConfig() }
-  })
-  window.addEventListener('entity-changed', () => { loadTransactions().then(refreshDispatched); loadConfig() })
+  await reloadAll()
+  onEntity = () => { reloadAll() }
+  window.addEventListener('entity-changed', onEntity)
 })
-// S69: Persist entry mode choice to localStorage
-watch(selectedEntryMode, (v) => {
-  try { localStorage.setItem('reportBuilderViewMode', v) } catch (e) { /* ignore */ }
-})
+onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed', onEntity) })
 </script>
 
 <template>
-  <div class="rb-page">
-
-    <!-- ── Layout ── -->
-    <div class="rb-layout" :class="{ 'panel-open': isPanelOpen }">
-
-      <!-- ── LEFT: Sidebar Filters ── -->
-      <div class="rb-sidebar">
-        <div class="sidebar-title">Custom Report Builder</div>
-
-        <div class="form-group">
-          <label>ΤΙΤΛΟΣ REPORT</label>
-          <input v-model="reportTitle" class="rb-input" placeholder="π.χ. Απολογισμός Επενδυτή Α..." />
+  <div class="rb-v4" :data-theme="theme">
+    <div class="wrap">
+      <!-- topbar (no brand — sidebar covers it) -->
+      <div class="topbar">
+        <div class="navtabs">
+          <button class="navtab" :class="{ on: activeTab === 'report' }" @click="go('report')">Report Builder</button>
+          <button v-if="canDispatch" class="navtab" :class="{ on: activeTab === 'arc' }" @click="go('arc')">
+            Αποστολές<span class="n">{{ dispatchIndex.length }}</span></button>
         </div>
-
-        <div class="form-group">
-          <label>ΠΕΡΙΓΡΑΦΗ</label>
-          <textarea v-model="reportDesc" class="rb-input rb-textarea" placeholder="Σύντομη περιγραφή report..."></textarea>
-        </div>
-
-        <div class="sidebar-section-title">ΦΙΛΤΡΑ ΚΙΝΗΣΕΩΝ</div>
-
-        <div class="form-group">
-          <label>Κατηγορία</label>
-          <select v-model="selectedCategory" class="rb-select">
-            <option value="all">Όλες οι κατηγορίες</option>
-            <option v-for="c in categoriesList" :key="c.id" :value="c.configKey">{{ c.configValue || c.configKey }}</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Υποκατηγορία</label>
-          <select v-model="selectedSubcategory" class="rb-select">
-            <option value="all">Όλες</option>
-            <option v-for="s in subcategoriesList" :key="s.id" :value="s.configKey || s.configValue">{{ s.configValue || s.configKey }}</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Περίοδος</label>
-          <div class="date-row">
-            <input v-model="dateFrom" type="date" class="rb-input" />
-            <input v-model="dateTo"   type="date" class="rb-input" />
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Μέθοδος Πληρωμής</label>
-          <select v-model="selectedMethod" class="rb-select">
-            <option v-for="m in methods" :key="m.value" :value="m.value">{{ m.label }}</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Κινήσεις</label>
-        <select v-model="selectedEntryMode" :class="['rb-select', selectedEntryMode === 'planned' ? 'mode-planned' : '']">
-          <option value="actual">💰 Πραγματικές</option>
-          <option value="planned">📋 Προγραμματισμένες</option>
-          <option value="all">📊 Όλες</option>
-        </select>
-
-        <label>Εμφάνιση</label>
-          <select v-model="displayMode" class="rb-select">
-            <option v-for="d in displayModes" :key="d.value" :value="d.value">{{ d.label }}</option>
-          </select>
-        </div>
-
-        <button class="btn-apply-filters" @click="applyFilters">
-          ▼ Εφαρμογή Φίλτρων
-        </button>
-
-        <div class="form-group toggle-row">
-          <label>Ομαδοποίηση ανά κατηγορία</label>
-          <div class="toggle-switch" :class="{ active: groupByCategory }" @click="groupByCategory = !groupByCategory">
-            <div class="toggle-thumb"></div>
-          </div>
+        <div class="topright">
+          <button class="themebtn" @click="toggleTheme" :aria-pressed="theme === 'light'">
+            {{ theme === 'dark' ? '☀️ Ανοιχτό' : '🌙 Σκούρο' }}</button>
         </div>
       </div>
 
-      <!-- ── CENTER: Report Builder ── -->
-      <div class="rb-center">
-
-        <!-- Toolbar -->
-        <div class="rb-toolbar">
-          <div class="toolbar-left">
-            <button class="btn-add-section income" @click="addSection('income')">+ Έσοδα</button>
-            <button class="btn-add-section expense" @click="addSection('expense')">+ Έξοδα</button>
-            <button class="btn-add-section neutral" @click="addSection('summary')">+ Σύνοψη</button>
-          </div>
-          <div class="toolbar-right">
-            <span class="report-stats">{{ sections.length }} sections · {{ sectionCount }} κινήσεις</span>
-          </div>
+      <!-- ══ REPORT BUILDER ══ -->
+      <div v-show="activeTab === 'report'">
+        <div class="head-card">
+          <div class="field grow"><label for="rtitle">Τίτλος report</label>
+            <input type="text" id="rtitle" v-model="reportTitle" placeholder="π.χ. Έξοδα Ιουλίου προς απόδοση"></div>
+          <div class="field grow"><label for="rdesc">Περιγραφή <span style="text-transform:none">(προαιρετικά)</span></label>
+            <input type="text" id="rdesc" v-model="reportDesc" placeholder="Σύντομη περιγραφή…"></div>
         </div>
 
-        <!-- Sections -->
-        <div class="sections-area">
-          <div
-            v-for="section in sections"
-            :key="section.id"
-            class="report-section"
-            :class="section.type"
-          >
-            <!-- Section Header -->
-            <div class="section-header">
-              <div class="section-header-left">
-                <span class="section-arrow">{{ section.type === 'income' ? '▲' : '▼' }}</span>
-                <span class="section-label">{{ section.label }}</span>
-              </div>
-              <div class="section-header-right">
-                <button class="btn-add-item">+ Προσθήκη</button>
-                <span class="section-badge clickable" @click="downloadSectionFiles(section)" title="Download files">
-                  📥 {{ section.items.length }} αρχεία
-                </span>
-                <span class="section-total" :class="section.type === 'income' ? 'income-col' : 'expense-col'">
-                  {{ section.type === 'income'
-                    ? '+ ' + new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(section.items.reduce((s,i)=>s+i.amount,0)) + ' €'
-                    : '- ' + new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(Math.abs(section.items.reduce((s,i)=>s+i.amount,0))) + ' €'
-                  }}
-                </span>
-                <span class="section-arrow-btn">↑</span>
-                <button class="btn-remove-section" @click="removeSection(section.id)">🗑</button>
-              </div>
-            </div>
+        <div class="toolbar">
+          <button class="btn btn-green" @click="openPicker('income')">+ Έσοδα</button>
+          <button class="btn btn-red" @click="openPicker('expense')">+ Έξοδα</button>
+          <button class="btn" @click="toggleSummary">{{ showSummary ? '− Σύνοψη' : '+ Σύνοψη' }}</button>
+          <button v-if="canDispatch" class="btn" :disabled="!totalCount" @click="preview">📄 Προεπισκόπηση PDF</button>
+          <button v-if="canDispatch" class="btn btn-sent" :disabled="!totalCount" @click="openDispatch">✉ Αποστολή &amp; αρχειοθέτηση</button>
+          <span class="count-hint">{{ hint }}</span>
+        </div>
 
-            <!-- Section Table -->
-            <table class="section-table" v-if="section.type !== 'summary'">
-              <thead>
-                <tr>
-                  <th>#ID</th>
-                  <th>ΗΜ/ΝΙΑ</th>
-                  <th>ΠΕΡΙΓΡΑΦΗ</th>
-                  <th>ΚΑΤΗΓΟΡΙΑ</th>
-                  <th class="num">ΠΟΣΟ</th>
-                </tr>
-              </thead>
+        <div>
+          <div v-for="s in sectionsView" :key="s.key" class="section" :class="s.key">
+            <div class="sec-head">
+              <div class="sec-title">{{ s.key === 'income' ? '▲' : '▼' }} {{ s.name }}
+                <span class="sec-badge">{{ s.rows.length }} {{ s.rows.length === 1 ? 'κίνηση' : 'κινήσεις' }}</span>
+                <span v-if="s.un" class="sec-badge warn">{{ s.un }} μη απεσταλμένα</span>
+              </div>
+              <div class="sec-actions">
+                <button class="mini add" @click="openPicker(s.key)">+ Προσθήκη</button>
+                <button v-if="s.rows.length" class="mini" @click="downloadSectionFiles(s.key)">📥 Αρχεία</button>
+                <button v-if="s.rows.length" class="mini clear" @click="clearSection(s.key)">Καθαρισμός ενότητας</button>
+              </div>
+              <div class="sec-total">{{ eur(s.total) }}</div>
+            </div>
+            <table v-if="s.rows.length">
+              <thead><tr><th class="c-id">#ID</th><th class="c-date">ΗΜ/ΝΙΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th>
+                <th class="c-stat">ΚΑΤΑΣΤΑΣΗ</th><th class="c-send">ΑΠΟΣΤΟΛΗ</th><th class="c-amt">ΠΟΣΟ</th><th class="c-x"></th></tr></thead>
               <tbody>
-                <tr v-for="item in section.items" :key="item.id">
-                  <td class="id-col">{{ item.id }}</td>
-                  <td class="date-col">{{ fmtDate(item.date) }}</td>
-                  <td class="desc-col">{{ item.desc }}</td>
-                  <td><span class="cat-badge">{{ item.category }}</span></td>
-                  <td class="num" :class="item.amount >= 0 ? 'income-col' : 'expense-col'">
-                    {{ item.amount >= 0 ? '+ ' : '- ' }}{{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(Math.abs(item.amount)) }} €
+                <tr v-for="t in s.rows" :key="t.id">
+                  <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
+                  <td>{{ t.no }} - {{ t.t }} <span class="tag">{{ t.cat }}</span></td>
+                  <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
+                  <td class="c-send">
+                    <template v-if="!sentInfo(t.id).sent"><span class="st no">○ ΜΗ ΑΠΕΣΤΑΛΜΕΝΟ</span></template>
+                    <template v-else>
+                      <span class="st yes clickable" :class="{ multi: sentInfo(t.id).count > 1 }"
+                            :title="sentInfo(t.id).title" @click="openDetail(sentInfo(t.id).first.id)">
+                        ✉ ΑΠΕΣΤΑΛΜΕΝΟ<template v-if="sentInfo(t.id).count > 1"> {{ sentInfo(t.id).count }}×</template>
+                        <small>{{ grShort(sentInfo(t.id).first.sentDate) }}</small></span>
+                      <span class="rcp">{{ sentInfo(t.id).first.title }} → {{ sentInfo(t.id).first.recipient }}</span>
+                    </template>
                   </td>
+                  <td class="c-amt" :class="t.a < 0 ? 'amt-neg' : 'amt-pos'">{{ eur(t.a) }}</td>
+                  <td class="c-x"><button class="xbtn" :aria-label="'Αφαίρεση ' + t.id" title="Αφαίρεση από το report" @click="removeRow(s.key, t.id)">✕</button></td>
                 </tr>
               </tbody>
             </table>
-            <!-- Summary section -->
-            <div v-if="section.type === 'summary'" class="summary-section-body">
-              <div class="summary-row">
-                <span class="summary-label">Σύνολο Εισπράξεων</span>
-                <span class="summary-val income-col">+ {{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(totalIncome) }} €</span>
-              </div>
-              <div class="summary-row">
-                <span class="summary-label">Σύνολο Εξόδων</span>
-                <span class="summary-val expense-col">- {{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(totalExpense) }} €</span>
-              </div>
-              <div class="summary-row summary-net">
-                <span class="summary-label-bold">Καθαρό Υπόλοιπο</span>
-                <span class="summary-val" :class="totalIncome - totalExpense >= 0 ? 'income-col' : 'expense-col'">
-                  {{ totalIncome - totalExpense >= 0 ? '+ ' : '- ' }}{{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(Math.abs(totalIncome - totalExpense)) }} €
-                </span>
-              </div>
+            <div v-else class="empty"><b>Καμία κίνηση ακόμα</b>Πάτα «+ Προσθήκη» και διάλεξε ελεύθερα ό,τι θέλεις να στείλεις.</div>
+          </div>
+
+          <!-- Σύνοψη -->
+          <div v-if="showSummary" class="section summary">
+            <div class="sec-head"><div class="sec-title">▼ Σύνοψη</div>
+              <div class="sec-actions"><button class="mini clear" @click="toggleSummary">Αφαίρεση ενότητας</button></div>
+              <div class="sec-total" :style="{ color: summary.net < 0 ? 'var(--red)' : 'var(--green)' }">{{ eur(summary.net) }}</div></div>
+            <div class="sum-body">
+              <div class="sum-row"><span class="lbl">Σύνολο Εισπράξεων</span>
+                <span class="cnt">{{ summary.inc.length }} {{ summary.inc.length === 1 ? 'κίνηση' : 'κινήσεις' }}</span>
+                <span class="val amt-pos">{{ eur(summary.sIn) }}</span></div>
+              <div class="sum-row"><span class="lbl">Σύνολο Εξόδων</span>
+                <span class="cnt">{{ summary.exp.length }} {{ summary.exp.length === 1 ? 'κίνηση' : 'κινήσεις' }}</span>
+                <span class="val amt-neg">{{ eur(summary.sEx) }}</span></div>
+              <div class="sum-row net"><span class="lbl">Καθαρό Υπόλοιπο</span>
+                <span class="val" :class="summary.net < 0 ? 'amt-neg' : 'amt-pos'">{{ eur(summary.net) }}</span></div>
+              <div class="sum-block"><h4>Αποστολή</h4>
+                <div class="sum-row sub"><span class="lbl">✉ Απεσταλμένα</span>
+                  <span class="val" style="color:var(--sent)">{{ summary.nS }} από {{ summary.allLen }}</span></div>
+                <div class="sum-row sub"><span class="lbl">○ Μη απεσταλμένα</span>
+                  <span class="val" :style="{ color: (summary.allLen - summary.nS) ? 'var(--gold)' : 'var(--muted)' }">{{ summary.allLen - summary.nS }} από {{ summary.allLen }}</span></div>
+                <div class="sum-row sub" style="border-top:1px solid var(--line-soft);margin-top:6px;padding-top:9px">
+                  <span class="lbl">Έξοδα απεσταλμένα</span><span class="val" style="color:var(--sent)">{{ plain(summary.eSsum) }}</span></div>
+                <div class="sum-row sub"><span class="lbl">Έξοδα μη απεσταλμένα</span>
+                  <span class="val" :style="{ color: summary.eNlen ? 'var(--gold)' : 'var(--muted)' }">{{ plain(summary.eNsum) }}</span></div></div>
+              <div class="sum-block"><h4>Πληρωμή</h4>
+                <div class="sum-row sub"><span class="lbl">⏳ Εκκρεμείς πληρωμές στο report</span>
+                  <span class="val" :style="{ color: summary.dueLen ? 'var(--gold)' : 'var(--muted)' }">{{ plain(summary.dueSum) }}</span></div></div>
             </div>
           </div>
         </div>
 
-        <!-- Footer -->
-        <div class="rb-footer">
-          <span class="footer-stats">{{ sectionCount }} κινήσεις σε {{ sections.length }} sections — Έτοιμο</span>
-          <div class="footer-actions">
-            <button class="btn-footer" @click="exportExcel">⊞ Excel</button>
-            <button v-if="canDispatch" class="btn-footer" @click="previewViaServer">👁 Προεπισκόπηση</button>
-            <button v-if="canDispatch" class="btn-footer accent" @click="openSendDialog">📤 Αποστολή</button>
-          </div>
-        </div>
-
+        <div class="legend"><h3>Πώς διαβάζεται</h3><ul>
+          <li><span class="st inrep">✓ ΣΤΟ REPORT</span> είναι ήδη μέσα στο τρέχον report</li>
+          <li><span class="st yes">✉ ΑΠΕΣΤΑΛΜΕΝΟ <small>31/07/26</small></span> έχει σταλεί παλαιότερα — δίπλα ο τίτλος και ο παραλήπτης</li>
+          <li><span class="st yes multi">✉ ΑΠΕΣΤΑΛΜΕΝΟ 2×</span> σε περισσότερες από μία αποστολές — κλικ για ιστορικό</li>
+          <li><span class="st no">○ ΜΗ ΑΠΕΣΤΑΛΜΕΝΟ</span> δεν έχει φύγει ποτέ</li>
+          <li style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+            <b>Δύο ανεξάρτητοι άξονες:</b> <span class="st paid">✓ ΕΞΟΦΛΗΜΕΝΗ</span> / <span class="st due">⏳ ΕΚΚΡΕΜΗΣ</span>
+            αφορούν την <b>πληρωμή</b>· το ΑΠΕΣΤΑΛΜΕΝΟ αφορά την <b>αποστολή</b>.</li>
+        </ul></div>
       </div>
 
-      <!-- ── RIGHT: Items Panel ── -->
-      <div class="rb-panel" v-if="isPanelOpen">
-        <div class="panel-header">
-          <span class="panel-title-text">ΚΙΝΗΣΕΙΣ</span>
-          <span class="panel-count">{{ filteredItems.length.toLocaleString() }}</span>
-          <button class="panel-close" @click="isPanelOpen = false">✕</button>
-        </div>
-
-        <!-- Panel Search -->
-        <input v-model="itemFilter" class="panel-search" placeholder="Αναζήτηση περιγραφής, ID..." />
-
-        <!-- Panel Tabs -->
-        <div class="panel-tabs">
-          <button :class="['panel-tab', { active: itemFilterTab === 'all' }]"     @click="itemFilterTab = 'all'">Όλα</button>
-          <button :class="['panel-tab', { active: itemFilterTab === 'income' }]"  @click="itemFilterTab = 'income'">Έσοδα</button>
-          <button :class="['panel-tab', { active: itemFilterTab === 'expense' }]" @click="itemFilterTab = 'expense'">Έξοδα</button>
-          <button :class="['panel-tab', { active: itemFilterTab === 'urgent' }]"  @click="itemFilterTab = 'urgent'">Εκκρεμή</button>
-        </div>
-
-        <!-- Panel Items -->
-        <div class="panel-items">
-          <div
-            v-for="item in filteredItems"
-            :key="item.id"
-            class="panel-item"
-            :class="{ selected: isItemSelected(item.id) }"
-            @click="toggleItem(item)"
-          >
-            <input type="checkbox" :checked="isItemSelected(item.id)" @click.stop="toggleItem(item)" />
-            <div class="panel-item-info">
-              <div class="panel-item-desc">{{ item.desc }}</div>
-              <div class="panel-item-meta">{{ item.id }} · {{ fmtDate(item.date) }} · {{ item.category }}<span v-if="isDispatched(item.id)" class="sent-badge">σταλμένο</span></div>
-            </div>
-            <div class="panel-item-amount" :class="item.amount >= 0 ? 'income-col' : 'expense-col'">
-              {{ item.amount >= 0 ? '+' : '' }}{{ new Intl.NumberFormat('el-GR',{minimumFractionDigits:2}).format(item.amount) }} €
-            </div>
-          </div>
-        </div>
-
-        <!-- Add to Report Button -->
-        <div class="panel-add-btn-wrap">
-          <button
-            class="btn-add-to-report"
-            :class="{ disabled: selectedItems.length === 0 }"
-            @click="addSelectedToReport"
-          >
-            ✚ Προσθήκη
-            <span v-if="selectedItems.length > 0"> {{ selectedItems.length }} εγγραφών</span>
-            <span v-else> στο Report</span>
-          </button>
-        </div>
+      <!-- ══ ΑΠΟΣΤΟΛΕΣ ══ -->
+      <div v-show="activeTab === 'arc'">
+        <DispatchArchiveView :dispatches="archiveList" @open-detail="openDetail" />
       </div>
-
     </div>
 
-    <PdfPreviewModal :blob="previewBlob" @close="previewBlob = null" />
-    <DispatchDialog :open="sendOpen" :default-title="reportTitle" :item-count="sectionCount"
-                    :busy="sending" @close="sendOpen = false" @submit="submitSend" />
-    <div v-if="toast" class="rb-toast">{{ toast }}</div>
+    <!-- PICKER -->
+    <div class="overlay" :class="{ open: picker.open }" role="dialog" aria-modal="true">
+      <div class="modal">
+        <div class="m-head"><h2>Επιλογή κινήσεων</h2>
+          <span class="sec-badge">Έσοδα → Εισπράξεις · Έξοδα → Έξοδα (αυτόματα)</span>
+          <button class="m-close" @click="closePicker" aria-label="Κλείσιμο">✕</button></div>
+        <div class="m-filters">
+          <div class="field search-field"><label for="q">Αναζήτηση</label>
+            <input type="text" id="q" v-model="picker.q" placeholder="Περιγραφή ή ID κίνησης…"></div>
+          <div class="field"><label for="fcat">Κατηγορία</label>
+            <select id="fcat" v-model="picker.cat"><option value="">Όλες οι κατηγορίες</option>
+              <option v-for="c in pickerCats" :key="c" :value="c">{{ c }}</option></select></div>
+          <div class="field"><label for="fused">Στο report</label>
+            <select id="fused" v-model="picker.used"><option value="all">Όλες</option>
+              <option value="free">Όσες δεν είναι μέσα</option><option value="used">Όσες είναι ήδη μέσα</option></select></div>
+          <div class="field"><label for="fsent">Αποστολή</label>
+            <select id="fsent" v-model="picker.sent"><option value="all">Όλες</option>
+              <option value="no">Μόνο μη απεσταλμένα</option><option value="yes">Μόνο απεσταλμένα</option></select></div>
+          <div class="field"><label for="fpay">Πληρωμή</label>
+            <select id="fpay" v-model="picker.pay"><option value="all">Όλες</option>
+              <option value="paid">Εξοφλημένες</option><option value="due">Εκκρεμείς</option></select></div>
+        </div>
+        <div class="tabs">
+          <button v-for="tb in [['all','Όλες'],['in','Έσοδα'],['out','Έξοδα']]" :key="tb[0]"
+                  class="tab" :class="{ active: picker.tab === tb[0] }" @click="picker.tab = tb[0]">
+            {{ tb[1] }}<span class="n">{{ pickCounts[tb[0]] }}</span></button>
+        </div>
+        <div class="m-body"><table><thead><tr>
+          <th class="c-chk"></th><th class="c-id">#ID</th><th class="c-date">ΗΜ/ΝΙΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th>
+          <th class="c-stat">ΚΑΤΑΣΤΑΣΗ</th><th class="c-send">ΑΠΟΣΤΟΛΗ</th><th class="c-amt">ΠΟΣΟ</th></tr></thead>
+          <tbody>
+            <tr v-for="t in pool" :key="t.id" class="pick-row" :class="{ used: !!where(t.id), checked: isChecked(t.id) }" @click="toggle(t.id)">
+              <td class="c-chk"><div class="cbox">{{ (where(t.id) || isChecked(t.id)) ? '✓' : '' }}</div></td>
+              <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
+              <td><div class="desc"><span>{{ t.no }} - {{ t.t }}</span><span class="tag">{{ t.cat }}</span>
+                <span v-if="where(t.id)" class="st inrep">✓ ΣΤΟ REPORT · {{ where(t.id) === 'income' ? 'Εισπράξεις' : 'Έξοδα' }}</span></div></td>
+              <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
+              <td class="c-send">
+                <template v-if="!sentInfo(t.id).sent"><span class="st no">○ ΜΗ ΑΠΕΣΤΑΛΜΕΝΟ</span></template>
+                <template v-else><span class="st yes" :class="{ multi: sentInfo(t.id).count > 1 }" :title="sentInfo(t.id).title">
+                  ✉ ΑΠΕΣΤΑΛΜΕΝΟ<template v-if="sentInfo(t.id).count > 1"> {{ sentInfo(t.id).count }}×</template>
+                  <small>{{ grShort(sentInfo(t.id).first.sentDate) }}</small></span></template>
+              </td>
+              <td class="c-amt" :class="t.a < 0 ? 'amt-neg' : 'amt-pos'">{{ eur(t.a) }}</td>
+            </tr>
+            <tr v-if="pool.length === 0"><td colspan="7"><div class="empty"><b>Καμία κίνηση δεν ταιριάζει</b>Άλλαξε τα φίλτρα.</div></td></tr>
+          </tbody></table></div>
+        <div class="m-foot"><span>Επιλεγμένες: <b style="font-family:var(--mono);color:var(--cyan);font-size:17px">{{ selIds.length }}</b></span>
+          <div class="foot-right"><button class="btn" @click="selectAllVisible">Επιλογή όλων στη λίστα</button>
+            <button class="btn" @click="closePicker">Άκυρο</button>
+            <button class="btn btn-primary" :disabled="!selIds.length" @click="addSelected">{{ addBtnLabel }}</button></div></div>
+      </div>
+    </div>
+
+    <!-- DISPATCH -->
+    <div class="overlay" :class="{ open: send.open }" role="dialog" aria-modal="true">
+      <div class="modal small">
+        <div class="m-head"><h2>Αποστολή &amp; αρχειοθέτηση</h2>
+          <button class="m-close" @click="send.open = false" aria-label="Κλείσιμο">✕</button></div>
+        <div class="m-pad">
+          <div class="field"><label for="dtitle">Τίτλος αποστολής</label>
+            <input type="text" id="dtitle" v-model="send.title" style="width:100%"></div>
+          <div class="field"><label for="rcp">Παραλήπτης</label>
+            <input type="text" id="rcp" v-model="send.rcp" list="rcps" placeholder="π.χ. Λογιστήριο" style="width:100%">
+            <datalist id="rcps"><option v-for="r in recipients" :key="r" :value="r"></option></datalist></div>
+          <div class="field"><label>Τι περιλαμβάνει</label>
+            <div class="scope">
+              <label><input type="checkbox" v-model="send.scEx">Έξοδα <span class="amt">{{ scExAmt }}</span></label>
+              <label><input type="checkbox" v-model="send.scIn">Εισπράξεις <span class="amt">{{ scInAmt }}</span></label>
+              <label><input type="checkbox" v-model="send.includeDocs">Να συμπεριληφθούν τα παραστατικά (ZIP)</label>
+            </div></div>
+          <div class="warn" v-html="sendSummaryText.html"></div>
+          <div class="field"><label for="sdate">Ημερομηνία αποστολής</label>
+            <input type="date" id="sdate" v-model="send.date" style="width:100%"></div>
+          <div class="field"><label for="snote">Σημείωση <span style="text-transform:none">(προαιρετικά)</span></label>
+            <textarea id="snote" v-model="send.note" placeholder="π.χ. με email, συνημμένα 4 παραστατικά"></textarea></div>
+        </div>
+        <div class="m-foot"><button class="btn" @click="send.open = false" :disabled="send.busy">Άκυρο</button>
+          <div class="foot-right"><button class="btn btn-sent" :disabled="send.busy" @click="confirmDispatch">
+            {{ send.busy ? 'Αποστολή…' : 'Δημιουργία PDF &amp; αρχειοθέτηση' }}</button></div></div>
+      </div>
+    </div>
+
+    <!-- DISPATCH DETAIL -->
+    <div class="overlay" :class="{ open: detail.open }" role="dialog" aria-modal="true">
+      <div class="modal" v-if="detailData">
+        <div class="m-head"><h2>{{ detailData.d.title }}</h2>
+          <button class="m-close" @click="detail.open = false" aria-label="Κλείσιμο">✕</button></div>
+        <div class="m-pad" style="padding-bottom:0"><div class="sum-block" style="margin-top:0">
+          <div class="sum-row sub" style="padding-left:0"><span class="lbl" style="padding-left:0">✉ Παραλήπτης</span>
+            <span class="val" style="color:var(--sent)">{{ detailData.d.recipient }}</span></div>
+          <div class="sum-row sub" style="padding-left:0"><span class="lbl" style="padding-left:0">📅 Ημερομηνία αποστολής</span>
+            <span class="val">{{ grFull(detailData.d.sentDate) }}</span></div>
+          <div class="sum-row sub" v-if="detailData.d.note" style="padding-left:0"><span class="lbl" style="padding-left:0">Σημείωση</span>
+            <span class="val" style="font-weight:400;font-family:inherit;font-size:13.5px">{{ detailData.d.note }}</span></div>
+          <div class="sum-row sub" style="padding-left:0;border-top:1px solid var(--line-soft);margin-top:6px;padding-top:9px">
+            <span class="lbl" style="padding-left:0">Σύνολα</span>
+            <span class="val"><span v-if="detailData.sIn" class="amt-pos">{{ plain(detailData.sIn) }}</span><span v-if="detailData.sIn"> · </span><span class="amt-neg">{{ plain(Math.abs(detailData.sEx)) }}</span></span></div>
+        </div></div>
+        <div class="m-body"><table><thead><tr>
+          <th class="c-id">#ID</th><th class="c-date">ΗΜ/ΝΙΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th class="c-stat">ΚΑΤΑΣΤΑΣΗ</th><th class="c-amt">ΠΟΣΟ</th></tr></thead>
+          <tbody><tr v-for="t in detailData.rows" :key="t.id">
+            <td class="c-id">{{ t.id }}</td><td class="c-date">{{ t.d }}</td>
+            <td>{{ t.no }} - {{ t.t }} <span class="tag">{{ t.cat }}</span></td>
+            <td class="c-stat"><span class="st" :class="t.paid ? 'paid' : 'due'">{{ t.paid ? '✓ ΕΞΟΦΛΗΜΕΝΗ' : '⏳ ΕΚΚΡΕΜΗΣ' }}</span></td>
+            <td class="c-amt" :class="t.a < 0 ? 'amt-neg' : 'amt-pos'">{{ eur(t.a) }}</td></tr></tbody></table></div>
+        <div class="m-foot">
+          <button v-if="canDispatch" class="btn btn-red" @click="doDelete">🗑 Διαγραφή αποστολής</button>
+          <div class="foot-right"><button class="btn" @click="detail.open = false">Κλείσιμο</button>
+            <button v-if="detailData.d.hasPdf" class="btn btn-primary" @click="openStoredPdf(detailData.d.id)">📄 Άνοιγμα PDF</button></div></div>
+      </div>
+    </div>
+
+    <!-- PDF PREVIEW (real backend PDF) -->
+    <PdfPreviewModal :blob="previewBlob" :title="previewTitle" @close="previewBlob = null" />
+
+    <!-- TOAST -->
+    <div class="toast" :class="{ show: toastState.show }" role="status">
+      <div class="toast-txt">{{ toastState.a }}<small>{{ toastState.b }}</small></div>
+      <button v-if="toastState.hasAct" class="tbtn" @click="toastAct">{{ toastState.actLabel }}</button>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.rb-page { background: #0d1e2e; min-height: 100vh; color: #c8d8e8; }
-
-.rb-layout {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  height: 100vh;
-  overflow: hidden;
-}
-.rb-layout.panel-open {
-  grid-template-columns: 260px 1fr 320px;
-}
-
-/* ── Sidebar ── */
-.rb-sidebar {
-  background: #1a2f45;
-  border-right: 1px solid #223d57;
-  padding: 20px 16px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.sidebar-title { font-size: 0.95rem; font-weight: 700; color: #e0e6ed; margin-bottom: 4px; }
-.sidebar-section-title { font-size: 0.68rem; color: #4FC3A1; font-weight: 700; letter-spacing: 0.1em; margin-top: 8px; }
-
-.form-group { display: flex; flex-direction: column; gap: 5px; }
-.form-group label { font-size: 0.72rem; color: #8899aa; font-weight: 600; letter-spacing: 0.05em; }
-.rb-input {
-  background: #152538; border: 1px solid #2a4a6a; color: #c8d8e8;
-  padding: 8px 10px; border-radius: 6px; font-size: 0.82rem; outline: none; width: 100%; box-sizing: border-box;
-}
-.rb-input:focus { border-color: #4FC3A1; }
-.rb-textarea { min-height: 60px; resize: vertical; }
-.rb-select {
-  appearance: none; background: #152538; border: 1px solid #2a4a6a; color: #c8d8e8;
-  padding: 8px 10px; border-radius: 6px; font-size: 0.82rem; outline: none; cursor: pointer; width: 100%;
-}
-.date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.btn-apply-filters {
-  background: #29b6f6; border: none; color: #0d1e2e;
-  padding: 10px; border-radius: 8px; font-size: 0.85rem; font-weight: 700;
-  cursor: pointer; width: 100%; margin-top: 4px;
-}
-.toggle-row { flex-direction: row; align-items: center; justify-content: space-between; }
-.toggle-switch {
-  width: 40px; height: 22px; background: #2a4a6a; border-radius: 11px;
-  cursor: pointer; position: relative; transition: background 0.2s;
-}
-.toggle-switch.active { background: #4FC3A1; }
-.toggle-thumb {
-  position: absolute; top: 3px; left: 3px;
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #fff; transition: transform 0.2s;
-}
-.toggle-switch.active .toggle-thumb { transform: translateX(18px); }
-
-/* ── Center ── */
-.rb-center {
-  display: flex; flex-direction: column;
-  background: #0d1e2e; overflow: hidden;
-}
-.rb-toolbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 20px; background: #1a2f45; border-bottom: 1px solid #223d57;
-  flex-shrink: 0;
-}
-.toolbar-left { display: flex; gap: 8px; }
-.btn-add-section {
-  padding: 6px 16px; border: none; border-radius: 6px;
-  font-size: 0.82rem; font-weight: 600; cursor: pointer;
-}
-.btn-add-section.income  { background: rgba(79,195,161,0.15); color: #4FC3A1; border: 1px solid #4FC3A1; }
-.btn-add-section.expense { background: rgba(239,83,80,0.15);  color: #ef5350; border: 1px solid #ef5350; }
-.btn-add-section.neutral { background: rgba(41,182,246,0.15); color: #29b6f6; border: 1px solid #29b6f6; }
-.report-stats { font-size: 0.78rem; color: #8899aa; }
-
-.sections-area { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
-
-/* Sections */
-.report-section { background: #1a2f45; border-radius: 10px; overflow: hidden; }
-.report-section.income { border-left: 3px solid #4FC3A1; }
-.report-section.expense { border-left: 3px solid #ef5350; }
-.report-section.summary { border-left: 3px solid #29b6f6; }
-
-.section-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; background: #152538;
-}
-.section-header-left { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.88rem; }
-.section-header-right { display: flex; align-items: center; gap: 10px; }
-.section-arrow { font-size: 0.8rem; }
-.income .section-arrow { color: #4FC3A1; }
-.expense .section-arrow { color: #ef5350; }
-
-/* Summary section */
-.summary-section-body { padding: 12px 16px; }
-.summary-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #1e3448; }
-.summary-row:last-child { border-bottom: none; }
-.summary-net { border-top: 2px solid #2a4a6a; margin-top: 4px; padding-top: 14px; }
-.summary-label { font-size: 0.88rem; color: #c8d8e8; }
-.summary-label-bold { font-size: 0.92rem; color: #e0e6ed; font-weight: 700; }
-.summary-val { font-family: monospace; font-size: 1rem; font-weight: 700; }
-.section-badge.clickable { cursor: pointer; }
-.section-badge.clickable:hover { background: #2a4a6a; }
-.section-badge { background: #1a2f45; padding: 3px 10px; border-radius: 10px; font-size: 0.72rem; color: #8899aa; }
-.section-total { font-family: monospace; font-weight: 700; font-size: 0.9rem; }
-.section-arrow-btn { color: #8899aa; cursor: pointer; font-size: 0.85rem; }
-.btn-add-item { background: rgba(79,195,161,0.12); border: 1px solid #4FC3A1; color: #4FC3A1; padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
-.btn-remove-section { background: none; border: none; color: #ef5350; cursor: pointer; font-size: 0.9rem; }
-
-.section-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-.section-table th { color: #6a8099; padding: 8px 14px; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; border-bottom: 1px solid #223d57; text-align: left; }
-.section-table td { padding: 8px 14px; border-bottom: 1px solid #1e3448; }
-.section-table tbody tr:hover { background: #1e3a52; }
-.id-col { color: #8899aa; font-size: 0.78rem; }
-.date-col { color: #8899aa; white-space: nowrap; font-size: 0.78rem; }
-.desc-col { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cat-badge { background: #2a4a6a; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; }
-.num { text-align: right; font-family: monospace; }
-.income-col  { color: #4FC3A1; }
-.expense-col { color: #ef5350; }
-
-/* Footer */
-.rb-footer {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 20px; background: #1a2f45; border-top: 1px solid #223d57;
-  flex-shrink: 0;
-}
-.footer-stats { font-size: 0.78rem; color: #8899aa; }
-.footer-actions { display: flex; gap: 8px; }
-.btn-footer {
-  background: #152538; border: 1px solid #2a4a6a; color: #c8d8e8;
-  padding: 6px 14px; border-radius: 6px; font-size: 0.82rem; cursor: pointer;
-}
-.btn-footer.accent { background: #4FC3A1; border-color: #4FC3A1; color: #0d1e2e; font-weight: 700; }
-
-/* ── Right Panel ── */
-.rb-panel {
-  background: #1a2f45; border-left: 1px solid #223d57;
-  display: flex; flex-direction: column; overflow: hidden;
-}
-.panel-header {
-  display: flex; align-items: center; gap: 8px;
-  padding: 12px 16px; background: #152538; border-bottom: 1px solid #223d57;
-  flex-shrink: 0;
-}
-.panel-title-text { font-size: 0.8rem; font-weight: 700; color: #e0e6ed; }
-.panel-count { background: #29b6f6; color: #0d1e2e; padding: 1px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 700; }
-.panel-close { background: none; border: none; color: #8899aa; cursor: pointer; margin-left: auto; font-size: 0.9rem; }
-.panel-search {
-  background: #152538; border: none; border-bottom: 1px solid #223d57;
-  color: #c8d8e8; padding: 10px 16px; font-size: 0.82rem; outline: none; flex-shrink: 0;
-}
-.panel-search::placeholder { color: #4a6a88; }
-.panel-tabs {
-  display: flex; border-bottom: 1px solid #223d57; flex-shrink: 0;
-}
-.panel-tab {
-  flex: 1; background: none; border: none; color: #8899aa;
-  padding: 8px; font-size: 0.78rem; cursor: pointer; border-bottom: 2px solid transparent;
-}
-.panel-tab.active { color: #29b6f6; border-bottom-color: #29b6f6; }
-
-.panel-items { overflow-y: auto; flex: 1; }
-.panel-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-bottom: 1px solid #1e3448; cursor: pointer;
-}
-.panel-item:hover { background: #1e3a52; }
-.panel-item.selected { background: rgba(79,195,161,0.06); }
-.panel-item input[type="checkbox"] { flex-shrink: 0; accent-color: #4FC3A1; }
-.panel-item-info { flex: 1; min-width: 0; }
-.panel-item-desc { font-size: 0.78rem; color: #c8d8e8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.panel-item-meta { font-size: 0.68rem; color: #8899aa; margin-top: 2px; }
-.panel-item-amount { font-size: 0.78rem; font-weight: 600; font-family: monospace; white-space: nowrap; flex-shrink: 0; }
-.panel-add-btn-wrap {
-  padding: 12px;
-  border-top: 1px solid #223d57;
-  flex-shrink: 0;
-}
-.btn-add-to-report {
-  width: 100%;
-  background: #4FC3A1;
-  border: none;
-  color: #0d1e2e;
-  padding: 10px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.btn-add-to-report:hover { background: #3dab8a; }
-.btn-add-to-report.disabled { background: #2a4a6a; color: #8899aa; cursor: not-allowed; }
-.btn-add-to-report.disabled:hover { background: #2a4a6a; }
-
-/* S69: Mode toggle visual cue */
-.rb-select.mode-planned {
-  background-color: #3a2818;
-  border-color: #ff8c42;
-  color: #ffb380;
-}
-
-/* S105: dispatch badges + toast */
-.sent-badge {
-  margin-left: 8px; background: rgba(41,182,246,0.16); color: #29b6f6;
-  padding: 1px 6px; border-radius: 8px; font-size: 0.62rem; font-weight: 700;
-}
-.rb-toast {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: #4FC3A1; color: #0d1e2e; padding: 10px 20px; border-radius: 8px;
-  font-weight: 700; font-size: 0.85rem; z-index: 3000; box-shadow: 0 6px 20px rgba(0,0,0,0.35);
-}
-</style>
