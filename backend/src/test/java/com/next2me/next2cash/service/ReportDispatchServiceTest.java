@@ -13,6 +13,7 @@ import com.next2me.next2cash.support.TestDataBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,6 +26,9 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 /**
  * S105 Level 2 — ReportDispatchService validations + queries.
@@ -40,6 +44,9 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
     @Autowired private ReportDispatchRepository dispatchRepository;
     @Autowired private ReportDispatchItemRepository itemRepository;
     @Autowired private ReportDispatchService service;
+
+    // Blob store is mocked: the dummy test connection string cannot reach Azure.
+    @MockBean private ReportDispatchBlobStore blobStore;
 
     private User admin;
     private CompanyEntity entity;
@@ -272,10 +279,10 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
         assertFalse(status.contains(c.getId()));
     }
 
-    // ─── 12. Happy path: persists with null blob_path ─────────────────────
+    // ─── 12. Happy path: renders + uploads + persists with blob_path ───────
 
     @Test
-    void create_happyPath_persistsWithNullBlobPath() {
+    void create_happyPath_persistsWithBlobPath() {
         Transaction inc = txn(entity.getId(), "income", "250.00", "ACTUAL", "active");
         Transaction exp = expense(entity.getId());
         ReportDispatch saved = service.create(admin, entity.getId(),
@@ -283,10 +290,44 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
                         item(inc.getId(), "INCOME"), item(exp.getId(), "EXPENSE")), null);
 
         assertNotNull(saved.getId());
-        assertNull(saved.getBlobPath(), "Level 2 must NOT produce a PDF/blob");
+        assertNotNull(saved.getBlobPath(), "Level 4 uploads a PDF and stores its path");
+        assertTrue(saved.getBlobPath().startsWith("dispatches/N2M/2026/05/"));
+        assertTrue(saved.getBlobPath().endsWith(".pdf"));
         assertEquals(entity.getId(), saved.getEntityId());
         assertEquals(admin.getId(), saved.getCreatedBy());
         assertEquals(2, itemRepository.findByIdDispatchId(saved.getId()).size());
+        // Upload happened exactly once, before the row existed.
+        verify(blobStore, times(1)).upload(anyString(), any(byte[].class));
+    }
+
+    // ─── 14. preview writes nothing to DB or Blob ──────────────────────────
+
+    @Test
+    void preview_writesNothingToDbOrBlob() {
+        Transaction e = expense(entity.getId());
+        byte[] pdf = service.preview(admin, entity.getId(),
+                req("Preview", "Λογιστήριο", LocalDate.of(2026, 5, 1), item(e.getId(), "EXPENSE")));
+
+        assertNotNull(pdf);
+        assertTrue(pdf.length > 0);
+        assertEquals(0, dispatchRepository.count(), "preview must not INSERT a dispatch");
+        assertEquals(0, itemRepository.count(), "preview must not INSERT items");
+        verify(blobStore, never()).upload(anyString(), any(byte[].class));
+    }
+
+    // ─── 15. upload failure → no row in the database ───────────────────────
+
+    @Test
+    void create_uploadFailure_leavesNoRow() {
+        doThrow(new RuntimeException("azure down"))
+                .when(blobStore).upload(anyString(), any(byte[].class));
+
+        Transaction e = expense(entity.getId());
+        assertThrows(RuntimeException.class, () -> service.create(admin, entity.getId(),
+                req("T", "Λογιστήριο", LocalDate.now(), item(e.getId(), "EXPENSE")), null));
+
+        assertEquals(0, dispatchRepository.count(), "no dispatch may exist after upload failure");
+        assertEquals(0, itemRepository.count(), "no items may exist after upload failure");
     }
 
     // ─── 13. Recipient autocomplete, distinct + most recent first ─────────
@@ -308,6 +349,7 @@ class ReportDispatchServiceTest extends BaseIntegrationTest {
     private void seedDispatch(UUID entityId, String recipient, LocalDate sent,
                               java.time.LocalDateTime createdAt) {
         ReportDispatch d = new ReportDispatch();
+        d.setId(UUID.randomUUID());   // id is application-assigned (Level 4)
         d.setEntityId(entityId);
         d.setTitle("seed");
         d.setRecipient(recipient);

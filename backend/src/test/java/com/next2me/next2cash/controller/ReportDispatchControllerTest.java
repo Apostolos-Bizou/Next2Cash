@@ -6,18 +6,23 @@ import com.next2me.next2cash.model.ReportDispatch;
 import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.dto.ReportDispatchCreateRequest;
+import com.next2me.next2cash.repository.ReportDispatchRepository;
 import com.next2me.next2cash.repository.TransactionRepository;
+import com.next2me.next2cash.service.ReportDispatchBlobStore;
 import com.next2me.next2cash.service.ReportDispatchService;
 import com.next2me.next2cash.support.TestDataBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -32,6 +37,9 @@ class ReportDispatchControllerTest extends BaseIntegrationTest {
     @Autowired private TestDataBuilder tdb;
     @Autowired private TransactionRepository transactionRepository;
     @Autowired private ReportDispatchService dispatchService;
+    @Autowired private ReportDispatchRepository dispatchRepository;
+
+    @MockBean private ReportDispatchBlobStore blobStore;
 
     private CompanyEntity next2me;
     private CompanyEntity house;
@@ -151,7 +159,7 @@ class ReportDispatchControllerTest extends BaseIntegrationTest {
                 .content(createBody(e.getId())))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data.hasPdf").value(false));
+            .andExpect(jsonPath("$.data.hasPdf").value(true));
     }
 
     @Test
@@ -229,10 +237,48 @@ class ReportDispatchControllerTest extends BaseIntegrationTest {
 
     @Test
     void getPdf_nullBlob_returns404() throws Exception {
-        ReportDispatch d = seedDispatch(next2me.getId());
+        // Seed a dispatch directly with a null blob_path (create() always sets one).
+        ReportDispatch d = new ReportDispatch();
+        d.setId(UUID.randomUUID());
+        d.setEntityId(next2me.getId());
+        d.setTitle("no-pdf");
+        d.setRecipient("Λογιστήριο");
+        d.setSentDate(LocalDate.of(2026, 1, 31));
+        d.setCreatedBy(admin.getId());
+        d.setBlobPath(null);
+        dispatchRepository.save(d);
+
         mockMvc.perform(get("/api/report-dispatches/" + d.getId() + "/pdf")
                 .header("Authorization", tdb.bearerToken(admin)))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error").value("pdf_not_generated"));
+    }
+
+    // ─── PDF 200 after POST (streams from Blob) ─────────────────────────────
+
+    @Test
+    void getPdf_afterPost_returns200Pdf() throws Exception {
+        when(blobStore.download(anyString())).thenReturn(new byte[]{'%', 'P', 'D', 'F'});
+        ReportDispatch d = seedDispatch(next2me.getId()); // create() set a blob_path
+
+        mockMvc.perform(get("/api/report-dispatches/" + d.getId() + "/pdf")
+                .header("Authorization", tdb.bearerToken(admin)))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.APPLICATION_PDF));
+    }
+
+    // ─── VIEWER 403 on preview too ──────────────────────────────────────────
+
+    @Test
+    void viewer_preview_forbidden() throws Exception {
+        User simos = tdb.createViewer("simos");
+        tdb.assignEntities(simos, next2meGroup);
+        Transaction e = expense(next2meGroup.getId());
+        mockMvc.perform(post("/api/report-dispatches/preview")
+                .header("Authorization", tdb.bearerToken(simos))
+                .param("entityId", next2meGroup.getId().toString())
+                .contentType("application/json")
+                .content(createBody(e.getId())))
+            .andExpect(status().isForbidden());
     }
 }

@@ -11,7 +11,9 @@ import com.next2me.next2cash.service.UserAccessService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -84,7 +86,7 @@ public class ReportDispatchController {
         return ResponseEntity.ok(Map.of("success", true, "data", toDetailDto(d)));
     }
 
-    // ─── GET pdf (Level 4 will stream; 404 while blob_path is null) ─────────
+    // ─── GET pdf (stream from Blob; 404 while blob_path is null) ────────────
 
     @GetMapping("/{id}/pdf")
     @PreAuthorize("hasAnyRole('ADMIN','USER')")
@@ -99,9 +101,28 @@ public class ReportDispatchController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "success", false, "error", "pdf_not_generated"));
         }
-        // Level 4: stream bytes from Azure Blob. Not reachable yet.
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(Map.of(
-            "success", false, "error", "pdf_streaming_not_implemented"));
+        byte[] pdf = dispatchService.downloadPdf(d);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"dispatch-" + id + ".pdf\"")
+                .body(pdf);
+    }
+
+    // ─── POST preview (stream, NO writes to DB or Blob) ─────────────────────
+
+    @PostMapping("/preview")
+    @PreAuthorize("hasAnyRole('ADMIN','USER')")
+    public ResponseEntity<?> preview(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId,
+            @RequestBody ReportDispatchCreateRequest body) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+        byte[] pdf = dispatchService.preview(user, entityId, body);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"preview.pdf\"")
+                .body(pdf);
     }
 
     // ─── GET recipients (autocomplete) ──────────────────────────────────────

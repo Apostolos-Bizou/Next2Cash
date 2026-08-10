@@ -26,8 +26,11 @@ import java.util.UUID;
 @NoArgsConstructor
 public class ReportDispatch {
 
+    // Application-assigned: the id is generated in the service BEFORE the PDF
+    // is uploaded, so the blob path can embed the dispatch id and we never
+    // INSERT before the upload succeeds (S105 Level 4). The DB column keeps its
+    // DEFAULT gen_random_uuid() as a fallback for any non-JPA insert.
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
     @Column(name = "entity_id", nullable = false)
