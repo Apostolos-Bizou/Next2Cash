@@ -254,8 +254,9 @@ function openDispatch() {
   if (!totalCount.value) return
   send.title = reportTitle.value; send.rcp = ''; send.note = ''
   send.date = new Date().toISOString().slice(0, 10)
-  send.scEx = sections.expense.length > 0; send.scIn = sections.income.length > 0 && sections.expense.length === 0
-  if (!send.scEx && !send.scIn) { send.scIn = sections.income.length > 0 }
+  // Both scopes checked by default (empty sections stay unchecked + disabled).
+  send.scEx = sections.expense.length > 0
+  send.scIn = sections.income.length > 0
   send.includeDocs = true
   getRecipients().then(r => { recipients.value = r }).catch(() => { recipients.value = [] })
   send.open = true
@@ -623,8 +624,8 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
             <datalist id="rcps"><option v-for="r in recipients" :key="r" :value="r"></option></datalist></div>
           <div class="field"><label>Τι περιλαμβάνει</label>
             <div class="scope">
-              <label><input type="checkbox" v-model="send.scEx">Έξοδα <span class="amt">{{ scExAmt }}</span></label>
-              <label><input type="checkbox" v-model="send.scIn">Εισπράξεις <span class="amt">{{ scInAmt }}</span></label>
+              <label><input type="checkbox" v-model="send.scEx" :disabled="sections.expense.length === 0">Έξοδα <span class="amt">{{ scExAmt }}</span></label>
+              <label><input type="checkbox" v-model="send.scIn" :disabled="sections.income.length === 0">Εισπράξεις <span class="amt">{{ scInAmt }}</span></label>
               <label><input type="checkbox" v-model="send.includeDocs">Να συμπεριληφθούν τα παραστατικά (ZIP)</label>
             </div></div>
           <div class="warn" v-html="sendSummaryText.html"></div>
