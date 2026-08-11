@@ -94,6 +94,16 @@ const txById = computed(() => { const m = new Map(); txList.value.forEach(t => m
 const T = (id) => txById.value.get(id)
 const where = (id) => Object.keys(sections).find(k => sections[k].includes(id))
 
+// Root guard: when the transaction list changes (entity switch, reload, a txn
+// voided server-side), drop section/selection ids that no longer resolve —
+// stale ids reaching the reduces was crashing the view (S105 hotfix).
+watch(txById, (m) => {
+  const prune = (arr) => { for (let i = arr.length - 1; i >= 0; i--) { if (!m.has(arr[i])) arr.splice(i, 1) } }
+  prune(sections.income)
+  prune(sections.expense)
+  if (selIds.value.some(id => !m.has(id))) selIds.value = selIds.value.filter(id => m.has(id))
+})
+
 /* ── sent index (from dispatch list + detail) ── */
 const sentOf = (id) => dispatchIndex.value
   .filter(d => (d.transactionIds || []).includes(id))
@@ -217,7 +227,12 @@ function selectAllVisible() {
   const add = pool.value.filter(t => !where(t.id)).map(t => t.id)
   selIds.value = [...new Set([...selIds.value, ...add])]
 }
-function splitBySign(ids) { const inc = [], exp = []; ids.forEach(id => (T(id).a >= 0 ? inc : exp).push(id)); return { inc, exp } }
+// Defensive: skip ids with no matching transaction (stale selection must never crash).
+function splitBySign(ids) {
+  const inc = [], exp = []
+  ids.forEach(id => { const t = T(id); if (t) (t.a >= 0 ? inc : exp).push(id) })
+  return { inc, exp }
+}
 function routeLabel(inc, exp) {
   const p = []; if (inc.length) p.push(`${inc.length} στις Εισπράξεις`); if (exp.length) p.push(`${exp.length} στα Έξοδα`); return p.join(' · ')
 }
@@ -237,7 +252,8 @@ function addSelected() {
 const previewBlob = ref(null)
 const previewTitle = ref('Προεπισκόπηση PDF')
 async function preview() {
-  const items = [...sections.income, ...sections.expense].map(id => ({ id, amount: T(id).a }))
+  const items = [...sections.income, ...sections.expense]
+    .map(T).filter(Boolean).map(t => ({ id: t.id, amount: t.a }))
   if (!items.length) return
   try {
     const payload = buildDispatchPayload({
@@ -284,8 +300,9 @@ const sendSummaryText = computed(() => {
   if (again) s += ` ⚠ Οι ${again} έχουν ξανασταλεί — προστίθεται νέα εγγραφή, δεν χάνεται η προηγούμενη.`
   return { warn: false, html: s }
 })
-const scExAmt = computed(() => `${sections.expense.length} · ${plain(sections.expense.reduce((a, id) => a + Math.abs(T(id).a), 0))}`)
-const scInAmt = computed(() => `${sections.income.length} · ${plain(sections.income.reduce((a, id) => a + Math.abs(T(id).a), 0))}`)
+// Defensive: map->filter(Boolean) before reducing — stale ids must never crash.
+const scExAmt = computed(() => `${sections.expense.length} · ${plain(sections.expense.map(T).filter(Boolean).reduce((a, t) => a + Math.abs(t.a), 0))}`)
+const scInAmt = computed(() => `${sections.income.length} · ${plain(sections.income.map(T).filter(Boolean).reduce((a, t) => a + Math.abs(t.a), 0))}`)
 async function confirmDispatch() {
   const ids = scopeIds()
   if (!ids.length) { toast('Δεν επιλέχθηκε τίποτα', 'Τσέκαρε Έξοδα ή Εισπράξεις', null); return }
@@ -293,7 +310,7 @@ async function confirmDispatch() {
   if (!send.rcp.trim()) { toast('Λείπει ο παραλήπτης', 'Γράψε πού το στέλνεις', null); return }
   send.busy = true
   try {
-    const items = ids.map(id => ({ id, amount: T(id).a }))
+    const items = ids.map(T).filter(Boolean).map(t => ({ id: t.id, amount: t.a }))
     const payload = buildDispatchPayload({
       title: send.title.trim(), recipient: send.rcp.trim(), note: send.note.trim(),
       sentDate: send.date, items, includeDocs: send.includeDocs,
