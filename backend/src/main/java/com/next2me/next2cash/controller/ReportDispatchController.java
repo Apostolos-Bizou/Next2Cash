@@ -3,9 +3,11 @@ package com.next2me.next2cash.controller;
 import com.next2me.next2cash.dto.ReportDispatchCreateRequest;
 import com.next2me.next2cash.model.ReportDispatch;
 import com.next2me.next2cash.model.ReportDispatchItem;
+import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.ReportDispatchItemRepository;
 import com.next2me.next2cash.repository.ReportDispatchRepository;
+import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.service.ReportDispatchBlobStore;
 import com.next2me.next2cash.service.ReportDispatchService;
 import com.next2me.next2cash.service.UserAccessService;
@@ -54,6 +56,7 @@ public class ReportDispatchController {
     private final ReportDispatchService dispatchService;
     private final ReportDispatchRepository dispatchRepository;
     private final ReportDispatchItemRepository itemRepository;
+    private final TransactionRepository transactionRepository;
     private final ReportDispatchBlobStore blobStore;
     private final UserAccessService userAccessService;
 
@@ -268,7 +271,33 @@ public class ReportDispatchController {
             txIds.add(it.getId().getTransactionId());
         }
         m.put("transactionIds", txIds);
+
+        // Full rows for the archive detail — UNFILTERED. Items are returned exactly
+        // as they were archived (as sent); PLANNED/void transactions that create-time
+        // validation blocks are still shown here. findAllById does not filter on
+        // recordStatus/entryMode (unlike the shared GET /api/transactions).
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Transaction t : transactionRepository.findAllById(txIds)) {
+            rows.add(txRow(t));
+        }
+        m.put("transactions", rows);
         return m;
+    }
+
+    private static Map<String, Object> txRow(Transaction t) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("id",            t.getId());
+        r.put("entityNumber",  t.getEntityNumber());
+        r.put("docDate",       t.getDocDate());
+        r.put("description",   t.getDescription());
+        r.put("category",      t.getCategory());
+        r.put("amount",        t.getAmount());
+        r.put("type",          t.getType());
+        r.put("paymentStatus", t.getPaymentStatus());
+        r.put("paymentMethod", t.getPaymentMethod());
+        r.put("recordStatus",  t.getRecordStatus());
+        r.put("entryMode",     t.getEntryMode());
+        return r;
     }
 
     private String clientIp(HttpServletRequest request) {

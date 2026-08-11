@@ -3,9 +3,11 @@ package com.next2me.next2cash.controller;
 import com.next2me.next2cash.BaseIntegrationTest;
 import com.next2me.next2cash.model.CompanyEntity;
 import com.next2me.next2cash.model.ReportDispatch;
+import com.next2me.next2cash.model.ReportDispatchItem;
 import com.next2me.next2cash.model.Transaction;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.dto.ReportDispatchCreateRequest;
+import com.next2me.next2cash.repository.ReportDispatchItemRepository;
 import com.next2me.next2cash.repository.ReportDispatchRepository;
 import com.next2me.next2cash.repository.TransactionRepository;
 import com.next2me.next2cash.service.ReportDispatchBlobStore;
@@ -41,6 +43,7 @@ class ReportDispatchControllerTest extends BaseIntegrationTest {
     @Autowired private TransactionRepository transactionRepository;
     @Autowired private ReportDispatchService dispatchService;
     @Autowired private ReportDispatchRepository dispatchRepository;
+    @Autowired private ReportDispatchItemRepository itemRepository;
 
     @MockBean private ReportDispatchBlobStore blobStore;
 
@@ -361,5 +364,60 @@ class ReportDispatchControllerTest extends BaseIntegrationTest {
         d.setBlobPath("dispatches/NEXT2ME/2026/01/x.pdf");
         d.setDocsBlobPath("dispatches/NEXT2ME/2026/01/x-docs.zip");
         return dispatchRepository.save(d);
+    }
+
+    // ─── Read path returns ALL archived items (incl. PLANNED / void) ────────
+
+    private Transaction txn(UUID entityId, String entryMode, String recordStatus, String amount) {
+        Transaction t = new Transaction();
+        t.setEntityId(entityId);
+        t.setType("expense");
+        t.setDocDate(LocalDate.of(2026, 6, 21));
+        t.setDescription("historical item");
+        t.setAmount(new BigDecimal(amount));
+        t.setAmountPaid(BigDecimal.ZERO);
+        t.setAmountRemaining(new BigDecimal(amount));
+        t.setEntryMode(entryMode);
+        t.setRecordStatus(recordStatus);
+        return transactionRepository.save(t);
+    }
+
+    /** Seed a dispatch + items DIRECTLY (bypassing the service, which would reject
+     *  PLANNED/void) — mirrors a historical backfill. */
+    private ReportDispatch seedDispatchDirect(UUID entityId, Integer... txIds) {
+        ReportDispatch d = new ReportDispatch();
+        d.setId(UUID.randomUUID());
+        d.setEntityId(entityId);
+        d.setTitle("historical");
+        d.setRecipient("Λογιστήριο");
+        d.setSentDate(LocalDate.of(2026, 6, 23));
+        d.setCreatedBy(admin.getId());
+        dispatchRepository.save(d);
+        for (Integer id : txIds) itemRepository.save(new ReportDispatchItem(d.getId(), id));
+        return d;
+    }
+
+    @Test
+    void detail_returnsPlannedItem() throws Exception {
+        Transaction planned = txn(next2meGroup.getId(), "PLANNED", "active", "18.55");
+        ReportDispatch d = seedDispatchDirect(next2meGroup.getId(), planned.getId());
+
+        mockMvc.perform(get("/api/report-dispatches/" + d.getId())
+                .header("Authorization", tdb.bearerToken(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.transactions[0].id").value(planned.getId()))
+            .andExpect(jsonPath("$.data.transactions[0].entryMode").value("PLANNED"));
+    }
+
+    @Test
+    void detail_returnsVoidItem() throws Exception {
+        Transaction voided = txn(next2meGroup.getId(), "ACTUAL", "void", "180.00");
+        ReportDispatch d = seedDispatchDirect(next2meGroup.getId(), voided.getId());
+
+        mockMvc.perform(get("/api/report-dispatches/" + d.getId())
+                .header("Authorization", tdb.bearerToken(admin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.transactions[0].id").value(voided.getId()))
+            .andExpect(jsonPath("$.data.transactions[0].recordStatus").value("void"));
     }
 }

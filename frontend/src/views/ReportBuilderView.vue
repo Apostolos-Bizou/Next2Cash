@@ -69,23 +69,27 @@ function stripLeadingId(id, desc) {
 }
 
 /* ── mapped transactions (TX-like) ── */
+// Shared mapper (used for the builder list AND the archived detail rows). The
+// #ID column shows entityNumber (fallback id); the description prefix duplicates
+// THAT number, so strip against the same field.
+function mapTx(t) {
+  const no = t.entityNumber != null ? t.entityNumber : t.id
+  return {
+    id: t.id,
+    no,
+    d: docDisplay(t.docDate),
+    iso: t.docDate || '',
+    t: stripLeadingId(no, t.description || ''),
+    cat: t.category || '',
+    a: t.type === 'income' ? (Number(t.amount) || 0) : -(Number(t.amount) || 0),
+    paid: t.paymentStatus === 'paid' || t.paymentStatus === 'received',
+    m: t.paymentMethod || '',
+  }
+}
+// Builder list: active only (the picker must not offer void/PLANNED for a NEW send).
 const txList = computed(() => allTransactions.value
   .filter(t => (t.recordStatus || 'active') === 'active')
-  .map(t => {
-    // The #ID column shows entityNumber (fallback id); the description prefix
-    // duplicates THAT number, so strip against the same field.
-    const no = t.entityNumber != null ? t.entityNumber : t.id
-    return {
-      id: t.id,
-      no,
-      d: docDisplay(t.docDate),
-      t: stripLeadingId(no, t.description || ''),
-      cat: t.category || '',
-      a: t.type === 'income' ? (Number(t.amount) || 0) : -(Number(t.amount) || 0),
-      paid: t.paymentStatus === 'paid' || t.paymentStatus === 'received',
-      m: t.paymentMethod || '',
-    }
-  }))
+  .map(mapTx))
 const txById = computed(() => { const m = new Map(); txList.value.forEach(t => m.set(t.id, t)); return m })
 const T = (id) => txById.value.get(id)
 const where = (id) => Object.keys(sections).find(k => sections[k].includes(id))
@@ -314,7 +318,8 @@ const detail = reactive({ open: false, id: null })
 const detailData = computed(() => {
   const d = dispatchIndex.value.find(x => x.id === detail.id)
   if (!d) return null
-  const rows = (d.transactionIds || []).map(T).filter(Boolean)
+  // full archived rows (incl. PLANNED/void), newest first
+  const rows = (d.rows || []).slice().sort((a, b) => (b.iso || '').localeCompare(a.iso || ''))
   const sIn = rows.filter(t => t.a > 0).reduce((a, t) => a + t.a, 0)
   const sEx = rows.filter(t => t.a < 0).reduce((a, t) => a + t.a, 0)
   return { d, rows, sIn, sEx }
@@ -332,7 +337,7 @@ async function doDelete() {
 
 /* ── archive enriched list ── */
 const archiveList = computed(() => dispatchIndex.value.map(d => {
-  const rows = (d.transactionIds || []).map(T).filter(Boolean)
+  const rows = d.rows || []   // full archived items (unfiltered)
   return {
     ...d, n: (d.transactionIds || []).length,
     sentDateFull: grFull(d.sentDate),
@@ -422,8 +427,11 @@ async function loadDispatchIndex() {
   try {
     const list = await listDispatches()
     const detailed = await Promise.all(list.map(async (d) => {
-      try { const full = await getDispatch(d.id); return { ...d, transactionIds: full?.transactionIds || [] } }
-      catch { return { ...d, transactionIds: [] } }
+      try {
+        const full = await getDispatch(d.id)
+        // rows are the FULL archived items (incl. PLANNED/void), from the detail read.
+        return { ...d, transactionIds: full?.transactionIds || [], rows: (full?.transactions || []).map(mapTx) }
+      } catch { return { ...d, transactionIds: [], rows: [] } }
     }))
     dispatchIndex.value = detailed
   } catch { dispatchIndex.value = [] }
