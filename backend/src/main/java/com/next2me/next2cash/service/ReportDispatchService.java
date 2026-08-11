@@ -79,7 +79,7 @@ public class ReportDispatchService {
 
         // 1. Render + upload the report PDF first. Id generated up front so the
         //    blob paths embed it, and we never INSERT before an upload succeeds.
-        byte[] pdf = pdfService.render(title, recipient, sentDate, ordered);
+        byte[] pdf = pdfService.render(title, recipient, sentDate, ordered, entityDisplayName(entityId));
         UUID dispatchId = UUID.randomUUID();
         String blobPath = buildBlobPath(entityId, sentDate, dispatchId);
         blobStore.upload(blobPath, pdf); // throws on failure → nothing else has happened
@@ -167,7 +167,7 @@ public class ReportDispatchService {
         String title = req.getTitle().trim();
         String recipient = req.getRecipient().trim();
         LocalDate sentDate = req.getSentDate() != null ? req.getSentDate() : LocalDate.now();
-        return pdfService.render(title, recipient, sentDate, ordered);
+        return pdfService.render(title, recipient, sentDate, ordered, entityDisplayName(entityId));
     }
 
     // ─── DELETE ──────────────────────────────────────────────────────────────
@@ -350,6 +350,13 @@ public class ReportDispatchService {
     private String entityCode(UUID entityId) {
         return companyEntityRepository.findById(entityId)
                 .map(CompanyEntity::getCode).orElse("UNKNOWN");
+    }
+
+    /** Display name for the PDF eyebrow (falls back to the code). */
+    private String entityDisplayName(UUID entityId) {
+        return companyEntityRepository.findById(entityId)
+                .map(e -> (e.getName() != null && !e.getName().isBlank()) ? e.getName() : e.getCode())
+                .orElse(null);
     }
 
     private String normalizeSection(String s) {

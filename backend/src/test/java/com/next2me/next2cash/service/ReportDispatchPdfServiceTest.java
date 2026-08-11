@@ -30,7 +30,7 @@ class ReportDispatchPdfServiceTest {
     // "ΗΜ/ΝΙΑ ΠΛΗΡ." is verified via its distinctive "ΠΛΗΡ." token.
     private static final String[] HEADER_TOKENS = {
         "ID", "ΗΜ/ΝΙΑ", "ΠΕΡΙΓΡΑΦΗ", "ΚΑΤΗΓΟΡΙΑ", "ΜΕΘΟΔΟΣ",
-        "ΠΟΣΟ", "ΠΛΗΡΩΜΕΝΟ", "ΥΠΟΛΟΙΠΟ", "ΠΛΗΡ.", "STATUS"
+        "ΠΟΣΟ", "ΠΛΗΡΩΜΕΝΟ", "ΥΠΟΛΟΙΠΟ", "ΠΛΗΡΩΜΗΣ", "STATUS"
     };
 
     private Transaction tx(int id, String type, String desc, String amount,
@@ -87,7 +87,8 @@ class ReportDispatchPdfServiceTest {
         assertTrue(euros >= 4, "ΣΥΝΟΨΗ must show 4 amounts, found " + euros);
 
         // Greek decodes correctly (byte-level proof — not mojibake).
-        assertTrue(text.contains("ΤΙΤΛΟΣ ΑΝΑΦΟΡΑΣ") || text.contains("ΤΙΤΛΟΣ"), "title label mojibake");
+        // (Round-2: the eyebrow is the entity name / generic fallback, so assert the title text itself.)
+        assertTrue(text.contains("Απόδοση Δαπανών"), "title text mojibake");
         assertTrue(text.contains("ΕΙΣΠΡΑΞΕΙΣ"), "KPI label mojibake");
         assertTrue(text.contains("Λεωνίδας"), "recipient mojibake");
     }

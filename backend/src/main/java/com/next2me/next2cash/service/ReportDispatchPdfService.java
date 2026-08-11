@@ -64,28 +64,43 @@ public class ReportDispatchPdfService {
     private static final Color ORANGE = new Color(0xFF, 0x64, 0x00);
     private static final Color MUTED  = new Color(0x88, 0x88, 0x88);
     private static final Color BORDER = new Color(0xE0, 0xE6, 0xED);
-    private static final Color ZEBRA  = new Color(0xFA, 0xFB, 0xFC);
+    // S105 restyle — old client-side look: thin gray hairlines, soft zebra, pills.
+    private static final Color LINE           = new Color(0xE5, 0xE7, 0xEB);
+    private static final Color ZEBRA          = new Color(0xF8, 0xFA, 0xFC);
+    private static final Color DASH           = new Color(0x9C, 0xA3, 0xAF);
+    private static final Color PILL_GREEN_BG  = new Color(0xE8, 0xF5, 0xE9);
+    private static final Color PILL_ORANGE_BG = new Color(0xFF, 0xF3, 0xE0);
+    private static final Color PILL_ORANGE_FG = new Color(0xD9, 0x80, 0x14);
+    private static final Color TID            = new Color(0x7D, 0x8F, 0xA1);  // faded blue-gray IDs
 
     /**
      * Render a dispatch PDF. Transactions are rendered as a single chronological
      * flow (newest first). Does not touch DB or blob storage.
      */
     public byte[] render(String title, String recipient, LocalDate sentDate, List<Transaction> txns) {
+        return render(title, recipient, sentDate, txns, null);
+    }
+
+    /** Round-2 restyle: the eyebrow label of the title panel shows the ENTITY
+     *  name (uppercase). The 4-arg overload (tests, legacy) falls back to a
+     *  generic label. */
+    public byte[] render(String title, String recipient, LocalDate sentDate,
+                         List<Transaction> txns, String entityName) {
         List<Transaction> ordered = new ArrayList<>(txns);
         ordered.sort(Comparator
                 .comparing(Transaction::getDocDate, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Transaction::getId, Comparator.nullsLast(Comparator.naturalOrder()))
                 .reversed());
 
-        byte[] firstPass = build(title, recipient, sentDate, ordered, 0);
+        byte[] firstPass = build(title, recipient, sentDate, ordered, entityName, 0);
         int totalPages = pageCount(firstPass);
-        return build(title, recipient, sentDate, ordered, totalPages);
+        return build(title, recipient, sentDate, ordered, entityName, totalPages);
     }
 
     // ─── Core build ─────────────────────────────────────────────────────────
 
     private byte[] build(String title, String recipient, LocalDate sentDate,
-                         List<Transaction> ordered, int totalPages) {
+                         List<Transaction> ordered, String entityName, int totalPages) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4.rotate(), 28f, 28f, 24f, 24f);
             PdfWriter writer = PdfWriter.getInstance(doc, out);
@@ -96,9 +111,10 @@ public class ReportDispatchPdfService {
             doc.open();
 
             addHeader(doc, bf);
-            addTitleBlock(doc, bf, title, recipient, sentDate);
+            addTitleBlock(doc, bf, entityName, title, recipient, sentDate);
             Kpis k = computeKpis(ordered);
             addKpiRow(doc, bf, ordered, k);
+            // Single chronological flow, newest first — SPEC §2.4 stands.
             addTransactionsTable(doc, bf, ordered);
             addSummaryBlock(doc, bf, k);
 
@@ -135,9 +151,13 @@ public class ReportDispatchPdfService {
         com.lowagie.text.Font docDate    = new com.lowagie.text.Font(bf, 9, com.lowagie.text.Font.NORMAL, MUTED);
 
         Paragraph brand = new Paragraph();
-        brand.add(new Chunk("CashControl", brandName));
+        Chunk brandTop = new Chunk("CashControl", brandName);
+        brandTop.setCharacterSpacing(0.4f);          // letterspacing, as in the Καρτέλα lockup
+        brand.add(brandTop);
         brand.add(Chunk.NEWLINE);
-        brand.add(new Chunk("NEXT2ME", brandSub));
+        Chunk brandBottom = new Chunk("NEXT2ME", brandSub);
+        brandBottom.setCharacterSpacing(2.6f);
+        brand.add(brandBottom);
         PdfPCell left = new PdfPCell(brand);
         left.setBorder(Rectangle.NO_BORDER);
         left.setPaddingBottom(8f);
@@ -162,9 +182,10 @@ public class ReportDispatchPdfService {
         doc.add(thinGap());
     }
 
-    // ─── Title block (ΤΙΤΛΟΣ ΑΝΑΦΟΡΑΣ + recipient + sent date) ───────────────
+    // ─── Title block (eyebrow = entity name + title + recipient/sent date) ───
 
-    private void addTitleBlock(Document doc, BaseFont bf, String title, String recipient, LocalDate sentDate)
+    private void addTitleBlock(Document doc, BaseFont bf, String entityName,
+                               String title, String recipient, LocalDate sentDate)
             throws DocumentException {
         com.lowagie.text.Font labelFont = new com.lowagie.text.Font(bf, 8, com.lowagie.text.Font.BOLD, BLUE);
         com.lowagie.text.Font nameFont  = new com.lowagie.text.Font(bf, 20, com.lowagie.text.Font.BOLD, NAVY);
@@ -173,8 +194,16 @@ public class ReportDispatchPdfService {
         PdfPTable wrap = new PdfPTable(1);
         wrap.setWidthPercentage(100);
 
+        // Eyebrow: entity name uppercase (Greek locale); generic fallback for the
+        // legacy 4-arg render used by tests. "ΑΝΑΦΟΡΑ" = ΑΝΑΦΟΡΑ
+        String eyebrow = (entityName != null && !entityName.isBlank())
+                ? entityName.toUpperCase(new java.util.Locale("el"))
+                : "ΑΝΑΦΟΡΑ";
+
         Paragraph content = new Paragraph();
-        content.add(new Chunk("ΤΙΤΛΟΣ ΑΝΑΦΟΡΑΣ", labelFont));
+        Chunk eyebrowChunk = new Chunk(eyebrow, labelFont);
+        eyebrowChunk.setCharacterSpacing(1.1f);
+        content.add(eyebrowChunk);
         content.add(Chunk.NEWLINE);
         content.add(new Chunk(safe(title), nameFont));
         content.add(Chunk.NEWLINE);
@@ -197,15 +226,23 @@ public class ReportDispatchPdfService {
     // ─── KPI band ───────────────────────────────────────────────────────────
 
     private void addKpiRow(Document doc, BaseFont bf, List<Transaction> txns, Kpis k) throws DocumentException {
-        PdfPTable kpis = new PdfPTable(6);
+        // Round 2: the split ΠΛΗΡΩΜΕΝΟ tile broke the rhythm — now SEVEN uniform
+        // cards, each one big number + one small gray subline.
+        // "ΠΛΗΡΩΜΕΝΑ ΕΞΟΔΑ" / "ΕΙΣΠΡΑΓΜΕΝΑ ΕΣΟΔΑ" (uXXXX per convention):
+        String lblPaidExp = "ΠΛΗΡΩΜΕΝΑ ΕΞΟΔΑ";
+        String lblPaidInc = "ΕΙΣΠΡΑΓΜΕΝΑ ΕΣΟΔΑ";
+        String kin = "κινήσεις"; // κινήσεις
+
+        PdfPTable kpis = new PdfPTable(7);
         kpis.setWidthPercentage(100);
-        kpis.setWidths(new float[]{1f, 1f, 1f, 1.2f, 1f, 1f});
+        kpis.setWidths(new float[]{1f, 1f, 1f, 1f, 1f, 1f, 1f});
 
         kpis.addCell(kpiCell(bf, NAVY, "ΣΥΝΟΛΟ ΚΙΝΗΣΕΩΝ", formatCount(k.countTotal),
                 k.countExpense + " έξοδα / " + k.countIncome + " έσοδα"));
-        kpis.addCell(kpiCell(bf, GREEN, "ΕΙΣΠΡΑΞΕΙΣ", formatMoney(k.totalIncome), k.countIncome + " κινήσεις"));
-        kpis.addCell(kpiCell(bf, RED, "ΕΞΟΔΑ", formatMoney(k.totalExpense), k.countExpense + " κινήσεις"));
-        kpis.addCell(kpiCellPaidSplit(bf, k));
+        kpis.addCell(kpiCell(bf, GREEN, "ΕΙΣΠΡΑΞΕΙΣ", formatMoney(k.totalIncome), k.countIncome + " " + kin));
+        kpis.addCell(kpiCell(bf, RED, "ΕΞΟΔΑ", formatMoney(k.totalExpense), k.countExpense + " " + kin));
+        kpis.addCell(kpiCell(bf, RED, lblPaidExp, formatMoney(k.expensePaid), k.countPaidExp + " " + kin));
+        kpis.addCell(kpiCell(bf, GREEN, lblPaidInc, formatMoney(k.incomeReceived), k.countPaidInc + " " + kin));
         kpis.addCell(kpiCell(bf, ORANGE, "ΕΚΚΡΕΜΕΙΣ", formatMoney(k.unpaidRemaining), k.countUnpaid + " απλήρωτες"));
         kpis.addCell(kpiCell(bf, k.net.signum() >= 0 ? GREEN : RED, "ΚΑΘΑΡΟ ΥΠΟΛΟΙΠΟ", formatMoney(k.net), ""));
 
@@ -214,9 +251,9 @@ public class ReportDispatchPdfService {
     }
 
     private PdfPCell kpiCell(BaseFont bf, Color valueColor, String label, String value, String sub) {
-        com.lowagie.text.Font labelFont = new com.lowagie.text.Font(bf, 8, com.lowagie.text.Font.BOLD, MUTED);
-        com.lowagie.text.Font valueFont = new com.lowagie.text.Font(bf, 15, com.lowagie.text.Font.BOLD, valueColor);
-        com.lowagie.text.Font subFont   = new com.lowagie.text.Font(bf, 8, com.lowagie.text.Font.NORMAL, MUTED);
+        com.lowagie.text.Font labelFont = new com.lowagie.text.Font(bf, 7.5f, com.lowagie.text.Font.BOLD, MUTED);
+        com.lowagie.text.Font valueFont = new com.lowagie.text.Font(bf, 13, com.lowagie.text.Font.BOLD, valueColor);
+        com.lowagie.text.Font subFont   = new com.lowagie.text.Font(bf, 7.5f, com.lowagie.text.Font.NORMAL, MUTED);
 
         Paragraph p = new Paragraph();
         p.setAlignment(Element.ALIGN_CENTER);
@@ -230,60 +267,47 @@ public class ReportDispatchPdfService {
         return kpiWrap(p);
     }
 
-    /** ΠΛΗΡΩΜΕΝΟ tile split into «έξοδα» (red) / «έσοδα» (green) — SPEC §2.4. */
-    private PdfPCell kpiCellPaidSplit(BaseFont bf, Kpis k) {
-        com.lowagie.text.Font labelFont = new com.lowagie.text.Font(bf, 8, com.lowagie.text.Font.BOLD, MUTED);
-        com.lowagie.text.Font expFont   = new com.lowagie.text.Font(bf, 11, com.lowagie.text.Font.BOLD, RED);
-        com.lowagie.text.Font incFont   = new com.lowagie.text.Font(bf, 11, com.lowagie.text.Font.BOLD, GREEN);
-
-        Paragraph p = new Paragraph();
-        p.setAlignment(Element.ALIGN_CENTER);
-        p.add(new Chunk("ΠΛΗΡΩΜΕΝΟ", labelFont));
-        p.add(Chunk.NEWLINE);
-        p.add(new Chunk("έξοδα " + formatMoney(k.expensePaid), expFont));
-        p.add(Chunk.NEWLINE);
-        p.add(new Chunk("έσοδα " + formatMoney(k.incomeReceived), incFont));
-        return kpiWrap(p);
-    }
-
     private PdfPCell kpiWrap(Paragraph p) {
         PdfPCell cell = new PdfPCell(p);
         cell.setBorder(Rectangle.BOX);
-        cell.setBorderColor(BORDER);
-        cell.setBorderWidth(1f);
-        cell.setPadding(10f);
+        cell.setBorderColor(LINE);
+        cell.setBorderWidth(0.5f);   // thin hairline, not a heavy box
+        cell.setPadding(7f);         // 7 cards need slightly tighter padding
         cell.setHorizontalAlignment(Element.ALIGN_CENTER);
         cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
         return cell;
     }
 
-    // ─── Transactions table (single chronological flow) ─────────────────────
+    // ─── Transactions table (single chronological flow, Καρτέλα palette) ────
 
-    private void addTransactionsTable(Document doc, BaseFont bf, List<Transaction> txns) throws DocumentException {
-        com.lowagie.text.Font headerFont = new com.lowagie.text.Font(bf, 9, com.lowagie.text.Font.BOLD, Color.WHITE);
+    private void addTransactionsTable(Document doc, BaseFont bf, List<Transaction> txns)
+            throws DocumentException {
+        com.lowagie.text.Font headerFont = new com.lowagie.text.Font(bf, 8, com.lowagie.text.Font.BOLD, Color.WHITE);
         com.lowagie.text.Font bodyFont   = new com.lowagie.text.Font(bf, 9, com.lowagie.text.Font.NORMAL, new Color(0x1A, 0x1A, 0x2E));
+        com.lowagie.text.Font boldBody   = new com.lowagie.text.Font(bf, 9, com.lowagie.text.Font.BOLD, new Color(0x1A, 0x1A, 0x2E));
         com.lowagie.text.Font greenBody  = new com.lowagie.text.Font(bf, 9, com.lowagie.text.Font.NORMAL, GREEN);
         com.lowagie.text.Font redBody    = new com.lowagie.text.Font(bf, 9, com.lowagie.text.Font.NORMAL, RED);
+        com.lowagie.text.Font dashFont   = new com.lowagie.text.Font(bf, 9, com.lowagie.text.Font.NORMAL, DASH);
+        com.lowagie.text.Font blueBody   = new com.lowagie.text.Font(bf, 9, com.lowagie.text.Font.NORMAL, BLUE);
+        com.lowagie.text.Font tidFont    = new com.lowagie.text.Font(bf, 7.5f, com.lowagie.text.Font.NORMAL, TID);
 
         PdfPTable table = new PdfPTable(10);
         table.setWidthPercentage(100);
-        // Relative widths chosen so each column, once normalized to the 786pt
-        // available width, holds its header + typical cell on ONE line
-        // (measured against DejaVuSans metrics — see S105 width audit).
-        // ID  ΗΜ/ΝΙΑ ΠΕΡΙΓΡ ΚΑΤΗΓ ΜΕΘΟΔ ΠΟΣΟ ΠΛΗΡΩΜ ΥΠΟΛ ΗΜ/ΝΙΑΠΛ STATUS
-        // ΚΑΤΗΓΟΡΙΑ widened 92->102 so "ΧΡΗΜΑΤΟΔΟΤΗΣΗ" (needs ~95pt) stays on one
-        // line; space taken from ΠΕΡΙΓΡΑΦΗ (138->132) and ΗΜ/ΝΙΑ ΠΛΗΡ. (86->82),
-        // both of which had slack (S105 width audit).
-        table.setWidths(new float[]{42f, 72f, 132f, 102f, 76f, 70f, 82f, 72f, 82f, 84f});
-        table.setHeaderRows(1); // repeat header on every page (pagination)
+        // Widths re-audited for header@8 + horizontal header padding 6:
+        // "ΗΜ/ΝΙΑ ΠΛΗΡΩΜΗΣ" full label on ONE line (col 9: 104 raw ≈ 100pt).
+        // ΚΑΤΗΓΟΡΙΑ keeps 102 (ΧΡΗΜΑΤΟΔΟΤΗΣΗ needs ~98 at body pad 7.5).
+        table.setWidths(new float[]{42f, 72f, 112f, 102f, 74f, 70f, 82f, 72f, 104f, 84f});
+        table.setHeaderRows(1); // navy column header repeats on every page
 
         String[] headers = {"ID", "ΗΜ/ΝΙΑ", "ΠΕΡΙΓΡΑΦΗ", "ΚΑΤΗΓΟΡΙΑ", "ΜΕΘΟΔΟΣ",
-                "ΠΟΣΟ", "ΠΛΗΡΩΜΕΝΟ", "ΥΠΟΛΟΙΠΟ", "ΗΜ/ΝΙΑ ΠΛΗΡ.", "STATUS"};
+                "ΠΟΣΟ", "ΠΛΗΡΩΜΕΝΟ", "ΥΠΟΛΟΙΠΟ", "ΗΜ/ΝΙΑ ΠΛΗΡΩΜΗΣ", "STATUS"};
         for (String h : headers) {
             PdfPCell c = new PdfPCell(new Phrase(h, headerFont));
             c.setBackgroundColor(NAVY);
             c.setBorder(Rectangle.NO_BORDER);
-            c.setPadding(7f);
+            c.setPadding(9f);
+            c.setPaddingLeft(6f);
+            c.setPaddingRight(6f);
             c.setHorizontalAlignment(Element.ALIGN_LEFT);
             table.addCell(c);
         }
@@ -302,42 +326,147 @@ public class ReportDispatchPdfService {
                 Color bg = (i % 2 == 1) ? ZEBRA : Color.WHITE;
                 com.lowagie.text.Font signFont = income ? greenBody : redBody;
 
-                // The ID column shows entityNumber (fallback id). The description's
-                // leading prefix duplicates THAT number, so strip against the same.
+                // ID: smaller, faded blue-gray — entityNumber (fallback id).
                 Integer idNum = t.getEntityNumber() != null ? t.getEntityNumber() : t.getId();
                 String idStr = idNum != null ? String.valueOf(idNum) : "—";
-                addBodyCell(table, bg, bodyFont, idStr, Element.ALIGN_LEFT);
+                addBodyCell(table, bg, tidFont, idStr, Element.ALIGN_LEFT);
+
                 addBodyCell(table, bg, bodyFont,
                         t.getDocDate() != null ? t.getDocDate().format(DATE_DISPLAY) : "—", Element.ALIGN_LEFT);
-                addBodyCell(table, bg, bodyFont, safe(stripLeadingId(idNum, t.getDescription())), Element.ALIGN_LEFT);
+
+                // ΠΕΡΙΓΡΑΦΗ: bold the counterparty when it is a literal substring —
+                // no guessing, only the counterparty FIELD verbatim.
+                addDescriptionCell(table, bg, bodyFont, boldBody,
+                        safe(stripLeadingId(idNum, t.getDescription())), t.getCounterparty());
+
                 addBodyCell(table, bg, bodyFont, safe(t.getCategory()), Element.ALIGN_LEFT);
-                addBodyCell(table, bg, bodyFont, nonEmpty(t.getPaymentMethod()), Element.ALIGN_LEFT);
 
-                // ΠΟΣΟ + ΠΛΗΡΩΜΕΝΟ colored by sign (income green / expense red)
+                // ΜΕΘΟΔΟΣ: blue (Καρτέλα palette); gray dash when empty.
+                String method = nonEmpty(t.getPaymentMethod());
+                addBodyCell(table, bg, "—".equals(method) ? dashFont : blueBody, method, Element.ALIGN_LEFT);
+
+                // ΠΟΣΟ colored by sign — green income / red expense (production look).
                 addBodyCell(table, bg, signFont, formatMoney(t.getAmount()), Element.ALIGN_RIGHT);
-                addBodyCell(table, bg, signFont, formatMoney(t.getAmountPaid()), Element.ALIGN_RIGHT);
 
-                // ΥΠΟΛΟΙΠΟ green when zero, red when pending
+                // ΠΛΗΡΩΜΕΝΟ: green when paid; gray «—» when nothing paid.
+                BigDecimal paidAmt = t.getAmountPaid();
+                if (paidAmt == null || paidAmt.signum() == 0) {
+                    addBodyCell(table, bg, dashFont, "—", Element.ALIGN_RIGHT);
+                } else {
+                    addBodyCell(table, bg, greenBody, formatMoney(paidAmt), Element.ALIGN_RIGHT);
+                }
+
+                // ΥΠΟΛΟΙΠΟ: red when pending, green when 0,00.
                 BigDecimal rem = t.getAmountRemaining();
                 com.lowagie.text.Font remFont = (rem != null && rem.signum() > 0) ? redBody : greenBody;
                 addBodyCell(table, bg, remFont, formatMoney(rem), Element.ALIGN_RIGHT);
 
-                addBodyCell(table, bg, bodyFont,
-                        t.getPaymentDate() != null ? t.getPaymentDate().format(DATE_DISPLAY) : "—", Element.ALIGN_LEFT);
-                addBodyCell(table, bg, bodyFont, statusLabelFor(t.getPaymentStatus()), Element.ALIGN_LEFT);
+                if (t.getPaymentDate() != null) {
+                    addBodyCell(table, bg, bodyFont, t.getPaymentDate().format(DATE_DISPLAY), Element.ALIGN_LEFT);
+                } else {
+                    addBodyCell(table, bg, dashFont, "—", Element.ALIGN_LEFT);
+                }
+
+                addStatusPill(table, bg, bf, dashFont, t.getPaymentStatus());
             }
         }
         doc.add(table);
     }
 
+    /** Description cell with the counterparty bolded when it appears verbatim. */
+    private void addDescriptionCell(PdfPTable table, Color bg,
+                                    com.lowagie.text.Font bodyFont, com.lowagie.text.Font boldBody,
+                                    String desc, String counterparty) {
+        Phrase p;
+        int idx = (counterparty != null && !counterparty.isBlank() && desc != null)
+                ? desc.indexOf(counterparty) : -1;
+        if (idx >= 0) {
+            p = new Phrase();
+            if (idx > 0) p.add(new Chunk(desc.substring(0, idx), bodyFont));
+            p.add(new Chunk(desc.substring(idx, idx + counterparty.length()), boldBody));
+            if (idx + counterparty.length() < desc.length()) {
+                p.add(new Chunk(desc.substring(idx + counterparty.length()), bodyFont));
+            }
+        } else {
+            p = new Phrase(desc != null ? desc : "—", bodyFont);
+        }
+        PdfPCell c = new PdfPCell(p);
+        c.setBackgroundColor(bg);
+        c.setBorder(Rectangle.BOTTOM);
+        c.setBorderWidthBottom(0.5f);
+        c.setBorderColorBottom(LINE);
+        c.setPadding(7.5f);
+        c.setHorizontalAlignment(Element.ALIGN_LEFT);
+        table.addCell(c);
+    }
+
     private void addBodyCell(PdfPTable table, Color bg, com.lowagie.text.Font font, String text, int align) {
         PdfPCell c = new PdfPCell(new Phrase(text != null ? text : "—", font));
         c.setBackgroundColor(bg);
+        // Only a thin horizontal hairline between rows — no vertical lines.
         c.setBorder(Rectangle.BOTTOM);
-        c.setBorderColorBottom(new Color(0xF0, 0xF0, 0xF0));
-        c.setPadding(6f);
+        c.setBorderWidthBottom(0.5f);
+        c.setBorderColorBottom(LINE);
+        c.setPadding(7.5f);   // airier rows, like the old client-side render
         c.setHorizontalAlignment(align);
         table.addCell(c);
+    }
+
+    /** STATUS pill: rounded rect, soft fill + thin border in the pill color,
+     *  colored bold text — like the Καρτέλα. Null status → plain gray dash. */
+    private void addStatusPill(PdfPTable table, Color bg, BaseFont bf,
+                               com.lowagie.text.Font dashFont, String status) {
+        String label = statusLabelFor(status);
+        if ("—".equals(label)) {
+            addBodyCell(table, bg, dashFont, "—", Element.ALIGN_LEFT);
+            return;
+        }
+        boolean ok = "paid".equals(status) || "received".equals(status);
+        Color fg = ok ? GREEN : PILL_ORANGE_FG;
+        Color pillBg = ok ? PILL_GREEN_BG : PILL_ORANGE_BG;
+        com.lowagie.text.Font pillFont = new com.lowagie.text.Font(bf, 8, com.lowagie.text.Font.BOLD, fg);
+
+        float textW = bf.getWidthPoint(label, 8) + 2f;  // +2 for simulated-bold spread
+        PdfPCell c = new PdfPCell(new Phrase(new Chunk(label, pillFont)));
+        c.setCellEvent(new PillEvent(textW, pillBg, fg));
+        c.setBackgroundColor(bg);
+        c.setBorder(Rectangle.BOTTOM);
+        c.setBorderWidthBottom(0.5f);
+        c.setBorderColorBottom(LINE);
+        c.setPadding(7.5f);
+        c.setPaddingLeft(11f);   // text sits inside the drawn pill
+        c.setHorizontalAlignment(Element.ALIGN_LEFT);
+        table.addCell(c);
+    }
+
+    /** Draws the rounded pill (soft fill + thin colored stroke) behind the
+     *  status text. Anchored to the cell top so multi-line rows stay aligned. */
+    private static class PillEvent implements com.lowagie.text.pdf.PdfPCellEvent {
+        private final float textWidth;
+        private final Color fill;
+        private final Color stroke;
+
+        PillEvent(float textWidth, Color fill, Color stroke) {
+            this.textWidth = textWidth;
+            this.fill = fill;
+            this.stroke = stroke;
+        }
+
+        @Override
+        public void cellLayout(PdfPCell cell, Rectangle position, PdfContentByte[] canvases) {
+            PdfContentByte cb = canvases[com.lowagie.text.pdf.PdfPTable.BACKGROUNDCANVAS];
+            float h = 14.5f;
+            float x = position.getLeft() + 6f;
+            float y = position.getTop() - 19.5f;   // top-anchored, wraps the first text line
+            float w = textWidth + 10f;
+            cb.saveState();
+            cb.setColorFill(fill);
+            cb.setColorStroke(stroke);
+            cb.setLineWidth(0.6f);
+            cb.roundRectangle(x, y, w, h, 4f);
+            cb.fillStroke();
+            cb.restoreState();
+        }
     }
 
     // ─── ΣΥΝΟΨΗ block ───────────────────────────────────────────────────────
@@ -356,7 +485,8 @@ public class ReportDispatchPdfService {
         PdfPCell title = new PdfPCell(new Phrase("ΣΥΝΟΨΗ", hdrFont));
         title.setColspan(2);
         title.setBorder(Rectangle.BOTTOM);
-        title.setBorderColorBottom(NAVY);
+        title.setBorderWidthBottom(0.5f);   // thin hairline, not a heavy navy rule
+        title.setBorderColorBottom(LINE);
         title.setPaddingBottom(6f);
         box.addCell(title);
 
@@ -374,15 +504,19 @@ public class ReportDispatchPdfService {
                             String label, String value, Color valueColor) {
         com.lowagie.text.Font valueFont = new com.lowagie.text.Font(bf, 10, com.lowagie.text.Font.BOLD, valueColor);
         PdfPCell l = new PdfPCell(new Phrase(label, labelFont));
-        l.setBorder(Rectangle.NO_BORDER);
-        l.setPaddingTop(4f);
-        l.setPaddingBottom(4f);
+        l.setBorder(Rectangle.BOTTOM);         // thin separator per row (old look)
+        l.setBorderWidthBottom(0.5f);
+        l.setBorderColorBottom(LINE);
+        l.setPaddingTop(5f);
+        l.setPaddingBottom(5f);
         box.addCell(l);
         PdfPCell v = new PdfPCell(new Phrase(value, valueFont));
-        v.setBorder(Rectangle.NO_BORDER);
+        v.setBorder(Rectangle.BOTTOM);
+        v.setBorderWidthBottom(0.5f);
+        v.setBorderColorBottom(LINE);
         v.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        v.setPaddingTop(4f);
-        v.setPaddingBottom(4f);
+        v.setPaddingTop(5f);
+        v.setPaddingBottom(5f);
         box.addCell(v);
     }
 
@@ -436,10 +570,12 @@ public class ReportDispatchPdfService {
                 k.totalIncome = k.totalIncome.add(amount);
                 k.incomeReceived = k.incomeReceived.add(paid);
                 k.countIncome++;
+                if (paid.signum() > 0) k.countPaidInc++;
             } else {
                 k.totalExpense = k.totalExpense.add(amount);
                 k.expensePaid = k.expensePaid.add(paid);
                 k.countExpense++;
+                if (paid.signum() > 0) k.countPaidExp++;
                 if (rem.signum() > 0) {
                     k.unpaidRemaining = k.unpaidRemaining.add(rem);
                     k.countUnpaid++;
@@ -458,7 +594,7 @@ public class ReportDispatchPdfService {
         BigDecimal expensePaid = zero();
         BigDecimal unpaidRemaining = zero();
         BigDecimal net = zero();
-        int countTotal, countIncome, countExpense, countUnpaid;
+        int countTotal, countIncome, countExpense, countUnpaid, countPaidExp, countPaidInc;
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
@@ -514,7 +650,7 @@ public class ReportDispatchPdfService {
         return switch (status) {
             case "paid"     -> "Εξοφλημένη";
             case "received" -> "Εισπράχθηκε";
-            case "unpaid"   -> "Απλήρωτη";
+            case "unpaid"   -> "⚡ Εκκρεμής";   // round-2 lexicon: Εκκρεμής, not Απλήρωτη
             case "urgent"   -> "⚡ Εκκρεμής";
             case "partial"  -> "Μερική";
             default         -> status;
