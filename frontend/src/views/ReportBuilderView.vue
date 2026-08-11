@@ -251,10 +251,15 @@ function addSelected() {
 /* ── preview (real backend PDF) ── */
 const previewBlob = ref(null)
 const previewTitle = ref('Προεπισκόπηση PDF')
+// 50-90 items is NORMAL monthly usage — visible busy state so the UI never
+// looks stuck while the server renders the PDF.
+const previewBusy = ref(false)
 async function preview() {
+  if (previewBusy.value) return
   const items = [...sections.income, ...sections.expense]
     .map(T).filter(Boolean).map(t => ({ id: t.id, amount: t.a }))
   if (!items.length) return
+  previewBusy.value = true
   try {
     const payload = buildDispatchPayload({
       title: reportTitle.value || 'Αναφορά', recipient: 'Προεπισκόπηση', note: reportDesc.value,
@@ -262,7 +267,7 @@ async function preview() {
     })
     previewTitle.value = 'Προεπισκόπηση PDF — δεν έχει σταλεί ακόμα'
     previewBlob.value = await previewDispatch(payload)
-  } catch (e) { alert(mapErr(e, 'Αποτυχία προεπισκόπησης')) }
+  } catch (e) { alert(mapErr(e, 'Αποτυχία προεπισκόπησης')) } finally { previewBusy.value = false }
 }
 async function openStoredPdf(id) {
   const d = dispatchIndex.value.find(x => x.id === id); if (!d) return
@@ -493,7 +498,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
           <button class="btn btn-green" @click="openPicker('income')">+ Έσοδα</button>
           <button class="btn btn-red" @click="openPicker('expense')">+ Έξοδα</button>
           <button class="btn" @click="toggleSummary">{{ showSummary ? '− Σύνοψη' : '+ Σύνοψη' }}</button>
-          <button v-if="canDispatch" class="btn" :disabled="!totalCount" @click="preview">📄 Προεπισκόπηση PDF</button>
+          <button v-if="canDispatch" class="btn" :disabled="!totalCount || previewBusy" @click="preview">{{ previewBusy ? '⏳ Δημιουργία PDF…' : '📄 Προεπισκόπηση PDF' }}</button>
           <button v-if="canDispatch" class="btn btn-sent" :disabled="!totalCount" @click="openDispatch">✉ Αποστολή &amp; αρχειοθέτηση</button>
           <button class="btn" :disabled="!reportHasDocs" @click="downloadAllFiles"
                   title="ZIP με τα παραστατικά όλων των κινήσεων του report">📥 Λήψη όλων των αρχείων</button>
@@ -666,7 +671,7 @@ onBeforeUnmount(() => { if (onEntity) window.removeEventListener('entity-changed
         </div>
         <div class="m-foot"><button class="btn" @click="send.open = false" :disabled="send.busy">Άκυρο</button>
           <div class="foot-right"><button class="btn btn-sent" :disabled="send.busy" @click="confirmDispatch">
-            {{ send.busy ? 'Αποστολή…' : 'Δημιουργία PDF &amp; αρχειοθέτηση' }}</button></div></div>
+            {{ send.busy ? (send.includeDocs ? '⏳ Δημιουργία PDF & ZIP παραστατικών — μπορεί να πάρει λίγα λεπτά…' : '⏳ Δημιουργία PDF…') : 'Δημιουργία PDF &amp; αρχειοθέτηση' }}</button></div></div>
       </div>
     </div>
 

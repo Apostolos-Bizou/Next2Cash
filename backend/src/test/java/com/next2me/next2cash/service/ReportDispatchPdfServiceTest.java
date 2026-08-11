@@ -127,6 +127,45 @@ class ReportDispatchPdfServiceTest {
         assertEquals(total, pagesWithFooter, "'σελίδα' must appear on every one of " + total + " pages");
     }
 
+    // ─── 90+ rows: the NORMAL monthly send size (all pending of a month) ─────
+
+    @Test
+    void render_90plusRows_multiPage_headerRepeats_andPageXofY() throws Exception {
+        List<Transaction> rows = new ArrayList<>();
+        for (int i = 1; i <= 95; i++) {
+            String type = (i % 6 == 0) ? "income" : "expense";
+            Transaction t = tx(i, type, "Μηνιαία κίνηση με ελληνική περιγραφή " + i, "247.13",
+                    "income".equals(type) ? "247.13" : "0.00",
+                    "income".equals(type) ? "0.00" : "247.13",
+                    "income".equals(type) ? "received" : "unpaid",
+                    LocalDate.of(2026, 7, 1).plusDays(i % 30));
+            t.setCategory(i % 4 == 0 ? "ΧΡΗΜΑΤΟΔΟΤΗΣΗ" : "ΛΕΙΤΟΥΡΓΙΚΑ");
+            rows.add(t);
+        }
+
+        byte[] bytes = pdf.render("Μηνιαία Αποστολή Ιουλίου — Όλες οι Εκκρεμότητες", "Λογιστήριο",
+                LocalDate.of(2026, 7, 31), rows);
+        PdfReader reader = new PdfReader(bytes);
+        int total = reader.getNumberOfPages();
+        assertTrue(total >= 3, "95 rows should span at least 3 pages, got " + total);
+
+        for (int page = 1; page <= total; page++) {
+            String text = pageText(reader, page);
+            boolean hasTableHeader = text.contains("ΠΛΗΡΩΜΕΝΟ");
+            if (page < total) {
+                assertTrue(hasTableHeader,
+                        "table header must repeat unwrapped on page " + page + "/" + total);
+            } else {
+                // Last page may legitimately hold only the ΣΥΝΟΨΗ block (no table).
+                assertTrue(hasTableHeader || text.contains("ΣΥΝΟΨΗ"),
+                        "last page must have the table header or the ΣΥΝΟΨΗ block");
+            }
+            assertTrue(text.contains("σελίδα " + page + " / " + total),
+                    "page " + page + " must show 'σελίδα " + page + " / " + total + "'");
+        }
+        reader.close();
+    }
+
     // ─── Long category must not wrap (ΧΡΗΜΑΤΟΔΟΤΗΣΗ) ─────────────────────────
 
     @Test

@@ -29,10 +29,14 @@ export async function getDispatch(id) {
   return res.data?.data
 }
 
-/** Create a dispatch: renders + stores the PDF, then archives. */
+/** Create a dispatch: renders + stores the PDF (+docs ZIP), then archives.
+ *  10-minute timeout: a normal monthly send is 50-90 transactions whose
+ *  attachments ZIP can be large — the global 3-minute default would abort the
+ *  client while the server is still finishing (and succeeding). */
 export async function createDispatch(payload) {
   const res = await api.post(
-    '/api/report-dispatches?entityId=' + currentEntityId(), payload)
+    '/api/report-dispatches?entityId=' + currentEntityId(), payload,
+    { timeout: 600000 })
   return res.data?.data
 }
 
