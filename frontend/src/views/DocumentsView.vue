@@ -140,8 +140,19 @@ async function downloadZip() {
     window.URL.revokeObjectURL(url)
 
     const sizeMB = (res.data.size / 1024 / 1024).toFixed(2)
-    statusMsg.value = '✓ ' + filename + ' (' + sizeMB + ' MB) — κατεβαίνει!'
-    statusType.value = 'success'
+    // S106: visible counters from the export (CORS-exposed headers)
+    const zipFiles = res.headers['x-zip-files']
+    const zipSkipped = parseInt(res.headers['x-zip-skipped'] || '0', 10)
+    let msg = '✓ ' + filename + ' (' + sizeMB + ' MB'
+    if (zipFiles) msg += ', ' + zipFiles + ' αρχεία'
+    msg += ') — κατεβαίνει!'
+    if (zipSkipped > 0) {
+      msg += ' ⚠ ' + zipSkipped + ' αρχεία παραλείφθηκαν (μη διαθέσιμα στο Blob).'
+      statusType.value = 'info'
+    } else {
+      statusType.value = 'success'
+    }
+    statusMsg.value = msg
 
   } catch (err) {
     if (err.response?.status === 204) {

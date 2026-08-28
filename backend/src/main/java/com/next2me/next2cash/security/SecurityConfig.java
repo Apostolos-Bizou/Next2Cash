@@ -46,6 +46,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/api/activity-log/**").permitAll()
+                // S106 403-unmask: the ERROR dispatch reaches /error with an
+                // anonymous SecurityContext (OncePerRequestFilter skips error
+                // dispatches), so every 400/404/405/500 was masked into an empty
+                // 403 by Http403ForbiddenEntryPoint. /error itself carries no
+                // data beyond the sanitized error attributes (see the explicit
+                // server.error.* settings) — safe to permit.
+                .requestMatchers("/error").permitAll()
                 // Admin password reset - ADMIN only (more specific, must come first)
                 .requestMatchers(HttpMethod.POST, "/api/admin/users/*/reset-password").hasRole("ADMIN")
                 // DELETE on admin users - ADMIN only
@@ -72,6 +79,9 @@ public class SecurityConfig {
         config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        // S106: let the frontend read the ZIP export filename and the visible
+        // dedup/skip counters (without this, axios cannot see these headers).
+        config.setExposedHeaders(List.of("Content-Disposition", "X-Zip-Files", "X-Zip-Skipped"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

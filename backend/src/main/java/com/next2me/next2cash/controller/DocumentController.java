@@ -73,6 +73,10 @@ public class DocumentController {
             .buildClient();
 
         int fileCount = 0;
+        int skippedCount = 0;
+        // S106: duplicate basenames used to throw ZipException inside the catch
+        // and get SILENTLY dropped — now they are deduplicated (_1, _2, ...).
+        java.util.Set<String> usedEntryNames = new java.util.HashSet<>();
 
         for (var txn : transactions) {
             if (txn.getBlobFileIds() == null || txn.getBlobFileIds().isBlank()) continue;
@@ -88,24 +92,29 @@ public class DocumentController {
                         .getBlobContainerClient(containerName)
                         .getBlobClient(blobPath);
 
-                    if (!blobClient.exists()) continue;
+                    if (!blobClient.exists()) { skippedCount++; continue; }
 
                     ByteArrayOutputStream blobStream = new ByteArrayOutputStream();
                     blobClient.downloadStream(blobStream);
 
-                    // File name in ZIP: keep original blob filename
+                    // File name in ZIP: the blob basename (the accountant needs the
+                    // entity-number prefix for bookkeeping — no display-strip here),
+                    // deduplicated so same-named files never collide.
                     String fileName = blobPath.contains("/")
                         ? blobPath.substring(blobPath.lastIndexOf('/') + 1)
                         : blobPath;
+                    String entryName = uniqueZipEntryName(fileName, usedEntryNames);
 
-                    ZipEntry entry = new ZipEntry(fileName);
+                    ZipEntry entry = new ZipEntry(entryName);
                     zos.putNextEntry(entry);
                     zos.write(blobStream.toByteArray());
                     zos.closeEntry();
                     fileCount++;
 
                 } catch (Exception e) {
-                    // Skip failed files — continue with rest
+                    // Skip failed files — continue with rest, but COUNT them
+                    // so the omission is visible to the caller.
+                    skippedCount++;
                 }
             }
         }
@@ -127,9 +136,60 @@ public class DocumentController {
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION,
                 "attachment; filename=\"" + zipFileName + "\"")
+            // S106: visible counters (CORS-exposed) — the UI can tell the user
+            // exactly how many files made it in and how many were skipped.
+            .header("X-Zip-Files", String.valueOf(fileCount))
+            .header("X-Zip-Skipped", String.valueOf(skippedCount))
             .contentType(MediaType.APPLICATION_OCTET_STREAM)
             .contentLength(zipBytes.length)
             .body(zipBytes);
+    }
+
+    /** Dedup a ZIP entry name: "a.pdf" → "a.pdf", then "a_1.pdf", "a_2.pdf"...
+     *  Package-private static for unit testing. */
+    static String uniqueZipEntryName(String name, java.util.Set<String> used) {
+        String candidate = name;
+        int n = 1;
+        while (used.contains(candidate)) {
+            int dot = name.lastIndexOf('.');
+            String base = dot > 0 ? name.substring(0, dot) : name;
+            String ext  = dot > 0 ? name.substring(dot) : "";
+            candidate = base + "_" + (n++) + ext;
+        }
+        used.add(candidate);
+        return candidate;
+    }
+
+    /** Display name for an attachment: blob basename with the auto-numbering
+     *  prefix "N - " stripped (display only — nothing moves in Blob storage).
+     *  Guarded: if stripping leaves nothing meaningful, the original stays.
+     *  "Πληρωμή #N - ..." names do not match and stay as-is.
+     *  Package-private static for unit testing. */
+    static String displayFileName(String blobPath) {
+        if (blobPath == null) return null;
+        String base = blobPath.contains("/")
+            ? blobPath.substring(blobPath.lastIndexOf('/') + 1)
+            : blobPath;
+        String stripped = base.replaceFirst("^\\d+ - ", "");
+        if (stripped.isBlank() || stripped.startsWith(".")) return base;
+        return stripped;
+    }
+
+    /** RFC 5987 percent-encoding (UTF-8) for Content-Disposition filename*. */
+    static String rfc5987Encode(String s) {
+        byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        StringBuilder sb = new StringBuilder(bytes.length * 3);
+        for (byte bch : bytes) {
+            int c = bch & 0xFF;
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '!' || c == '#' || c == '$' || c == '&' || c == '+' || c == '-'
+                    || c == '.' || c == '^' || c == '_' || c == '`' || c == '|' || c == '~') {
+                sb.append((char) c);
+            } else {
+                sb.append('%').append(String.format("%02X", c));
+            }
+        }
+        return sb.toString();
     }
 
     // -- POST /api/documents/upload --------------------------------------
@@ -340,19 +400,25 @@ public class DocumentController {
                 BlobClient blobClient = containerClient.getBlobClient(trimmed);
                 if (!blobClient.exists()) continue;
 
-                // Short-lived SAS: read-only, 15 minutes
+                // S106: clean display name — basename with the "N - " numbering
+                // prefix stripped (display only; the blob itself is untouched).
+                String fileName = displayFileName(trimmed);
+
+                // Short-lived SAS: read-only, 15 minutes.
+                // S106: response Content-Disposition override (rscd) — without it
+                // the SDK's %2F-encoded blob URL makes browsers treat the WHOLE
+                // path as one segment, so saving from the PDF viewer produced
+                // names like "…_2026_06_90576_…pdf" ('/'→'_'). "inline" keeps
+                // the preview tab behavior; filename* carries Greek intact.
                 BlobSasPermission permission = new BlobSasPermission().setReadPermission(true);
                 OffsetDateTime expiry = OffsetDateTime.now().plusMinutes(15);
 
                 BlobServiceSasSignatureValues sasValues =
-                    new BlobServiceSasSignatureValues(expiry, permission);
+                    new BlobServiceSasSignatureValues(expiry, permission)
+                        .setContentDisposition("inline; filename*=UTF-8''" + rfc5987Encode(fileName));
 
                 String sasToken = blobClient.generateSas(sasValues);
                 String downloadUrl = blobClient.getBlobUrl() + "?" + sasToken;
-
-                String fileName = trimmed.contains("/")
-                    ? trimmed.substring(trimmed.lastIndexOf('/') + 1)
-                    : trimmed;
 
                 long sizeBytes = 0L;
                 try {

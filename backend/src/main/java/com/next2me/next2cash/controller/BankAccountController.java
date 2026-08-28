@@ -104,6 +104,80 @@ public class BankAccountController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * POST /api/bank-accounts — create a bank account. (S106: this endpoint was
+     * missing entirely; the AdminView "create bank" button was hitting a 405
+     * that the /error dispatch masked into an empty 403.)
+     *
+     * ADMIN + USER only (VIEWER excluded at method level, symmetric to PUT).
+     */
+    @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    public ResponseEntity<?> createBankAccount(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody BankAccount payload) {
+
+        User user = userAccessService.getCurrentUser(authHeader);
+
+        // Validation + entity guard FIRST (S77 pattern).
+        if (payload.getEntityId() == null) {
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error", "entityId is required");
+            return ResponseEntity.badRequest().body(err);
+        }
+        userAccessService.assertCanAccessEntity(user, payload.getEntityId());
+
+        if (payload.getAccountLabel() == null || payload.getAccountLabel().isBlank()) {
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error", "accountLabel is required");
+            return ResponseEntity.badRequest().body(err);
+        }
+
+        String label = payload.getAccountLabel().trim();
+
+        BankAccount b = new BankAccount();
+        b.setEntityId(payload.getEntityId());
+        b.setAccountLabel(label);
+        b.setBankName(payload.getBankName() != null && !payload.getBankName().isBlank()
+                ? payload.getBankName().trim() : label);
+        b.setAccountType(payload.getAccountType() != null && !payload.getAccountType().isBlank()
+                ? payload.getAccountType().trim() : "checking");
+        b.setCurrency(payload.getCurrency() != null && !payload.getCurrency().isBlank()
+                ? payload.getCurrency().trim().toUpperCase(Locale.ROOT) : "EUR");
+        b.setCurrentBalance(payload.getCurrentBalance() != null
+                ? payload.getCurrentBalance() : BigDecimal.ZERO);
+        b.setBalanceDate(LocalDate.now());   // server-stamped, never client-supplied
+        b.setIsActive(Boolean.TRUE);
+        b.setIsVirtual(Boolean.FALSE);
+        if (payload.getFxRateToEur() != null) {
+            b.setFxRateToEur(payload.getFxRateToEur());
+        }
+        // sort_order: append after the entity's current accounts.
+        int maxSort = bankAccountRepository
+                .findByEntityIdAndIsActiveTrueOrderBySortOrderAsc(payload.getEntityId())
+                .stream()
+                .map(BankAccount::getSortOrder)
+                .filter(Objects::nonNull)
+                .max(Integer::compare)
+                .orElse(0);
+        b.setSortOrder(maxSort + 1);
+
+        BankAccount saved = bankAccountRepository.save(b);
+
+        auditLogService.log(
+            saved.getEntityId(),
+            user.getId(),
+            user.getUsername(),
+            "BANK_ACCOUNT_CREATE",
+            "bank_accounts",
+            saved.getId().toString(),
+            "Created " + saved.getAccountLabel() + " (" + saved.getCurrency() + ")");
+
+        return ResponseEntity.status(201).body(Map.of("success", true, "data", saved));
+    }
+
     // PUT /api/bank-accounts/{id}
     // Manual bank balance update (reconciliation). ADMIN + USER only.
     @PutMapping("/{id}")
