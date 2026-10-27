@@ -89,6 +89,7 @@ const ALL_SECTIONS = [
       { key: 'budget',         label: 'Προϋπολογισμός' },
   { key: 'investor-reports', label: '\uD83D\uDC8E Investor Reports' },
   { key: 'pricing-calculator', label: '\uD83D\uDCB0 Pricing Calculator' },
+  { key: 'polaris-pl',     label: 'Polaris P&L' },
   { key: 'admin',          label: 'Admin Panel' },
   { key: 'admin-categories', label: 'Κατηγορίες (Admin)' },
   { key: 'admin-accounts',   label: 'Λογαριασμοί (Admin)' },

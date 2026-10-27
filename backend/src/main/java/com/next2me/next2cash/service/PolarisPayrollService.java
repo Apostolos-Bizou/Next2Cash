@@ -12,7 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
 /**
@@ -97,6 +101,33 @@ public class PolarisPayrollService {
         PayrollPerson p = findPerson(entityId, id);
         payrollPersonRepository.delete(p);
         audit(user, entityId, "POLARIS_PAYROLL_PERSON_DELETE", "payroll_people", id, "Hard delete");
+    }
+
+    /**
+     * Aggregate payroll per office for read-only roles (Phase 3).
+     *
+     * Returns ONLY totals -- no names, ids or per-person amounts:
+     *   [{ office, salaryTotal, headcount }, ...] ordered by office
+     * salaryTotal = SUM(salary) of every row of that office in its own currency
+     * (office-cost rows included, like the mockup's payroll total); headcount
+     * counts the people only (is_office_cost = false).
+     */
+    public List<Map<String, Object>> payrollSummary(UUID entityId) {
+        Map<String, BigDecimal> totals = new TreeMap<>();
+        Map<String, Integer> heads = new TreeMap<>();
+        for (PayrollPerson p : payrollPersonRepository.findByEntityIdOrderByOfficeAscNameAsc(entityId)) {
+            totals.merge(p.getOffice(), p.getSalary() == null ? BigDecimal.ZERO : p.getSalary(), BigDecimal::add);
+            heads.merge(p.getOffice(), Boolean.TRUE.equals(p.getIsOfficeCost()) ? 0 : 1, Integer::sum);
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String office : totals.keySet()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("office", office);
+            row.put("salaryTotal", totals.get(office));
+            row.put("headcount", heads.get(office));
+            out.add(row);
+        }
+        return out;
     }
 
     // -------------------------------------------------------------------

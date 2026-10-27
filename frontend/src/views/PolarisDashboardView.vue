@@ -2,11 +2,11 @@
 // PolarisDashboardView — "P&L Dashboard" page of the Polaris P&L module.
 //
 // Phase 2 (Oct 2026): 1:1 port of the #pageDashboard block + row-detail modal
-// of docs/polaris-mockup-reference.html. Pure KPIs from the (demo) Αστρολάβος
-// actuals in the shared polarisPl store; Phase 3 wires real data.
+// of docs/polaris-mockup-reference.html. Phase 3: KPIs from the real Αστρολάβος
+// actuals (GET /api/polaris/forecast/actuals) -- visible to every Polaris role.
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, onDeactivated } from 'vue'
 import { Chart, registerables } from 'chart.js'
-import PolarisConceptBanner from '@/components/PolarisConceptBanner.vue'
+import PolarisStatus from '@/components/PolarisStatus.vue'
 import { usePolarisPlStore, fmtUSD, groupSum3, rowEnd, EXPENSE_KEYS } from '@/stores/polarisPl'
 import '@/styles/polaris-pl.css'
 
@@ -105,7 +105,7 @@ onDeactivated(closeRowDetail) // KeepAlive: never leave the modal (and body over
 
 <template>
   <div class="polaris-pl">
-    <PolarisConceptBanner />
+    <PolarisStatus :allowed="pl.hasAccess">
 
     <div class="page-head">
       <div>
@@ -186,5 +186,6 @@ onDeactivated(closeRowDetail) // KeepAlive: never leave the modal (and body over
         </div>
       </div>
     </div>
+    </PolarisStatus>
   </div>
 </template>

@@ -4,16 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { useUserStore } from '@/stores/user'
-import { usePolarisPlRoleStore } from '@/stores/polarisPlRole'
 
 const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
 const userStore = useUserStore()
-const polarisPl = usePolarisPlRoleStore() // role only -- no demo data in the entry bundle
-
-// Polaris P&L (Phase 2 mockup port): demo "ΠΡΟΒΟΛΗ ΩΣ" switcher, only on /polaris/* routes
-const isPolarisRoute = computed(() => route.meta?.polaris === true)
 
 // Hide sidebar + topbar on public routes (e.g. /login)
 const isAuthLayout = computed(() => route.meta && route.meta.public === true)
@@ -267,14 +262,6 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
         </button>
         <h1 class="topbar__title">{{ currentTitle }}</h1>
         <div class="topbar__user">
-          <div class="role-switch" v-if="isPolarisRoute">
-            <span class="role-switch__label">ΠΡΟΒΟΛΗ ΩΣ</span>
-            <div class="role-pills">
-              <button class="role-pill" :class="{ active: polarisPl.role === 'admin' }" @click="polarisPl.setRole('admin')">Admin</button>
-              <button class="role-pill" :class="{ active: polarisPl.role === 'editor' }" @click="polarisPl.setRole('editor')">Editor</button>
-              <button class="role-pill" :class="{ active: polarisPl.role === 'viewer' }" @click="polarisPl.setRole('viewer')">Viewer</button>
-            </div>
-          </div>
           <span class="topbar__user-name">{{ userDisplayName }}</span>
           <div class="topbar__avatar">{{ userInitial }}</div>
         </div>
@@ -320,17 +307,11 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 .nav-item__label { overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .nav-badge { background: #4FC3A1; color: #0f1e2e; font-size: 0.6rem; font-weight: 700; padding: 2px 5px; border-radius: 4px; }
 
-/* ─── Polaris P&L (Phase 2): gold nav items, entity chip, demo role switch — values from docs/polaris-mockup-reference.html ─── */
+/* ─── Polaris P&L: gold nav items + entity chip — values from docs/polaris-mockup-reference.html ─── */
 .nav-item--gold.nav-item--active { background: rgba(245,180,62,.14); color: #f5b43e; }
 .nav-item--gold .nav-badge { background: #f5b43e; color: #241a04; font-size: .58rem; }
 .entity-option { display: flex; align-items: center; justify-content: space-between; }
 .entity-chip { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(245,180,62,.14); color: #f5b43e; }
-.role-switch { display: flex; align-items: center; gap: 8px; margin-right: 6px; }
-.role-switch__label { font-size: 11.5px; color: #8398b0; letter-spacing: .3px; }
-.role-pills { display: flex; background: #122238; border: 1px solid #2a4563; border-radius: 7px; padding: 2px; }
-.role-pill { padding: 7px 13px; font-size: 13px; font-weight: 600; color: #aabed3; border-radius: 5px; cursor: pointer; font-family: inherit; }
-.role-pill.active { background: #2E75B6; color: #fff; }
-@media (max-width: 768px) { .role-switch__label { display: none; } }
 /* ─── end Polaris P&L ─── */
 .sidebar__bottom { padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.06); }
 .logout-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; background: none; border: none; color: #8899aa; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 120ms ease; }

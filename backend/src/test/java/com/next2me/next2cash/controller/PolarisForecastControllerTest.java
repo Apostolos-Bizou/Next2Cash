@@ -176,16 +176,18 @@ class PolarisForecastControllerTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("Polaris viewer role and global VIEWER: 403 on assumptions and actuals")
-    void viewers_forbidden() throws Exception {
+    @DisplayName("Polaris viewer: actuals GET 200, actuals writes + assumptions 403; global VIEWER: 403 everywhere")
+    void viewers_readActualsOnly() throws Exception {
         User polarisViewer = tdb.createUser("polaris-viewer");
         pts.assignWithRole(polarisViewer, polaris, "viewer");
         User globalViewer = tdb.createViewer("investor");
         pts.assignWithRole(globalViewer, polaris, "admin");
 
+        mockMvc.perform(as(polarisViewer, get(ACTUALS))).andExpect(status().isOk());
+        mockMvc.perform(as(globalViewer, get(ACTUALS))).andExpect(status().isForbidden());
+
         for (User u : new User[] { polarisViewer, globalViewer }) {
             mockMvc.perform(as(u, get(ASSUMPTIONS))).andExpect(status().isForbidden());
-            mockMvc.perform(as(u, get(ACTUALS))).andExpect(status().isForbidden());
             mockMvc.perform(as(u, post(ACTUALS)).content(
                     "{\"groupKey\":\"g\",\"label\":\"l\",\"periodStart\":\"2026-09-01\",\"periodEnd\":\"2026-09-30\"}"))
                 .andExpect(status().isForbidden());

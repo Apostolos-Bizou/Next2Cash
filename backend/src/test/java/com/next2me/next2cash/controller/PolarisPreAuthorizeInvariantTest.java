@@ -50,7 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   people       | admin, editor   | admin
  *   milestones   | admin           | admin
  *   assumptions  | admin           | admin
- *   actuals      | admin, editor   | admin, editor
+ *   actuals      | admin, editor, viewer | admin, editor
+ *
+ * Part C: my-role, Part D: payroll summary (GET-only, aggregate, any role).
  *
  * Actors: Polaris admin / editor / viewer and a user with NO role all hold the
  * global role 'user', so only entity_roles decides. global-viewer holds a
@@ -61,12 +63,12 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
 
     private static final String SPRING_GATE = "hasAnyRole('ADMIN','USER','ACCOUNTANT')";
     private static final List<Class<?>> CONTROLLERS =
-        List.of(PolarisPayrollController.class, PolarisForecastController.class);
+        List.of(PolarisPayrollController.class, PolarisForecastController.class, PolarisAccessController.class);
 
     // ─── Part A: reflection ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("A1: class-level gate is ADMIN/USER/ACCOUNTANT on both controllers (never VIEWER)")
+    @DisplayName("A1: class-level gate is ADMIN/USER/ACCOUNTANT on every Polaris controller (never VIEWER)")
     void classLevelGate() {
         for (Class<?> c : CONTROLLERS) {
             PreAuthorize pa = c.getAnnotation(PreAuthorize.class);
@@ -77,7 +79,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("A2: no endpoint overrides the class-level gate (20 endpoints, 12 writes)")
+    @DisplayName("A2: no endpoint overrides the class-level gate (22 endpoints, 12 writes)")
     void noMethodLevelOverride() {
         List<String> violations = new ArrayList<>();
         int endpoints = 0, writes = 0;
@@ -94,7 +96,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 if (pa != null) violations.add(c.getSimpleName() + "#" + m.getName() + " -> " + pa.value());
             }
         }
-        assertEquals(20, endpoints, "expected 20 endpoints (5 per resource x 4 resources)");
+        assertEquals(22, endpoints, "expected 22 endpoints (5 per resource x 4 resources + my-role + payroll summary)");
         assertEquals(12, writes, "expected 12 write endpoints (3 per resource x 4 resources)");
         assertTrue(violations.isEmpty(), "method-level @PreAuthorize overrides: " + violations);
     }
@@ -111,7 +113,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
         ASSUMPTIONS("/api/polaris/forecast/assumptions", Set.of("admin"), Set.of("admin"),
             "{\"key\":\"new_key\",\"value\":1}",
             "{\"value\":2}"),
-        ACTUALS("/api/polaris/forecast/actuals", Set.of("admin", "editor"), Set.of("admin", "editor"),
+        ACTUALS("/api/polaris/forecast/actuals", Set.of("admin", "editor", "viewer"), Set.of("admin", "editor"),
             "{\"groupKey\":\"g\",\"label\":\"l\",\"periodStart\":\"2026-09-01\",\"periodEnd\":\"2026-09-30\"}",
             "{\"label\":\"l2\"}");
 
@@ -185,6 +187,91 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 .header("Authorization", tdb.bearerToken(user))
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().is(expected));
+    }
+
+    // ─── Part C: GET /api/polaris/my-role ────────────────────────────────
+
+    static Stream<Arguments> myRoleMatrix() {
+        return Stream.of(
+            Arguments.of("admin", 200, "admin"),
+            Arguments.of("editor", 200, "editor"),
+            Arguments.of("viewer", 200, "viewer"),
+            Arguments.of("none", 403, null),
+            Arguments.of("global-viewer", 403, null));
+    }
+
+    @ParameterizedTest(name = "my-role as {0} -> {1}")
+    @MethodSource("myRoleMatrix")
+    @DisplayName("C: my-role returns the entity_roles role; no row or global VIEWER -> 403")
+    void myRoleMatrix(String actor, int expected, String role) throws Exception {
+        User user = actor(actor);
+        var res = mockMvc.perform(get("/api/polaris/my-role")
+                .param("entityId", polaris.getId().toString())
+                .header("Authorization", tdb.bearerToken(user)))
+            .andExpect(status().is(expected));
+        if (role != null) {
+            res.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.role").value(role));
+        }
+    }
+
+    @Test
+    @DisplayName("C: my-role on a non-Polaris entity -> 400")
+    void myRole_nonPolaris_returns400() throws Exception {
+        CompanyEntity group = tdb.createEntity("next2megroup", "Next2Me Group");
+        User user = actor("admin");
+        mockMvc.perform(get("/api/polaris/my-role")
+                .param("entityId", group.getId().toString())
+                .header("Authorization", tdb.bearerToken(user)))
+            .andExpect(status().isBadRequest());
+    }
+
+    // ─── Part D: GET /api/polaris/payroll/summary ────────────────────────
+
+    static Stream<Arguments> summaryMatrix() {
+        return Stream.of(
+            Arguments.of("admin", 200), Arguments.of("editor", 200), Arguments.of("viewer", 200),
+            Arguments.of("none", 403), Arguments.of("global-viewer", 403));
+    }
+
+    @ParameterizedTest(name = "payroll summary as {0} -> {1}")
+    @MethodSource("summaryMatrix")
+    @DisplayName("D: payroll summary for any Polaris role; no row or global VIEWER -> 403")
+    void summaryMatrix(String actor, int expected) throws Exception {
+        seed(Res.PEOPLE);
+        User user = actor(actor);
+        mockMvc.perform(get("/api/polaris/payroll/summary")
+                .param("entityId", polaris.getId().toString())
+                .header("Authorization", tdb.bearerToken(user)))
+            .andExpect(status().is(expected));
+    }
+
+    @Test
+    @DisplayName("D: payroll summary returns totals per office only -- no names, ids or per-person rows")
+    void summary_aggregatesOnly() throws Exception {
+        UUID e = polaris.getId();
+        for (Object[] r : new Object[][] {
+                { "ATHENS", "Alice Secret", "1000.00", false }, { "ATHENS", "Bob Secret", "2500.50", false },
+                { "ATHENS", "Athens Office", "300.00", true }, { "MANILA", "Carol Secret", "40000.00", false } }) {
+            PayrollPerson p = new PayrollPerson();
+            p.setEntityId(e); p.setOffice((String) r[0]); p.setName((String) r[1]);
+            p.setSalary(new BigDecimal((String) r[2])); p.setIsOfficeCost((Boolean) r[3]); p.setEffectiveFromYear(2027);
+            payrollPersonRepository.save(p);
+        }
+        User viewer = actor("viewer");
+        String body = mockMvc.perform(get("/api/polaris/payroll/summary")
+                .param("entityId", e.toString())
+                .header("Authorization", tdb.bearerToken(viewer)))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.total").value(2))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data[0].office").value("ATHENS"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data[0].salaryTotal").value(3800.50))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data[0].headcount").value(2))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data[1].office").value("MANILA"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data[1].headcount").value(1))
+            .andReturn().getResponse().getContentAsString();
+        assertFalse(body.contains("Secret"), "summary must not contain names: " + body);
+        assertFalse(body.contains("\"id\""), "summary must not contain row ids: " + body);
+        assertFalse(body.contains("1000") || body.contains("2500.5"), "summary must not contain per-person amounts: " + body);
     }
 
     private User actor(String actor) {

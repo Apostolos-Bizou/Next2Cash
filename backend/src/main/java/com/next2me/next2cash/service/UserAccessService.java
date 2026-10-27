@@ -36,7 +36,8 @@ import java.util.stream.Collectors;
  * still used by UserController for write operations.
  *
  * Polaris P&L (Oct 2026): a second, additive layer for the Polaris entity only.
- * See getPolarisRole / assertPolarisAdminOnly / assertPolarisAdminOrEditor below. The
+ * See getPolarisRole / assertPolarisAdminOnly / assertPolarisAdminOrEditor /
+ * assertPolarisRead below. The
  * methods above (getAccessibleEntityIds, canAccessEntity, assertCanAccessEntity)
  * are unchanged and never consult entity_roles.
  */
@@ -198,6 +199,15 @@ public class UserAccessService {
      */
     public void assertPolarisAdminOrEditor(User user, UUID entityId) {
         assertPolarisRole(user, entityId, Set.of(POLARIS_ROLE_ADMIN, POLARIS_ROLE_EDITOR));
+    }
+
+    /**
+     * Guard: any entity_roles role (admin / editor / viewer). Read-only
+     * endpoints only -- never a write (Invariant 1).
+     * 400 if entityId is missing or not Polaris, 403 if there is no role row.
+     */
+    public void assertPolarisRead(User user, UUID entityId) {
+        assertPolarisRole(user, entityId, POLARIS_ROLES);
     }
 
     private void assertPolarisRole(User user, UUID entityId, Set<String> allowed) {

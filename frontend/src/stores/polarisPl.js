@@ -1,19 +1,22 @@
 // polarisPl.js — shared state + P&L math for the 3 Polaris P&L views.
 //
-// Phase 2 (Oct 2026): 1:1 port of docs/polaris-mockup-reference.html. The
-// mockup is one page with three "pages" sharing one state and one recalc();
-// here that state lives in this store and every derived number is a computed,
-// so the Dashboard / Payroll / Forecast views stay in sync exactly like the
-// mockup does.
+// Phase 2 (Oct 2026) ported the math 1:1 from docs/polaris-mockup-reference.html.
+// Phase 3 (Oct 2026) wires it to the backend: people / milestones /
+// assumptions / actuals come from /api/polaris/*, and the role comes from
+// GET /api/polaris/my-role (entity_roles) instead of the demo "ΠΡΟΒΟΛΗ ΩΣ"
+// toggle. No staff names, salaries or trial-balance amounts live in this file
+// any more -- only the Αστρολάβος category taxonomy (titles / codes / labels).
 //
-// DEMO DATA ON PURPOSE (Phase 2 = visual/functional fidelity, not wiring):
-// people[], milestones[], actualsData and the "ΠΡΟΒΟΛΗ ΩΣ" role are the
-// mockup's hardcoded values. Phase 3 replaces them with /api/polaris/* data
-// and the real entity_roles role.
+// What each role can load is decided by the backend (403 otherwise):
+//   admin  -> people, milestones, assumptions, actuals (all writes)
+//   editor -> people (read), actuals (read + write)
+//   viewer -> actuals (read), payroll summary (totals per office, no names)
 
-import { defineStore, storeToRefs } from 'pinia'
+import { defineStore } from 'pinia'
 import { ref, reactive, computed } from 'vue'
-import { usePolarisPlRoleStore } from './polarisPlRole'
+import {
+  fetchMyRole, fetchPayrollSummary, peopleApi, milestonesApi, assumptionsApi, actualsApi
+} from '@/api/polaris'
 
 // ---------------- formatting (identical to the mockup) ----------------
 export function fmtUSD(n) {
@@ -39,6 +42,71 @@ export function groupSum3(group) {
   }), { begin: 0, change: 0, end: 0 })
 }
 
+// ---------------- offices (backend stores codes, UI shows Greek labels) ----------------
+export const OFFICES = [
+  { code: 'ATHENS', label: 'Αθήνα' },
+  { code: 'MANILA', label: 'Μανίλα' },
+]
+const OFFICE_LABEL = Object.fromEntries(OFFICES.map(o => [o.code, o.label]))
+
+// ---------------- Αστρολάβος trial-balance taxonomy (no amounts) ----------------
+// Same groups / codes / line labels as the mockup. Amounts come from
+// actuals_rows (group_key + label + period); a taxonomy line without a row for
+// the active period shows 0 and is created on its first edit.
+const ACTUALS_TAXONOMY = [
+  { key: 'revenue', title: 'Έσοδα', code: 'κωδ. 91xxx', isRevenue: true, labels: [
+    'Membership fees (όλα τα policy-years)', 'Admin fees AMAPHIL', 'Plan management fees', 'Λοιπά έσοδα (τόκοι κ.ά.)'] },
+  { key: 'opsCosts', title: 'Κόστη λειτουργίας', code: 'κωδ. 92xxx', isRevenue: false, labels: [
+    'Κόστη membership / admin / claims', 'Τραπεζικά, ΦΠΑ, λοιπά λειτουργικά'] },
+  { key: 'payroll', title: 'Μισθοδοσία', code: 'κωδ. 96+97 · wages/bonus', isRevenue: false, labels: [
+    'Μισθοί & bonus (Κύπρος + Φιλιππίνες)'] },
+  { key: 'contributions', title: 'Εισφορές', code: 'κωδ. 96+97 · wages contributions', isRevenue: false, labels: [
+    'Εργοδοτικές εισφορές'] },
+  { key: 'taxes', title: 'Φόροι', code: 'κωδ. 96+97 · taxes/fees', isRevenue: false, labels: [
+    'Φόροι / τέλη'] },
+  { key: 'adminOpexOther', title: 'Λοιπά OPEX Διοίκησης', code: 'κωδ. 96+97 · υπόλοιπο', isRevenue: false, labels: [
+    'Ενοίκιο / utilities', 'IT / Computer', 'Marketing / Διαφήμιση', 'Consultants / Audit / Legal',
+    'Ταξίδια / PR / λοιπά / σύνδεσμοι', 'Medical / 3rd-party (Φιλιππίνες)'] },
+  { key: 'other', title: 'Λοιπά', code: 'κωδ. 99xxx', isRevenue: false, labels: [
+    'Αναπροσαρμογές / συναλλαγματικές / rounding'] },
+]
+
+// ---------------- forecast_assumptions keys (UI field -> stored key) ----------------
+export const ASSUMPTION_KEYS = {
+  members: 'members',
+  memberGrowth: 'member_growth_pct',
+  netFee: 'network_fee',
+  monthlyFee: 'monthly_fee',
+  auditRate: 'audit_fee_rate',
+  dentalFee: 'dental_fee',
+  netPay: 'network_payable',
+  auditPay: 'audit_payable_rate',
+  dentalPay: 'dental_payable',
+  phpPerUsd: 'fx_php_per_usd',
+  usdPerEur: 'fx_usd_per_eur',
+}
+
+// ---------------- period helpers ("dd/mm/yyyy – dd/mm/yyyy" <-> ISO dates) ----------------
+const pad = n => String(n).padStart(2, '0')
+function isoToDmy(iso) { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}` }
+function dmyToIso(dmy) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((dmy || '').trim())
+  if (!m) return null
+  const iso = `${m[3]}-${pad(m[2])}-${pad(m[1])}`
+  return isNaN(new Date(iso).getTime()) ? null : iso
+}
+function parsePeriod(text) {
+  const parts = (text || '').split(/\s*[–-]\s*/).map(s => s.trim()).filter(Boolean)
+  if (parts.length < 2) return null
+  const start = dmyToIso(parts[0]), end = dmyToIso(parts[parts.length - 1])
+  return start && end && end >= start ? { start, end } : null
+}
+function periodText(p) { return `${isoToDmy(p.start)} – ${isoToDmy(p.end)}` }
+function defaultPeriod() {
+  const now = new Date()
+  return { start: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` }
+}
+
 // "today" reference point for the milestone timeline (mockup: MILESTONE_BASE)
 const MILESTONE_BASE = new Date()
 MILESTONE_BASE.setDate(1)
@@ -60,127 +128,132 @@ function writeLs(key, value) {
 // mockup reads every input as parseFloat(el.value) || fallback
 const num = (v, fallback = 0) => parseFloat(v) || fallback
 
+// ---------------- API <-> UI shapes ----------------
+function personFromApi(p) {
+  return {
+    id: p.id,
+    officeCode: p.office,
+    office: OFFICE_LABEL[p.office] || p.office,
+    name: p.name,
+    role: p.roleTitle || '—',
+    salary: Number(p.salary) || 0,
+    raise: Number(p.raisePct) || 0,
+    effFrom: p.effectiveFromYear,
+    rent: !!p.isOfficeCost,
+  }
+}
+const PERSON_FIELD_TO_API = { salary: 'salary', raise: 'raisePct', effFrom: 'effectiveFromYear', name: 'name', role: 'roleTitle', officeCode: 'office', rent: 'isOfficeCost' }
+
+function milestoneFromApi(m) {
+  return { id: m.id, month: (m.targetMonth || '').slice(0, 7), members: Number(m.membersTarget) || 0 }
+}
+function actualFromApi(r) {
+  return {
+    id: r.id, groupKey: r.groupKey, label: r.label,
+    begin: Number(r.beginAmount) || 0, change: Number(r.changeAmount) || 0,
+    periodStart: r.periodStart, periodEnd: r.periodEnd,
+  }
+}
+
+function apiError(e) {
+  const status = e?.response?.status
+  const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Άγνωστο σφάλμα'
+  return status ? `HTTP ${status}: ${msg}` : msg
+}
+
 export const usePolarisPlStore = defineStore('polarisPl', () => {
   // ---------------- state ----------------
-  // demo role lives in its own data-free store (see polarisPlRole.js)
-  const roleStore = usePolarisPlRoleStore()
-  const { role } = storeToRefs(roleStore)
+  const role = ref(null)          // 'admin' | 'editor' | 'viewer' | null (= no Polaris access)
+  const loading = ref(false)
+  const loaded = ref(false)
+  const loadError = ref(null)
+  const saveError = ref(null)
+
   const horizon = ref(parseInt(readLs('pl_horizon')) || 1)
   const memberForecastMode = ref(readLs('pl_memberMode') || 'growth') // 'growth' | 'milestones'
   const granularity = ref(readLs('pl_granularity') || 'year')        // 'year' | 'quarter'
 
-  // Παραδοχές (assumption inputs) — same ids/defaults as the mockup
-  const inputs = reactive({
-    members: 16800,
-    memberGrowth: 0,
-    netFee: 24.5,
-    monthlyFee: 0.625,
-    auditRate: 0.15,
-    dentalFee: 9.75,
-    netPay: 12,
-    auditPay: 0.09,
-    dentalPay: 5,
-    phpPerUsd: 56.5,
-    usdPerEur: 1.08,
-  })
+  // Παραδοχές — '' until loaded from forecast_assumptions
+  const inputs = reactive(Object.fromEntries(Object.keys(ASSUMPTION_KEYS).map(k => [k, ''])))
+  const assumptionIds = reactive({})   // UI field -> forecast_assumptions.id
 
-  const actPeriod = ref('01/01/2026 – 27/10/2026')
+  const people = ref([])
+  const payrollSummary = ref([])   // viewer only: [{ officeCode, office, salaryTotal, headcount }]
+  const milestones = ref([])
+  const actualsRows = ref([])
+  const actPeriod = ref(periodText(defaultPeriod()))
 
-  const people = ref([
-    // Athens — fixed office roles, 0% raise (annual fees), not individually editable deletion target but still a row
-    { office: 'Αθήνα', name: 'Γραφείο Αθηνών', role: 'Ενοίκιο & λειτουργικά', salary: 10000, raise: 0, effFrom: 2027, rent: true },
-    { office: 'Αθήνα', name: 'General Manager',        role: 'Διοίκηση',   salary: 62400, raise: 0, effFrom: 2027 },
-    { office: 'Αθήνα', name: 'Business Director',      role: 'Διοίκηση',   salary: 62400, raise: 0, effFrom: 2027 },
-    { office: 'Αθήνα', name: 'Accounting Manager',     role: 'Λογιστήριο', salary: 46800, raise: 0, effFrom: 2027 },
-    { office: 'Αθήνα', name: 'Marketing Manager',      role: 'Marketing',  salary: 23400, raise: 0, effFrom: 2027 },
-    { office: 'Αθήνα', name: 'IT & Developer',         role: 'IT',         salary: 46800, raise: 0, effFrom: 2027 },
-    { office: 'Αθήνα', name: 'Legal & Compliance Mgr', role: 'Νομικό',     salary: 20000, raise: 0, effFrom: 2027 },
-    // Μανίλα: μισθός εισάγεται σε PHP (πέσος) — αυτόματη μετατροπή σε $ για το ενοποιημένο P&L
-    { office: 'Μανίλα', name: 'Γραφείο Μανίλα',    role: 'Ενοίκιο & λειτουργικά', salary: 1130000, raise: 0, effFrom: 2027, rent: true },
-    { office: 'Μανίλα', name: 'Pia Guirao',        role: 'COO',                  salary: 1130000, raise: 5, effFrom: 2027 },
-    { office: 'Μανίλα', name: 'Carmen Soriano',    role: 'Network Co-ordinator', salary: 2034000, raise: 0, effFrom: 2027 },
-    { office: 'Μανίλα', name: 'Margilyn Nalupano', role: 'Clerk 1',              salary: 678000,  raise: 41.7, effFrom: 2027 },
-    { office: 'Μανίλα', name: 'Victoria Lawless',  role: 'Clerk 2',              salary: 678000,  raise: 41.7, effFrom: 2027 },
-    { office: 'Μανίλα', name: 'Stella Ducay',      role: 'Clerk 3',              salary: 678000,  raise: 0, effFrom: 2027 },
-    { office: 'Μανίλα', name: 'Jinky',             role: 'Clerk 3',              salary: 678000,  raise: 0, effFrom: 2027 },
-  ])
-
-  // manual member-count forecast milestones: { month: 'YYYY-MM', members: N }
-  const milestones = ref([
-    { month: '2027-06', members: 20000 },
-    { month: '2028-03', members: 30000 },
-  ])
-
-  // actuals from the Αστρολάβος trial balance (01/01/2026–27/10/2026) —
-  // Beginning + Period Change per row, End is always begin+change.
-  const actualsData = reactive({
-    revenue: {
-      title: 'Έσοδα', code: 'κωδ. 91xxx', isRevenue: true,
-      rows: [
-        { label: 'Membership fees (όλα τα policy-years)', begin: 401606, change: 364913 },
-        { label: 'Admin fees AMAPHIL', begin: 44278, change: 38773 },
-        { label: 'Plan management fees', begin: 50219, change: 63360 },
-        { label: 'Λοιπά έσοδα (τόκοι κ.ά.)', begin: 32, change: 14 },
-      ]
-    },
-    opsCosts: {
-      title: 'Κόστη λειτουργίας', code: 'κωδ. 92xxx', isRevenue: false,
-      rows: [
-        { label: 'Κόστη membership / admin / claims', begin: 208259, change: 179041 },
-        { label: 'Τραπεζικά, ΦΠΑ, λοιπά λειτουργικά', begin: 33012, change: 31820 },
-      ]
-    },
-    payroll: {
-      title: 'Μισθοδοσία', code: 'κωδ. 96+97 · wages/bonus', isRevenue: false,
-      rows: [
-        { label: 'Μισθοί & bonus (Κύπρος + Φιλιππίνες)', begin: 209868, change: 169235 },
-      ]
-    },
-    contributions: {
-      title: 'Εισφορές', code: 'κωδ. 96+97 · wages contributions', isRevenue: false,
-      rows: [
-        { label: 'Εργοδοτικές εισφορές', begin: 28301, change: 16139 },
-      ]
-    },
-    taxes: {
-      title: 'Φόροι', code: 'κωδ. 96+97 · taxes/fees', isRevenue: false,
-      rows: [
-        { label: 'Φόροι / τέλη', begin: 7106, change: 59 },
-      ]
-    },
-    adminOpexOther: {
-      title: 'Λοιπά OPEX Διοίκησης', code: 'κωδ. 96+97 · υπόλοιπο', isRevenue: false,
-      rows: [
-        { label: 'Ενοίκιο / utilities', begin: 3263, change: 3040 },
-        { label: 'IT / Computer', begin: 30868, change: 1571 },
-        { label: 'Marketing / Διαφήμιση', begin: 1273, change: 5654 },
-        { label: 'Consultants / Audit / Legal', begin: 11634, change: 8857 },
-        { label: 'Ταξίδια / PR / λοιπά / σύνδεσμοι', begin: 19047, change: 1554 },
-        { label: 'Medical / 3rd-party (Φιλιππίνες)', begin: 6956, change: 21928 },
-      ]
-    },
-    other: {
-      title: 'Λοιπά', code: 'κωδ. 99xxx', isRevenue: false,
-      rows: [
-        { label: 'Αναπροσαρμογές / συναλλαγματικές / rounding', begin: 3733, change: 37210 },
-      ]
-    }
-  })
-
-  // ---------------- role / horizon / granularity / mode ----------------
+  // ---------------- role ----------------
+  const hasAccess = computed(() => role.value !== null)
   const isAdmin = computed(() => role.value === 'admin')
   const canEdit = computed(() => role.value === 'admin' || role.value === 'editor')
 
-  const setRole = roleStore.setRole
   function setHorizon(y) { horizon.value = y; writeLs('pl_horizon', y) }
   function setGranularity(g) { granularity.value = g; writeLs('pl_granularity', g) }
   function setMemberForecastMode(mode) { memberForecastMode.value = mode; writeLs('pl_memberMode', mode) }
+
+  // ---------------- load ----------------
+  // keepSaveError: the resync after a failed write keeps its error visible;
+  // any other reload (navigation, entity change) clears it.
+  async function load({ keepSaveError = false } = {}) {
+    loading.value = true
+    loadError.value = null
+    if (!keepSaveError) saveError.value = null
+    try {
+      try {
+        role.value = await fetchMyRole()
+      } catch (e) {
+        if (e?.response?.status === 403) { role.value = null; resetData(); return }
+        throw e
+      }
+      const admin = role.value === 'admin'
+      const editor = role.value === 'admin' || role.value === 'editor'
+      const [ppl, ms, asm, act, sum] = await Promise.all([
+        editor ? peopleApi.list() : [],
+        admin ? milestonesApi.list() : [],
+        admin ? assumptionsApi.list() : [],
+        actualsApi.list(),                        // any Polaris role
+        editor ? [] : fetchPayrollSummary(),      // viewer: aggregate instead of people
+      ])
+      people.value = ppl.map(personFromApi)
+      payrollSummary.value = sum.map(s => ({
+        officeCode: s.office, office: OFFICE_LABEL[s.office] || s.office,
+        salaryTotal: Number(s.salaryTotal) || 0, headcount: Number(s.headcount) || 0,
+      }))
+      milestones.value = ms.map(milestoneFromApi)
+      for (const k of Object.keys(ASSUMPTION_KEYS)) { inputs[k] = ''; delete assumptionIds[k] }
+      for (const a of asm) {
+        const field = Object.keys(ASSUMPTION_KEYS).find(k => ASSUMPTION_KEYS[k] === a.key)
+        if (field) { inputs[field] = Number(a.value); assumptionIds[field] = a.id }
+      }
+      actualsRows.value = act.map(actualFromApi)
+      // active period = the latest one that has rows, else 1 Jan – today
+      const latest = actualsRows.value.reduce((best, r) => (!best || r.periodEnd > best.end) ? { start: r.periodStart, end: r.periodEnd } : best, null)
+      actPeriod.value = periodText(latest || defaultPeriod())
+      loaded.value = true
+    } catch (e) {
+      loadError.value = apiError(e)
+    } finally {
+      loading.value = false
+    }
+  }
+  function resetData() {
+    people.value = []; payrollSummary.value = []; milestones.value = []; actualsRows.value = []
+    for (const k of Object.keys(ASSUMPTION_KEYS)) { inputs[k] = ''; delete assumptionIds[k] }
+    loaded.value = true
+  }
+
+  // every write goes through here: on failure show the error and resync from the server
+  async function persist(fn) {
+    saveError.value = null
+    try { return await fn() } catch (e) { saveError.value = apiError(e); await load({ keepSaveError: true }); return null }
+  }
 
   // ---------------- FX: every office pays in its own currency, the P&L is
   // consolidated in USD everywhere (same as Αστρολάβος + the original Excel) ----
   function phpToUsd(php) { return php / num(inputs.phpPerUsd, 56.5) }
   function eurToUsd(eur) { return eur * num(inputs.usdPerEur, 1.08) }
-  function isManila(p) { return p.office === 'Μανίλα' }
+  function isManila(p) { return p.officeCode === 'MANILA' }
 
   function projectedSalary(p, years) {
     // raise% compounds annually once the person has been on the raise schedule for N years within the horizon
@@ -193,20 +266,38 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     return isManila(p) ? phpToUsd(native) : eurToUsd(native)
   }
 
-  // ---------------- payroll edits ----------------
+  // ---------------- payroll edits (admin) ----------------
   function updatePerson(idx, field, val) {
-    people.value[idx][field] = parseFloat(val) || 0
+    const p = people.value[idx]
+    if (!p) return
+    let value
+    if (field === 'name' || field === 'role') value = String(val).trim()
+    else if (field === 'officeCode') value = val
+    else if (field === 'rent') value = !!val
+    else value = parseFloat(val) || 0
+    if (field === 'name' && !value) return  // backend: name is required
+    p[field] = value
+    if (field === 'officeCode') p.office = OFFICE_LABEL[value] || value
+    const apiValue = field === 'role' && value === '—' ? '' : value
+    return persist(() => peopleApi.update(p.id, { [PERSON_FIELD_TO_API[field]]: apiValue }))
   }
-  function removePerson(idx) {
+  async function removePerson(idx) {
     if (role.value !== 'admin') return
-    people.value.splice(idx, 1)
+    const p = people.value[idx]
+    if (!p) return
+    const ok = await persist(async () => { await peopleApi.remove(p.id); return true })
+    if (ok) people.value.splice(people.value.indexOf(p), 1)
   }
-  function addPerson() {
+  async function addPerson() {
     if (role.value !== 'admin') return
-    people.value.push({ office: 'Αθήνα', name: 'Νέο μέλος προσωπικού', role: '—', salary: 0, raise: 0, effFrom: 2027 })
+    const created = await persist(() => peopleApi.create({
+      office: 'ATHENS', name: 'Νέο μέλος προσωπικού', roleTitle: '', salary: 0, raisePct: 0,
+      effectiveFromYear: new Date().getFullYear() + 1, isOfficeCost: false,
+    }))
+    if (created) people.value.push(personFromApi(created))
   }
 
-  // ---------------- member milestones (manual forecast) ----------------
+  // ---------------- member milestones (manual forecast, admin) ----------------
   function sortedMilestonePoints(members0) {
     const pts = milestones.value
       .map(m => ({ months: monthsFromNow(m.month), members: Number(m.members) || 0 }))
@@ -232,32 +323,105 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
   }
   function updateMilestone(idx, field, val) {
     if (role.value !== 'admin') return
-    milestones.value[idx][field] = field === 'members' ? (parseFloat(val) || 0) : val
+    const m = milestones.value[idx]
+    if (!m) return
+    if (field === 'members') {
+      m.members = parseFloat(val) || 0
+      return persist(() => milestonesApi.update(m.id, { membersTarget: Math.round(m.members) }))
+    }
+    if (!val) return  // backend: targetMonth is required -- keep the stored month
+    m.month = val
+    return persist(() => milestonesApi.update(m.id, { targetMonth: `${val}-01` }))
   }
-  function removeMilestone(idx) {
+  async function removeMilestone(idx) {
     if (role.value !== 'admin') return
-    milestones.value.splice(idx, 1)
+    const m = milestones.value[idx]
+    if (!m) return
+    const ok = await persist(async () => { await milestonesApi.remove(m.id); return true })
+    if (ok) milestones.value.splice(milestones.value.indexOf(m), 1)
   }
-  function addMilestone() {
+  async function addMilestone() {
     if (role.value !== 'admin') return
-    milestones.value.push({ month: '', members: num(inputs.members) })
+    // the mockup added an empty month; the table requires one, so default to next month
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1)
+    const created = await persist(() => milestonesApi.create({
+      targetMonth: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`, membersTarget: Math.round(num(inputs.members)),
+    }))
+    if (created) milestones.value.push(milestoneFromApi(created))
+  }
+
+  // ---------------- assumptions (admin) ----------------
+  // inputs update live through v-model (recalc on every keystroke, like the mockup);
+  // this persists the field on change.
+  function saveAssumption(field) {
+    if (role.value !== 'admin') return
+    const raw = inputs[field]
+    if (raw === '' || raw === null || isNaN(Number(raw))) return
+    const value = Number(raw)
+    const id = assumptionIds[field]
+    return persist(async () => {
+      if (id) return assumptionsApi.update(id, { value })
+      const created = await assumptionsApi.create({ key: ASSUMPTION_KEYS[field], value })
+      if (created) assumptionIds[field] = created.id
+      return created
+    })
   }
 
   // ---------------- actuals (Αστρολάβος trial balance) ----------------
-  // parses "Περίοδος" (π.χ. "01/01/2026 – 27/10/2026") into display dates
+  // display dates come straight from the text field, like the mockup
   const periodDates = computed(() => {
     const raw = actPeriod.value || ''
     const parts = raw.split(/\s*[–-]\s*/).map(s => s.trim()).filter(Boolean)
     if (parts.length >= 2) return { start: parts[0], end: parts[parts.length - 1] }
     return { start: '—', end: '—' }
   })
-  function updateActualAmount(groupKey, idx, field, val) {
-    actualsData[groupKey].rows[idx][field] = parseFloat(val) || 0
+  const activePeriod = computed(() => parsePeriod(actPeriod.value))
+
+  function rowsFor(groupKey) {
+    const p = activePeriod.value
+    if (!p) return []
+    return actualsRows.value.filter(r => r.groupKey === groupKey && r.periodStart === p.start && r.periodEnd === p.end)
   }
 
-  const revSum = computed(() => groupSum3(actualsData.revenue))
+  // same shape the mockup's actualsData had: { key: { title, code, isRevenue, rows: [{label, begin, change}] } }
+  const actualsData = computed(() => Object.fromEntries(ACTUALS_TAXONOMY.map(g => {
+    const stored = rowsFor(g.key)
+    const rows = g.labels.map(label => {
+      const r = stored.find(s => s.label === label)
+      return { label, begin: r ? r.begin : 0, change: r ? r.change : 0 }
+    })
+    // rows stored under this group with a label outside the taxonomy still count
+    for (const r of stored) if (!g.labels.includes(r.label)) rows.push({ label: r.label, begin: r.begin, change: r.change })
+    return [g.key, { title: g.title, code: g.code, isRevenue: g.isRevenue, rows }]
+  })))
+
+  function updateActualAmount(groupKey, idx, field, val) {
+    if (!canEdit.value) return
+    const p = activePeriod.value
+    if (!p) { saveError.value = 'Μη έγκυρη περίοδος — χρησιμοποίησε τη μορφή ηη/μμ/εεεε – ηη/μμ/εεεε'; return }
+    const row = actualsData.value[groupKey].rows[idx]
+    if (!row) return
+    const amount = parseFloat(val) || 0
+    const existing = rowsFor(groupKey).find(r => r.label === row.label)
+    if (existing) {
+      existing[field] = amount
+      return persist(() => actualsApi.update(existing.id, { [field === 'begin' ? 'beginAmount' : 'changeAmount']: amount }))
+    }
+    return persist(async () => {
+      const created = await actualsApi.create({
+        groupKey, label: row.label,
+        beginAmount: field === 'begin' ? amount : row.begin,
+        changeAmount: field === 'change' ? amount : row.change,
+        periodStart: p.start, periodEnd: p.end,
+      })
+      if (created) actualsRows.value.push(actualFromApi(created))
+      return created
+    })
+  }
+
+  const revSum = computed(() => groupSum3(actualsData.value.revenue))
   const expSum = computed(() => EXPENSE_KEYS.reduce((s, k) => {
-    const g = groupSum3(actualsData[k])
+    const g = groupSum3(actualsData.value[k])
     return { begin: s.begin + g.begin, change: s.change + g.change, end: s.end + g.end }
   }, { begin: 0, change: 0, end: 0 }))
   const netSum = computed(() => ({
@@ -301,10 +465,24 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
   const breakEvenDistance = computed(() => cur.value.members - breakEvenMembers.value)
   const ebitdaMargin = computed(() => cur.value.revenue ? (cur.value.ebitda / cur.value.revenue * 100) : 0)
 
-  // payroll aggregates (viewer card + table footer)
-  const athensTotal = computed(() => people.value.filter(p => p.office === 'Αθήνα').reduce((s, p) => s + salaryUSD(p, horizon.value), 0))
-  const manilaTotal = computed(() => people.value.filter(p => p.office === 'Μανίλα').reduce((s, p) => s + salaryUSD(p, horizon.value), 0))
+  // payroll aggregates (table footer)
+  const athensTotal = computed(() => people.value.filter(p => p.officeCode === 'ATHENS').reduce((s, p) => s + salaryUSD(p, horizon.value), 0))
+  const manilaTotal = computed(() => people.value.filter(p => p.officeCode === 'MANILA').reduce((s, p) => s + salaryUSD(p, horizon.value), 0))
   const staffCount = computed(() => people.value.filter(p => !p.rent).length)
+
+  // viewer aggregate card (payroll/summary): year-1 base salaries per office, converted to $.
+  // No raise projection (that needs per-person rows) and the default FX rates
+  // (fx assumptions are admin-only).
+  const summaryUsd = computed(() => {
+    const usd = s => s.officeCode === 'MANILA' ? phpToUsd(s.salaryTotal) : eurToUsd(s.salaryTotal)
+    const byOffice = code => payrollSummary.value.filter(s => s.officeCode === code).reduce((t, s) => t + usd(s), 0)
+    return {
+      athens: byOffice('ATHENS'),
+      manila: byOffice('MANILA'),
+      total: payrollSummary.value.reduce((t, s) => t + usd(s), 0),
+      headcount: payrollSummary.value.reduce((t, s) => t + s.headcount, 0),
+    }
+  })
 
   // chart time axis, in whole years or quarters
   const timePoints = computed(() => {
@@ -329,13 +507,16 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
   })
 
   return {
-    role, horizon, memberForecastMode, granularity, inputs, actPeriod, people, milestones, actualsData,
-    isAdmin, canEdit, setRole, setHorizon, setGranularity, setMemberForecastMode,
+    role, loading, loaded, loadError, saveError, load,
+    horizon, memberForecastMode, granularity, inputs, actPeriod, people, milestones, actualsData,
+    hasAccess, isAdmin, canEdit, setHorizon, setGranularity, setMemberForecastMode,
     phpToUsd, eurToUsd, isManila, projectedSalary, salaryUSD,
     updatePerson, removePerson, addPerson,
     updateMilestone, removeMilestone, addMilestone,
-    periodDates, updateActualAmount, revSum, expSum, netSum,
+    saveAssumption,
+    periodDates, activePeriod, updateActualAmount, revSum, expSum, netSum,
     pnlAtYear, cur, lastYear1Ebitda, breakEvenMembers, breakEvenDistance, ebitdaMargin,
     athensTotal, manilaTotal, staffCount, timePoints, actForecast,
+    payrollSummary, summaryUsd,
   }
 })

@@ -23,14 +23,16 @@ import java.util.*;
  *      there is no global-ADMIN requirement for writes.
  *   2. entity_roles for the Polaris entity, checked per endpoint here:
  *
- *        resource     | GET            | POST / PUT / DELETE
- *        -------------+----------------+--------------------
- *        people       | admin, editor  | admin
- *        milestones   | admin          | admin
+ *        resource     | GET                    | POST / PUT / DELETE
+ *        -------------+------------------------+--------------------
+ *        people       | admin, editor          | admin
+ *        summary      | admin, editor, viewer  | (read-only aggregate)
+ *        milestones   | admin                  | admin
  *
  *      No entity_roles row -> 403, even for a global ADMIN.
  *
  * Endpoints:
+ *   GET    /api/polaris/payroll/summary?entityId=X   (totals per office, no names)
  *   GET    /api/polaris/payroll/people?entityId=X
  *   GET    /api/polaris/payroll/people/{id}?entityId=X
  *   POST   /api/polaris/payroll/people?entityId=X
@@ -47,6 +49,19 @@ public class PolarisPayrollController {
 
     private final PolarisPayrollService polarisPayrollService;
     private final UserAccessService userAccessService;
+
+    // -------------------------------------------------------------------
+    // payroll summary -- GET: admin+editor+viewer, aggregate only
+    // -------------------------------------------------------------------
+
+    @GetMapping("/summary")
+    public ResponseEntity<?> payrollSummary(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisRead(user, entityId);
+        return okList(polarisPayrollService.payrollSummary(entityId));
+    }
 
     // -------------------------------------------------------------------
     // payroll_people -- GET: admin+editor, writes: admin

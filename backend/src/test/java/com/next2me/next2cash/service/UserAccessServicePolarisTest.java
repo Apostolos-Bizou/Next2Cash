@@ -192,6 +192,25 @@ class UserAccessServicePolarisTest extends BaseIntegrationTest {
         assertStatus(HttpStatus.FORBIDDEN, () -> userAccessService.assertPolarisAdminOrEditor(viewer, polaris.getId()));
     }
 
+    @Test
+    @DisplayName("assertPolarisRead: admin, editor and viewer pass; no role -> 403, non-Polaris -> 400")
+    void assertPolarisRead_anyRole() {
+        User admin  = tdb.createUser("polaris-admin");
+        User editor = tdb.createUser("polaris-editor");
+        User viewer = tdb.createUser("polaris-viewer");
+        User none   = tdb.createUser("polaris-none");
+        pts.assignWithRole(admin, polaris, "admin");
+        pts.assignWithRole(editor, polaris, "editor");
+        pts.assignWithRole(viewer, polaris, "viewer");
+        tdb.assignEntities(none, polaris);
+
+        assertDoesNotThrow(() -> userAccessService.assertPolarisRead(admin, polaris.getId()));
+        assertDoesNotThrow(() -> userAccessService.assertPolarisRead(editor, polaris.getId()));
+        assertDoesNotThrow(() -> userAccessService.assertPolarisRead(viewer, polaris.getId()));
+        assertStatus(HttpStatus.FORBIDDEN, () -> userAccessService.assertPolarisRead(none, polaris.getId()));
+        assertStatus(HttpStatus.BAD_REQUEST, () -> userAccessService.assertPolarisRead(viewer, house.getId()));
+    }
+
     private static void assertStatus(HttpStatus expected, Runnable call) {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, call::run);
         assertEquals(expected, ex.getStatusCode());

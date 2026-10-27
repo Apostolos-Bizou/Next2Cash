@@ -2,12 +2,14 @@
 // PolarisPayrollView — "Μισθοδοσία & Προσωπικό" page of the Polaris P&L module.
 //
 // Phase 2 (Oct 2026): 1:1 port of the #pagePayroll block of
-// docs/polaris-mockup-reference.html. admin/editor see the full table (only
-// admin can edit), viewer sees the aggregated card. Demo data + demo role from
-// the shared polarisPl store; Phase 3 wires /api/polaris/payroll + entity_roles.
+// docs/polaris-mockup-reference.html. Phase 3: rows come from
+// /api/polaris/payroll/people and the role from /api/polaris/my-role:
+//   admin  -> full table, editable (incl. office / name / role, so new rows can be filled in)
+//   editor -> full table, read-only
+//   viewer -> the mockup's aggregate card, from /api/polaris/payroll/summary (no names / salaries)
 import { computed } from 'vue'
-import PolarisConceptBanner from '@/components/PolarisConceptBanner.vue'
-import { usePolarisPlStore, fmtUSD, fmtInt } from '@/stores/polarisPl'
+import PolarisStatus from '@/components/PolarisStatus.vue'
+import { usePolarisPlStore, fmtUSD, fmtInt, OFFICES } from '@/stores/polarisPl'
 import '@/styles/polaris-pl.css'
 
 const pl = usePolarisPlStore()
@@ -19,7 +21,7 @@ const payrollEditNote = computed(() => pl.isAdmin
 
 <template>
   <div class="polaris-pl">
-    <PolarisConceptBanner />
+    <PolarisStatus :allowed="pl.hasAccess">
 
     <div class="page-head">
       <div>
@@ -42,9 +44,19 @@ const payrollEditNote = computed(() => pl.isAdmin
               <th>Γραφείο</th><th>Όνομα / Θέση</th><th>Μισθός (έτος 1)</th><th>Αύξηση/έτος</th><th>Ισχύς από</th><th>Προβ. μισθός (ορίζοντας)</th><th></th>
             </tr></thead>
             <tbody>
-              <tr v-for="(p, idx) in pl.people" :key="idx">
-                <td><span class="office-tag" :class="p.office === 'Αθήνα' ? 'athens' : 'manila'">{{ p.office }}</span></td>
+              <tr v-if="pl.people.length === 0"><td colspan="7" style="color:var(--text-muted)">Δεν έχουν καταχωρηθεί άτομα ακόμα.</td></tr>
+              <tr v-for="(p, idx) in pl.people" :key="p.id">
                 <td>
+                  <select v-if="pl.isAdmin" class="cell-input" :value="p.officeCode" @change="pl.updatePerson(idx, 'officeCode', $event.target.value)">
+                    <option v-for="o in OFFICES" :key="o.code" :value="o.code">{{ o.label }}</option>
+                  </select>
+                  <span v-else class="office-tag" :class="p.officeCode === 'ATHENS' ? 'athens' : 'manila'">{{ p.office }}</span>
+                </td>
+                <td v-if="pl.isAdmin">
+                  <input class="cell-input" type="text" :value="p.name" @change="pl.updatePerson(idx, 'name', $event.target.value)">
+                  <input class="cell-input" type="text" :value="p.role" style="margin-top:4px;font-size:12px;font-weight:500" @change="pl.updatePerson(idx, 'role', $event.target.value)">
+                </td>
+                <td v-else>
                   <div style="font-weight:600">{{ p.name }}</div>
                   <div style="font-size:11.5px;color:var(--text-muted)">{{ p.role }}</div>
                 </td>
@@ -70,22 +82,23 @@ const payrollEditNote = computed(() => pl.isAdmin
       </div>
     </div>
 
-    <!-- ===== Viewer: aggregated-only card ===== -->
+    <!-- ===== Viewer: aggregated-only card (GET /api/polaris/payroll/summary) ===== -->
     <div class="section" v-else>
       <div class="sec-head">
         <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>Μισθοδοσία &amp; Προσωπικό</div>
-        <div class="sec-note">συγκεντρωτικά — χωρίς ονόματα/μισθούς</div>
+        <div class="sec-note">συγκεντρωτικά — χωρίς ονόματα/μισθούς · βάση έτους 1</div>
       </div>
       <div class="sec-body locked-card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         <div>Το αναλυτικό προσωπικό είναι ορατό μόνο σε admin / editor.</div>
-        <div class="big tnum">{{ fmtUSD(pl.cur.payroll) }}</div>
+        <div class="big tnum">{{ fmtUSD(pl.summaryUsd.total) }}</div>
         <div class="agg-row">
-          <div><div class="l">Αθήνα</div><div class="v tnum">{{ fmtUSD(pl.athensTotal) }}</div></div>
-          <div><div class="l">Μανίλα</div><div class="v tnum">{{ fmtUSD(pl.manilaTotal) }}</div></div>
-          <div><div class="l">Άτομα</div><div class="v tnum">{{ pl.staffCount }}</div></div>
+          <div><div class="l">Αθήνα</div><div class="v tnum">{{ fmtUSD(pl.summaryUsd.athens) }}</div></div>
+          <div><div class="l">Μανίλα</div><div class="v tnum">{{ fmtUSD(pl.summaryUsd.manila) }}</div></div>
+          <div><div class="l">Άτομα</div><div class="v tnum">{{ pl.summaryUsd.headcount }}</div></div>
         </div>
       </div>
     </div>
+    </PolarisStatus>
   </div>
 </template>

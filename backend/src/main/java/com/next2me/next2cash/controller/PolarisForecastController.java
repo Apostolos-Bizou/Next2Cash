@@ -22,8 +22,8 @@ import java.util.*;
  *
  *        resource     | GET            | POST / PUT / DELETE
  *        -------------+----------------+--------------------
- *        assumptions  | admin          | admin
- *        actuals      | admin, editor  | admin, editor
+ *        assumptions  | admin                  | admin
+ *        actuals      | admin, editor, viewer  | admin, editor
  *
  * Endpoints:
  *   GET    /api/polaris/forecast/assumptions?entityId=X
@@ -99,7 +99,7 @@ public class PolarisForecastController {
     }
 
     // -------------------------------------------------------------------
-    // actuals_rows -- GET: admin+editor, writes: admin+editor
+    // actuals_rows -- GET: admin+editor+viewer, writes: admin+editor
     // -------------------------------------------------------------------
 
     @GetMapping("/actuals")
@@ -107,7 +107,7 @@ public class PolarisForecastController {
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID entityId) {
         User user = userAccessService.getCurrentUser(authHeader);
-        userAccessService.assertPolarisAdminOrEditor(user, entityId);
+        userAccessService.assertPolarisRead(user, entityId);
         return okList(polarisForecastService.listActuals(entityId));
     }
 
@@ -117,7 +117,7 @@ public class PolarisForecastController {
             @PathVariable UUID id,
             @RequestParam UUID entityId) {
         User user = userAccessService.getCurrentUser(authHeader);
-        userAccessService.assertPolarisAdminOrEditor(user, entityId);
+        userAccessService.assertPolarisRead(user, entityId);
         return ok(polarisForecastService.getActual(entityId, id));
     }
 
