@@ -25,6 +25,10 @@ const router = createRouter({
     { path: '/admin',          component: () => import('@/views/AdminView.vue'),         meta: { section: 'admin', title: 'Admin Panel' } },
     { path: '/investor-reports', component: () => import('@/views/ForecastView.vue'),   meta: { section: 'investor-reports', title: 'Investor Reports' } },
     { path: '/pricing-calculator', component: () => import('@/views/PricingCalculatorView.vue'),   meta: { section: 'pricing-calculator', title: 'Pricing Calculator' } },
+    // Polaris P&L (Phase 2 mockup port) -- never VIEWER (Invariant 1 mirror of the backend gate)
+    { path: '/polaris/dashboard', component: () => import('@/views/PolarisDashboardView.vue'), meta: { section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], polaris: true, title: 'P&L Dashboard' } },
+    { path: '/polaris/payroll',   component: () => import('@/views/PolarisPayrollView.vue'),   meta: { section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], polaris: true, title: 'Μισθοδοσία & Προσωπικό' } },
+    { path: '/polaris/forecast',  component: () => import('@/views/PolarisForecastView.vue'),  meta: { section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], polaris: true, title: 'Προβλέψεις' } },
   ]
 })
 
@@ -80,6 +84,7 @@ router.beforeEach((to) => {
   if (routeRoles) {
     const role = (user.role || '').toLowerCase()
     if (!routeRoles.includes(role)) {
+      if (to.meta.polaris) return '/dashboard'
       return to.path === '/report-builder' ? '/dashboard' : '/report-builder'
     }
   }

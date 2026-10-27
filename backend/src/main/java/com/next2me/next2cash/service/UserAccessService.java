@@ -1,8 +1,10 @@
 package com.next2me.next2cash.service;
 
 import com.next2me.next2cash.model.CompanyEntity;
+import com.next2me.next2cash.model.EntityRole;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.CompanyEntityRepository;
+import com.next2me.next2cash.repository.EntityRoleRepository;
 import com.next2me.next2cash.repository.UserEntityLinkRepository;
 import com.next2me.next2cash.repository.UserRepository;
 import com.next2me.next2cash.security.JwtUtil;
@@ -13,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -31,14 +34,31 @@ import java.util.stream.Collectors;
  * Uses UserEntityLinkRepository (JPA-based) for read operations to ensure
  * H2/PostgreSQL compatibility. The older UserEntityRepository (native SQL) is
  * still used by UserController for write operations.
+ *
+ * Polaris P&L (Oct 2026): a second, additive layer for the Polaris entity only.
+ * See getPolarisRole / assertPolarisAdminOnly / assertPolarisAdminOrEditor /
+ * assertPolarisRead below. The
+ * methods above (getAccessibleEntityIds, canAccessEntity, assertCanAccessEntity)
+ * are unchanged and never consult entity_roles.
  */
 @Service
 @RequiredArgsConstructor
 public class UserAccessService {
 
+    /** entities.code of the Polaris entity. */
+    public static final String POLARIS_ENTITY_CODE = "polaris";
+
+    public static final String POLARIS_ROLE_ADMIN  = "admin";
+    public static final String POLARIS_ROLE_EDITOR = "editor";
+    public static final String POLARIS_ROLE_VIEWER = "viewer";
+
+    private static final Set<String> POLARIS_ROLES =
+        Set.of(POLARIS_ROLE_ADMIN, POLARIS_ROLE_EDITOR, POLARIS_ROLE_VIEWER);
+
     private final UserRepository userRepository;
     private final UserEntityLinkRepository userEntityLinkRepository;
     private final CompanyEntityRepository companyEntityRepository;
+    private final EntityRoleRepository entityRoleRepository;
     private final JwtUtil jwtUtil;
 
     /**
@@ -121,6 +141,93 @@ public class UserAccessService {
         if (!canAccessEntity(user, entityId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                 "Access denied for entity " + entityId);
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // Polaris entity_roles layer (Polaris P&L, Oct 2026)
+    // -------------------------------------------------------------------
+
+    /**
+     * Is this the Polaris entity? Resolved by entities.code (not a hardcoded
+     * UUID) so H2 tests and production behave the same.
+     */
+    public boolean isPolarisEntity(UUID entityId) {
+        if (entityId == null) return false;
+        return companyEntityRepository.findById(entityId)
+            .map(e -> POLARIS_ENTITY_CODE.equalsIgnoreCase(e.getCode()))
+            .orElse(false);
+    }
+
+    /**
+     * The user's entity_roles role (admin / editor / viewer) on the Polaris entity.
+     *
+     * entity_roles is read ONLY when entityId is the Polaris entity; for any
+     * other entity this returns empty without touching the table. A role is
+     * granted only when ALL hold:
+     *   - the user is active,
+     *   - the existing scope check passes (canAccessEntity -- user_entities /
+     *     admin bypass, unchanged), and
+     *   - an entity_roles row exists with a known role.
+     * There is no global-admin bypass: no row -> no Polaris access.
+     */
+    public Optional<String> getPolarisRole(User user, UUID entityId) {
+        if (user == null || entityId == null) return Optional.empty();
+        if (!isPolarisEntity(entityId)) return Optional.empty();
+        if (!Boolean.TRUE.equals(user.getIsActive())) return Optional.empty();
+        if (!canAccessEntity(user, entityId)) return Optional.empty();
+
+        return entityRoleRepository.findByUserIdAndEntityId(user.getId(), entityId)
+            .map(EntityRole::getRole)
+            .map(r -> r.trim().toLowerCase())
+            .filter(POLARIS_ROLES::contains);
+    }
+
+    /**
+     * Guard: entity_roles role must be admin. Used per endpoint by the Polaris
+     * controllers (see the access matrix in PolarisPayrollController /
+     * PolarisForecastController).
+     * 400 if entityId is missing or not Polaris, 403 for any other role or none.
+     */
+    public void assertPolarisAdminOnly(User user, UUID entityId) {
+        assertPolarisRole(user, entityId, Set.of(POLARIS_ROLE_ADMIN));
+    }
+
+    /**
+     * Guard: entity_roles role must be admin or editor. viewer -> 403.
+     * 400 if entityId is missing or not Polaris.
+     */
+    public void assertPolarisAdminOrEditor(User user, UUID entityId) {
+        assertPolarisRole(user, entityId, Set.of(POLARIS_ROLE_ADMIN, POLARIS_ROLE_EDITOR));
+    }
+
+    /**
+     * Guard: any entity_roles role (admin / editor / viewer). Read-only
+     * endpoints only -- never a write (Invariant 1).
+     * 400 if entityId is missing or not Polaris, 403 if there is no role row.
+     */
+    public void assertPolarisRead(User user, UUID entityId) {
+        assertPolarisRole(user, entityId, POLARIS_ROLES);
+    }
+
+    private void assertPolarisRole(User user, UUID entityId, Set<String> allowed) {
+        assertPolarisEntity(entityId);
+        String role = getPolarisRole(user, entityId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Access denied for entity " + entityId));
+        if (!allowed.contains(role)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Polaris role '" + role + "' is not allowed here");
+        }
+    }
+
+    private void assertPolarisEntity(UUID entityId) {
+        if (entityId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "entityId is required");
+        }
+        if (!isPolarisEntity(entityId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "This endpoint is only available for the Polaris entity");
         }
     }
 
