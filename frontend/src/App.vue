@@ -4,11 +4,16 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { useUserStore } from '@/stores/user'
+import { usePolarisPlRoleStore } from '@/stores/polarisPlRole'
 
 const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
 const userStore = useUserStore()
+const polarisPl = usePolarisPlRoleStore() // role only -- no demo data in the entry bundle
+
+// Polaris P&L (Phase 2 mockup port): demo "ΠΡΟΒΟΛΗ ΩΣ" switcher, only on /polaris/* routes
+const isPolarisRoute = computed(() => route.meta?.polaris === true)
 
 // Hide sidebar + topbar on public routes (e.g. /login)
 const isAuthLayout = computed(() => route.meta && route.meta.public === true)
@@ -42,12 +47,15 @@ const userRole = computed(() => (userStore.profile?.role || '').toLowerCase())
 const filteredNavSections = computed(() => {
   const allowed = userAllowedSections.value
   const roleOk = (item) => !item.roles || item.roles.includes(userRole.value)
+  // Polaris P&L: items with requiresEntity show only if that entity is in the user's scope
+  const entityOk = (item) => !item.requiresEntity || filteredEntities.value.some(e => e.key === item.requiresEntity)
 
   return navSections
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
         if (!roleOk(item)) return false
+        if (!entityOk(item)) return false
         if (allowed === null) return true // null = all sections allowed
         if (!item.section) return true // no section key = always show
         return allowed.includes(item.section)
@@ -62,14 +70,14 @@ const filteredEntities = computed(() => {
   if (restricted === null) return entities.value // null = all entities
 
   // Map entity UUIDs to keys
-  // Phase 0 migration: rename old 'polaris' localStorage key to 'next2megroup'
-  if (typeof localStorage !== 'undefined' && localStorage.getItem('n2c_entity') === 'polaris') {
-    localStorage.setItem('n2c_entity', 'next2megroup')
-  }
+  // Polaris P&L: 'polaris' is now a real entity (code 'polaris'), so the old
+  // Phase 0 rewrite 'polaris' -> 'next2megroup' was removed; an out-of-scope
+  // stored key is corrected in onMounted instead.
   const uuidToKey = {
     '58202b71-4ddb-45c9-8e3c-39e816bde972': 'next2me',
     'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
     '50317f44-9961-4fb4-add0-7a118e32dc14': 'next2megroup',
+    'baf68357-f959-43cf-9d8c-4170abe2ffc0': 'polaris',
   }
   const allowedKeys = restricted.map(uuid => uuidToKey[uuid]).filter(Boolean)
   return entities.value.filter(e => allowedKeys.includes(e.key))
@@ -97,7 +105,8 @@ const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const entities = ref([
   { key: 'next2me', label: 'Next2Me' },
   { key: 'house',   label: 'House' },
-  { key: 'next2megroup', label: 'Next2Me Group' }
+  { key: 'next2megroup', label: 'Next2Me Group' },
+  { key: 'polaris', label: 'Polaris' }
 ])
 function selectEntity(e) {
   selectedEntity.value = e.key
@@ -128,6 +137,11 @@ onMounted(async () => {
   if (filteredEntities.value.length === 1 && selectedEntity.value !== filteredEntities.value[0].key) {
     selectEntity(filteredEntities.value[0])
   }
+  // Polaris P&L: a stored key outside the user's scope (e.g. a legacy 'polaris'
+  // that used to mean Next2Me Group) falls back to the first allowed entity.
+  else if (filteredEntities.value.length > 0 && !filteredEntities.value.some(e => e.key === selectedEntity.value)) {
+    selectEntity(filteredEntities.value[0])
+  }
 })
 // M.6 auto-select moved inside onMounted (was causing infinite loop)
 
@@ -142,6 +156,15 @@ const navSections = [
       { to: '/obligations', section: 'obligations',   label: 'Υποχρεώσεις',      icon: 'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z' },
       { to: '/karteles', section: 'karteles',      label: 'Καρτέλες',         icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6' },
       { to: '/recurring', section: 'recurring',     label: 'Επαναλαμβανόμενες',      icon: 'M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5' },
+    ]
+  },
+  {
+    // Polaris P&L (Phase 2): never VIEWER, and only when Polaris is in the user's entity scope
+    label: 'POLARIS P&L',
+    items: [
+      { to: '/polaris/dashboard', section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], requiresEntity: 'polaris', gold: true, label: 'P&L Dashboard',           icon: 'M3 3v18h18M7 14l3-3 3 3 5-5', badge: 'NEW' },
+      { to: '/polaris/payroll',   section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], requiresEntity: 'polaris', gold: true, label: 'Μισθοδοσία & Προσωπικό', icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75', badge: 'NEW' },
+      { to: '/polaris/forecast',  section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], requiresEntity: 'polaris', gold: true, label: 'Προβλέψεις',             icon: 'M22 12h-4l-3 9L9 3l-3 9H2', badge: 'NEW' },
     ]
   },
   {
@@ -201,14 +224,14 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
           <span>▾</span>
         </div>
         <div class="entity-menu" v-if="showEntityMenu">
-          <div v-for="e in filteredEntities" :key="e.key" class="entity-option" :class="{ active: e.key === selectedEntity }" @click="selectEntity(e)">{{ e.label }}</div>
+          <div v-for="e in filteredEntities" :key="e.key" class="entity-option" :class="{ active: e.key === selectedEntity }" @click="selectEntity(e)">{{ e.label }}<span v-if="e.key === 'polaris'" class="entity-chip">NEW</span></div>
         </div>
       </div>
 
       <nav class="sidebar__nav">
         <template v-for="section in filteredNavSections" :key="section.label">
           <div class="nav-section-label" v-if="!ui.sidebarCollapsed">{{ section.label }}</div>
-          <RouterLink v-for="item in section.items" :key="item.to" :to="item.to" class="nav-item" active-class="nav-item--active" @click="closeMobileMenu">
+          <RouterLink v-for="item in section.items" :key="item.to" :to="item.to" class="nav-item" :class="{ 'nav-item--gold': item.gold }" active-class="nav-item--active" @click="closeMobileMenu">
             <svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path :d="item.icon" />
             </svg>
@@ -244,6 +267,14 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
         </button>
         <h1 class="topbar__title">{{ currentTitle }}</h1>
         <div class="topbar__user">
+          <div class="role-switch" v-if="isPolarisRoute">
+            <span class="role-switch__label">ΠΡΟΒΟΛΗ ΩΣ</span>
+            <div class="role-pills">
+              <button class="role-pill" :class="{ active: polarisPl.role === 'admin' }" @click="polarisPl.setRole('admin')">Admin</button>
+              <button class="role-pill" :class="{ active: polarisPl.role === 'editor' }" @click="polarisPl.setRole('editor')">Editor</button>
+              <button class="role-pill" :class="{ active: polarisPl.role === 'viewer' }" @click="polarisPl.setRole('viewer')">Viewer</button>
+            </div>
+          </div>
           <span class="topbar__user-name">{{ userDisplayName }}</span>
           <div class="topbar__avatar">{{ userInitial }}</div>
         </div>
@@ -288,6 +319,19 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 .nav-item__icon { width: 20px; height: 20px; flex-shrink: 0; }
 .nav-item__label { overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .nav-badge { background: #4FC3A1; color: #0f1e2e; font-size: 0.6rem; font-weight: 700; padding: 2px 5px; border-radius: 4px; }
+
+/* ─── Polaris P&L (Phase 2): gold nav items, entity chip, demo role switch — values from docs/polaris-mockup-reference.html ─── */
+.nav-item--gold.nav-item--active { background: rgba(245,180,62,.14); color: #f5b43e; }
+.nav-item--gold .nav-badge { background: #f5b43e; color: #241a04; font-size: .58rem; }
+.entity-option { display: flex; align-items: center; justify-content: space-between; }
+.entity-chip { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(245,180,62,.14); color: #f5b43e; }
+.role-switch { display: flex; align-items: center; gap: 8px; margin-right: 6px; }
+.role-switch__label { font-size: 11.5px; color: #8398b0; letter-spacing: .3px; }
+.role-pills { display: flex; background: #122238; border: 1px solid #2a4563; border-radius: 7px; padding: 2px; }
+.role-pill { padding: 7px 13px; font-size: 13px; font-weight: 600; color: #aabed3; border-radius: 5px; cursor: pointer; font-family: inherit; }
+.role-pill.active { background: #2E75B6; color: #fff; }
+@media (max-width: 768px) { .role-switch__label { display: none; } }
+/* ─── end Polaris P&L ─── */
 .sidebar__bottom { padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.06); }
 .logout-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; background: none; border: none; color: #8899aa; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 120ms ease; }
 .logout-btn:hover { background: rgba(239,83,80,0.1); color: #ef5350; }
