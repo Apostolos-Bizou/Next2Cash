@@ -5,10 +5,12 @@
 // docs/polaris-mockup-reference.html: EBITDA / break-even hero, KPI grid,
 // EBITDA & members chart, Παραδοχές (admin), Πρόβλεψη Μελών (admin) and
 // Πραγματικά Στοιχεία Αστρολάβος (admin/editor). All math lives in the shared
-// polarisPl store; demo data + demo role until Phase 3.
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+// polarisPl store. Phase 3: data from /api/polaris/*, role from my-role --
+// the forecast blocks need assumptions + milestones (admin-only endpoints),
+// so an editor sees only the actuals section.
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { Chart, registerables } from 'chart.js'
-import PolarisConceptBanner from '@/components/PolarisConceptBanner.vue'
+import PolarisStatus from '@/components/PolarisStatus.vue'
 import { usePolarisPlStore, fmtUSD, fmtUSD2, fmtPct, fmtInt, groupSum3, rowEnd } from '@/stores/polarisPl'
 import '@/styles/polaris-pl.css'
 
@@ -106,25 +108,27 @@ function drawChart({ labels, ebitda: ebitdaSeries, members: membersSeries }) {
   })
 }
 
-onMounted(() => drawChart(chartSeries.value))
-watch(chartSeries, drawChart)
+// the canvas only exists once the role is known to be admin, so redraw when it appears too
+watch([chartSeries, chartCanvas], () => drawChart(chartSeries.value))
 onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInstance = null } })
 </script>
 
 <template>
   <div class="polaris-pl">
-    <PolarisConceptBanner />
+    <PolarisStatus :allowed="pl.hasAccess">
 
     <div class="page-head">
       <div>
         <h1>Προβλέψεις Κερδοφορίας</h1>
-        <div class="sub">16.800 μέλη · βάση Δεκ 2026 · network/monthly/audit/dental fees</div>
+        <div class="sub" v-if="pl.isAdmin">{{ fmtInt(parseFloat(pl.inputs.members) || 0) }} μέλη · βάση Δεκ 2026 · network/monthly/audit/dental fees</div>
+        <div class="sub" v-else>Πραγματικά στοιχεία Αστρολάβος{{ pl.canEdit ? '' : ' · μόνο προβολή' }}</div>
       </div>
-      <div class="horizon-switch">
+      <div class="horizon-switch" v-if="pl.isAdmin">
         <button v-for="y in [1, 3, 5]" :key="y" class="horizon-btn" :class="{ active: pl.horizon === y }" @click="pl.setHorizon(y)">{{ y === 1 ? '1 έτος' : `${y} έτη` }}</button>
       </div>
     </div>
 
+    <template v-if="pl.isAdmin">
     <div class="kpi-hero">
       <div class="kpi-hero-card ebitda">
         <div class="kpi-hero-lbl">EBITDA <span>{{ pl.horizon === 1 ? '(έτος 1)' : `(έτος ${pl.horizon})` }}</span></div>
@@ -165,30 +169,30 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
     </div>
 
     <!-- ===== Admin only: assumptions ===== -->
-    <div class="section" v-if="pl.isAdmin">
+    <div class="section">
       <div class="sec-head">
         <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>Παραδοχές</div>
         <div class="sec-note">μόνο admin — επηρεάζουν όλους τους υπολογισμούς παραπάνω</div>
       </div>
       <div class="sec-body">
         <div class="assume-grid">
-          <div class="field"><label>Μέλη (σήμερα)</label><input type="number" v-model="pl.inputs.members" class="tnum"></div>
-          <div class="field"><label>Ετήσια μεταβολή μελών<span class="hint"> — ενεργό μόνο σε λειτουργία "Ποσοστό %"</span></label><input type="number" v-model="pl.inputs.memberGrowth" step="0.5" class="tnum" :disabled="!pl.isAdmin || !isGrowth"></div>
-          <div class="field"><label>Network access fee <span class="hint">$/μέλος/έτος</span></label><input type="number" v-model="pl.inputs.netFee" step="0.1" class="tnum"></div>
-          <div class="field"><label>Μηνιαίο fee <span class="hint">$/μέλος/μήνα</span></label><input type="number" v-model="pl.inputs.monthlyFee" step="0.005" class="tnum"></div>
-          <div class="field"><label>Audit fee rate <span class="hint">% επί $35 claims</span></label><input type="number" v-model="pl.inputs.auditRate" step="0.01" class="tnum"></div>
-          <div class="field"><label>Dental fee <span class="hint">$/μέλος/έτος</span></label><input type="number" v-model="pl.inputs.dentalFee" step="0.05" class="tnum"></div>
-          <div class="field"><label>Network payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.netPay" step="0.5" class="tnum"></div>
-          <div class="field"><label>Audit payable rate <span class="hint">% επί $35 + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.auditPay" step="0.01" class="tnum"></div>
-          <div class="field"><label>Dental payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.dentalPay" step="0.5" class="tnum"></div>
-          <div class="field"><label>PHP ανά USD<span class="hint"> — ισοτιμία γραφείου Μανίλα</span></label><input type="number" v-model="pl.inputs.phpPerUsd" step="0.1" class="tnum"></div>
-          <div class="field"><label>USD ανά EUR<span class="hint"> — για μετατροπή της μισθοδοσίας Αθήνας (EUR) σε $</span></label><input type="number" v-model="pl.inputs.usdPerEur" step="0.01" class="tnum"></div>
+          <div class="field"><label>Μέλη (σήμερα)</label><input type="number" v-model="pl.inputs.members" class="tnum" @change="pl.saveAssumption('members')"></div>
+          <div class="field"><label>Ετήσια μεταβολή μελών<span class="hint"> — ενεργό μόνο σε λειτουργία "Ποσοστό %"</span></label><input type="number" v-model="pl.inputs.memberGrowth" step="0.5" class="tnum" @change="pl.saveAssumption('memberGrowth')" :disabled="!pl.isAdmin || !isGrowth"></div>
+          <div class="field"><label>Network access fee <span class="hint">$/μέλος/έτος</span></label><input type="number" v-model="pl.inputs.netFee" step="0.1" class="tnum" @change="pl.saveAssumption('netFee')"></div>
+          <div class="field"><label>Μηνιαίο fee <span class="hint">$/μέλος/μήνα</span></label><input type="number" v-model="pl.inputs.monthlyFee" step="0.005" class="tnum" @change="pl.saveAssumption('monthlyFee')"></div>
+          <div class="field"><label>Audit fee rate <span class="hint">% επί $35 claims</span></label><input type="number" v-model="pl.inputs.auditRate" step="0.01" class="tnum" @change="pl.saveAssumption('auditRate')"></div>
+          <div class="field"><label>Dental fee <span class="hint">$/μέλος/έτος</span></label><input type="number" v-model="pl.inputs.dentalFee" step="0.05" class="tnum" @change="pl.saveAssumption('dentalFee')"></div>
+          <div class="field"><label>Network payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.netPay" step="0.5" class="tnum" @change="pl.saveAssumption('netPay')"></div>
+          <div class="field"><label>Audit payable rate <span class="hint">% επί $35 + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.auditPay" step="0.01" class="tnum" @change="pl.saveAssumption('auditPay')"></div>
+          <div class="field"><label>Dental payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.dentalPay" step="0.5" class="tnum" @change="pl.saveAssumption('dentalPay')"></div>
+          <div class="field"><label>PHP ανά USD<span class="hint"> — ισοτιμία γραφείου Μανίλα</span></label><input type="number" v-model="pl.inputs.phpPerUsd" step="0.1" class="tnum" @change="pl.saveAssumption('phpPerUsd')"></div>
+          <div class="field"><label>USD ανά EUR<span class="hint"> — για μετατροπή της μισθοδοσίας Αθήνας (EUR) σε $</span></label><input type="number" v-model="pl.inputs.usdPerEur" step="0.01" class="tnum" @change="pl.saveAssumption('usdPerEur')"></div>
         </div>
       </div>
     </div>
 
     <!-- ===== Admin only: member forecast — flat % growth OR manual milestones ===== -->
-    <div class="section" v-if="pl.isAdmin">
+    <div class="section">
       <div class="sec-head">
         <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="4"/></svg>Πρόβλεψη Μελών</div>
         <div class="sec-note">μόνο admin — επιλέγεις πώς υπολογίζονται τα μελλοντικά μέλη</div>
@@ -211,7 +215,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
               <thead><tr><th>Μέχρι (μήνας/έτος)</th><th>Στόχος μελών</th><th></th></tr></thead>
               <tbody>
                 <tr v-if="pl.milestones.length === 0"><td colspan="3" style="color:var(--text-muted)">Δεν έχουν οριστεί στόχοι — τα μέλη θεωρούνται σταθερά.</td></tr>
-                <tr v-for="(m, idx) in pl.milestones" :key="idx">
+                <tr v-for="(m, idx) in pl.milestones" :key="m.id">
                   <td><input class="cell-input" type="month" :value="m.month || ''" :disabled="!pl.isAdmin" @change="pl.updateMilestone(idx, 'month', $event.target.value)"></td>
                   <td><input class="cell-input tnum" type="number" step="100" :value="m.members" :disabled="!pl.isAdmin" @change="pl.updateMilestone(idx, 'members', $event.target.value)"></td>
                   <td><button class="row-del" :style="{ visibility: pl.isAdmin ? 'visible' : 'hidden' }" @click="pl.removeMilestone(idx)" title="Αφαίρεση">✕</button></td>
@@ -226,12 +230,24 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
       </div>
     </div>
 
-    <!-- ===== Admin / Editor: real actuals from Αστρολάβος (GL trial balance) ===== -->
-    <div class="section" v-if="pl.canEdit">
+    </template>
+
+    <!-- ===== Editor / Viewer: forecast blocks need admin (assumptions + milestones are admin-only).
+         KNOWN TEMPORARY GAP: no read-only hero/chart for non-admin roles yet. ===== -->
+    <div class="section" v-if="!pl.isAdmin">
+      <div class="sec-body locked-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <div>Απαιτεί δικαιώματα Polaris admin</div>
+        <div style="font-size:12.5px">EBITDA, break-even, παραδοχές και πρόβλεψη μελών είναι ορατά μόνο σε admin.</div>
+      </div>
+    </div>
+
+    <!-- ===== Admin / Editor (edit) · Viewer (read-only): real actuals from Αστρολάβος (GL trial balance) ===== -->
+    <div class="section">
       <div class="sec-head">
         <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Πραγματικά Στοιχεία (Αστρολάβος)</div>
         <div class="sec-note">admin/editor · ίδιες κατηγορίες με το trial balance του Αστρολάβος, για να επιβλέπεις από πού έρχονται τα έσοδα και πού πάνε τα έξοδα</div>
-        <div class="sec-actions"><button class="btn btn-add" disabled title="Ενεργό στην παραγωγή, όταν οριστικοποιηθεί η μορφή του CSV από το Αστρολάβος">⬆ Μεταφόρτωση CSV</button></div>
+        <div class="sec-actions" v-if="pl.canEdit"><button class="btn btn-add" disabled title="Ενεργό στην παραγωγή, όταν οριστικοποιηθεί η μορφή του CSV από το Αστρολάβος">⬆ Μεταφόρτωση CSV</button></div>
       </div>
       <div class="sec-body">
         <div class="field" style="max-width:320px"><label>Περίοδος</label><input type="text" :value="pl.actPeriod" class="cell-input" @change="pl.actPeriod = $event.target.value"></div>
@@ -259,5 +275,6 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
         </div>
       </div>
     </div>
+    </PolarisStatus>
   </div>
 </template>
