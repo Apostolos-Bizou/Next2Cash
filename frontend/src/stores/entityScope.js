@@ -14,12 +14,14 @@ const UUID_TO_KEY = {
   '58202b71-4ddb-45c9-8e3c-39e816bde972': 'next2me',
   'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
   '50317f44-9961-4fb4-add0-7a118e32dc14': 'next2megroup',
+  'baf68357-f959-43cf-9d8c-4170abe2ffc0': 'polaris',
 };
 
 const KEY_TO_LABEL = {
   next2me: 'Next2Me',
   house: 'House',
   next2megroup: 'Next2Me Group',
+  polaris: 'Polaris',
 };
 
 function readUser() {

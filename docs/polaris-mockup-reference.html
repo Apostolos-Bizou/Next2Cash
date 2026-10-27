@@ -1,0 +1,1326 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Polaris P&L</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* ============================================================
+   Design plan
+   Layout: Next2Cash's own shell, reproduced exactly — fixed dark
+   sidebar (#162B40) + topbar (#0d1e2e) + content (#0d1e2e), with
+   a 4th entity "Polaris" added to the real entity selector and a
+   new nav section for the P&L module. Single dark theme, because
+   Next2Cash itself ships dark-only (color-scheme:dark, no toggle)
+   and the team's own convention is "production-accurate dark
+   previews" for mockups.
+   Color: bg-primary #0b1120, bg-card #1E3650, border #2a4563,
+          accent #2E75B6 (Next2Cash blue), success #10b981,
+          danger #ef4444, warning #f59e0b, gold #f5b43e (Polaris accent)
+   Type: Montserrat (UI) · JetBrains Mono (numbers) — same as Next2Cash
+   ============================================================ */
+:root{
+  --bg-primary:#0b1120; --bg-secondary:#162B40; --bg-card:#1E3650; --bg-card-hover:#243d5a;
+  --bg-input:#122238; --border:#2a4563; --border-focus:#2E75B6;
+  --text-primary:#e8ecf4; --text-secondary:#aabed3; --text-muted:#8398b0;
+  --accent:#2E75B6; --accent-hover:#2563a0; --accent-glow:rgba(46,117,182,.15);
+  --success:#10b981; --success-bg:rgba(16,185,129,.12);
+  --danger:#ef4444; --danger-bg:rgba(239,68,68,.12);
+  --warning:#f59e0b; --warning-bg:rgba(245,158,11,.12);
+  --gold:#f5b43e; --gold-bg:rgba(245,180,62,.14);
+  --radius-sm:6px; --radius-md:10px; --radius-lg:16px;
+  --shadow:0 4px 24px rgba(0,0,0,.3); --shadow-lg:0 8px 40px rgba(0,0,0,.4);
+  --font:'Montserrat',-apple-system,sans-serif; --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --sidebar-w:240px; --sidebar-w-collapsed:64px; --topbar-h:56px;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font);background:var(--bg-primary);color:var(--text-primary);
+  font-size:15.5px;line-height:1.55;-webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+input,select{font-family:inherit}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.tnum{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ---------- layout shell (mirrors Next2Cash App.vue) ---------- */
+.layout{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh}
+.sidebar{background:var(--bg-secondary);display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.04);
+  height:100vh;position:sticky;top:0;overflow:hidden}
+.sidebar__brand{display:flex;align-items:center;gap:12px;padding:18px 18px 16px;border-bottom:1px solid rgba(255,255,255,.06)}
+.sidebar__logo{flex:0 0 36px;width:36px;height:36px;border-radius:8px;background:#162B40;display:flex;align-items:center;justify-content:center}
+.sidebar__brand-title{font-weight:700;font-size:15px;color:#fff}
+.sidebar__brand-sub{font-size:11px;color:#8899aa;margin-top:2px}
+.entity-selector{padding:10px 12px;position:relative}
+.entity-btn{background:#1e3448;border:1px solid #2a4a6a;border-radius:6px;padding:8px 12px;color:#e0e6ed;font-size:13px;
+  display:flex;justify-content:space-between;align-items:center;font-weight:600;width:100%}
+.entity-menu{position:absolute;top:100%;left:12px;right:12px;background:#1e3448;border:1px solid #2a4a6a;border-radius:6px;z-index:100;
+  box-shadow:var(--shadow-lg);overflow:hidden}
+.entity-option{padding:9px 12px;cursor:pointer;font-size:13px;color:#e0e6ed;display:flex;align-items:center;justify-content:space-between}
+.entity-option:hover{background:#2a4a6a}
+.entity-option.active{color:#4FC3A1;font-weight:600}
+.entity-option .chip{font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--gold-bg);color:var(--gold)}
+.nav-section-label{padding:14px 12px 4px;font-size:.68rem;color:#ffffff;letter-spacing:1.2px;font-weight:700}
+.sidebar__nav{display:flex;flex-direction:column;gap:1px;padding:4px 10px;flex:1;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;color:#8899aa;font-size:13.5px;
+  font-weight:500;transition:all .12s ease;white-space:nowrap;cursor:pointer}
+.nav-item:hover{background:rgba(255,255,255,.04);color:#e0e6ed}
+.nav-item.active{background:rgba(79,195,161,.12);color:#4FC3A1}
+.nav-item.gold.active{background:var(--gold-bg);color:var(--gold)}
+.nav-item__icon{width:19px;height:19px;flex-shrink:0}
+.nav-item__label{flex:1;overflow:hidden;text-overflow:ellipsis}
+.nav-badge{background:var(--gold);color:#241a04;font-size:.58rem;font-weight:700;padding:2px 5px;border-radius:4px}
+.sidebar__bottom{padding:10px 12px;border-top:1px solid rgba(255,255,255,.06);font-size:11.5px;color:#5f7d9a}
+.main{display:flex;flex-direction:column;min-width:0}
+.topbar{height:var(--topbar-h);display:flex;align-items:center;gap:16px;padding:0 24px;background:#0d1e2e;
+  border-bottom:1px solid #1e3448;position:sticky;top:0;z-index:5}
+.topbar__title{font-size:15.5px;font-weight:600;color:#e0e6ed}
+.role-switch{margin-left:auto;display:flex;align-items:center;gap:8px}
+.role-switch__label{font-size:11.5px;color:var(--text-muted);letter-spacing:.3px}
+.role-pills{display:flex;background:var(--bg-input);border:1px solid var(--border);border-radius:7px;padding:2px}
+.role-pill{padding:7px 13px;font-size:13px;font-weight:600;color:var(--text-secondary);border-radius:5px}
+.role-pill.active{background:var(--accent);color:#fff}
+.topbar__avatar{width:30px;height:30px;border-radius:50%;background:#1e3448;color:#e0e6ed;display:grid;place-items:center;
+  font-size:12px;font-weight:600}
+.content{flex:1;padding:22px 26px 60px;max-width:1400px;width:100%;margin:0 auto}
+
+/* ---------- concept banner ---------- */
+.concept-banner{display:flex;gap:12px;align-items:flex-start;background:var(--gold-bg);border:1px solid rgba(245,180,62,.35);
+  border-radius:var(--radius-md);padding:14px 18px;margin-bottom:22px;font-size:13.5px;color:var(--text-secondary)}
+.concept-banner b{color:var(--gold)}
+.concept-banner .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);flex:0 0 7px;margin-top:5px}
+
+/* ---------- page header ---------- */
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.page-head h1{font-size:25px;font-weight:700}
+.page-head .sub{font-size:13.5px;color:var(--text-muted);margin-top:4px}
+.horizon-switch{display:flex;background:var(--bg-card);border:1px solid var(--border);border-radius:9px;padding:3px}
+.horizon-btn{padding:9px 18px;font-size:14px;font-weight:600;color:var(--text-secondary);border-radius:7px}
+.horizon-btn.active{background:var(--accent);color:#fff}
+.mode-pills{display:flex;background:var(--bg-input);border:1px solid var(--border);border-radius:7px;padding:2px}
+.mode-pill{padding:7px 13px;font-size:13px;font-weight:600;color:var(--text-secondary);border-radius:5px}
+.mode-pill.active{background:var(--accent);color:#fff}
+.dim{opacity:.4;pointer-events:none}
+.fx-sub{font-size:11.5px;color:var(--text-muted);margin-top:3px}
+.agg-row{display:flex;gap:32px;flex-wrap:wrap}
+.agg-row .l{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);font-weight:600}
+.agg-row .v{font-size:19px;font-weight:700;font-family:var(--font-mono);color:var(--text-primary);margin-top:5px}
+.agg-row .v.danger{color:var(--danger)}
+.agg-row .v.ok{color:var(--success)}
+.actuals-group{margin-bottom:22px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 18px}
+.actuals-group-title{font-size:13.5px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.actuals-group-title .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--text-muted);font-size:12px}
+.actuals-row{display:grid;grid-template-columns:1.3fr 140px 140px 140px;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--border)}
+.actuals-row label{font-size:14px;color:var(--text-secondary);font-weight:500}
+.actuals-row input{width:100%;text-align:right}
+.actuals-row--head{border-bottom:none;padding-bottom:4px}
+.actuals-row--head span{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);text-align:right;font-weight:700}
+.actuals-row--head span:first-child{text-align:left}
+.actuals-end{text-align:right;font-size:15px;color:var(--text-primary);font-weight:700}
+.actuals-subtotal{display:grid;grid-template-columns:1.3fr 140px 140px 140px;padding:10px 0 0;font-size:15px;font-weight:700;color:var(--text-primary)}
+.actuals-subtotal span:not(:first-child){text-align:right}
+
+/* ---------- Dashboard KPI page ---------- */
+.dash-headline{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:30px}
+@media(max-width:860px){.dash-headline{grid-template-columns:1fr}}
+.dash-headline-card{background:#eef2f7;border:1px solid rgba(11,17,32,.06);border-radius:18px;padding:24px 22px 22px;
+  position:relative;box-shadow:0 14px 34px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.6)}
+.dash-headline-card::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;border-radius:18px 18px 0 0;background:var(--accent)}
+.dash-headline-card.expenses::before{background:var(--danger)}
+.dash-headline-card.net::before{background:var(--gold)}
+.dash-headline-card .l{font-size:13.5px;letter-spacing:.5px;text-transform:uppercase;color:#4a5876;font-weight:800;margin-bottom:16px}
+.dash-headline-vals{display:flex;justify-content:space-between;gap:8px}
+.dash-headline-vals > div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.dash-headline-vals .t{font-size:10.5px;color:#6b7690;text-transform:uppercase;letter-spacing:.3px;font-weight:700;white-space:nowrap}
+.dash-headline-vals .v{font-size:17px;font-weight:800;font-family:var(--font-mono);color:#0b1120;white-space:nowrap}
+.dash-headline-vals .v.danger{color:#c81e3a}
+.dash-headline-vals .v.ok{color:#0a8f5b}
+@media(max-width:1300px){.dash-headline-vals .v{font-size:15px}}
+.dash-kpi-grid{column-count:2;column-gap:18px}
+@media(max-width:1100px){.dash-kpi-grid{column-count:1}}
+.dash-kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 22px;
+  break-inside:avoid;-webkit-column-break-inside:avoid;margin-bottom:18px;display:inline-block;width:100%;vertical-align:top}
+.dash-kpi-head{margin-bottom:14px}
+.dash-kpi-title{font-weight:700;font-size:16.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dash-kpi-title .hint{font-size:12px;font-weight:400;color:var(--text-muted)}
+.dash-kpi-totals{display:flex;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:12px}
+.dash-kpi-totals > div{display:flex;flex-direction:column;gap:5px}
+.dash-kpi-totals .l{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.dash-kpi-totals .v{font-size:17px;font-weight:700;font-family:var(--font-mono);color:var(--text-primary)}
+.dash-kpi-totals .v.danger{color:var(--danger)}
+.dash-kpi-totals .v.ok{color:var(--success)}
+.dash-kpi-rows{display:flex;flex-direction:column;gap:6px}
+.dash-kpi-row{display:grid;grid-template-columns:1fr 100px 100px 100px;gap:10px;font-size:13.5px;color:var(--text-primary);padding:8px 8px;border-radius:7px;cursor:pointer;transition:background .12s}
+.dash-kpi-row:hover{background:var(--bg-card-hover)}
+.dash-kpi-row span:not(:first-child){text-align:right;font-family:var(--font-mono);color:var(--text-primary);font-weight:700;font-size:14px}
+.dash-headline-card{cursor:pointer;transition:transform .15s,box-shadow .15s}
+.dash-headline-card:hover{transform:translateY(-3px);box-shadow:0 20px 44px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.6)}
+.period-date{display:block;font-size:10.5px;color:var(--text-muted);font-weight:500;text-transform:none;letter-spacing:0;margin-top:2px;white-space:nowrap}
+
+/* ---------- row-detail modal ---------- */
+.rd-overlay{position:fixed;inset:0;background:rgba(5,10,20,.65);backdrop-filter:blur(2px);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:20px}
+.rd-modal{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);width:100%;max-width:560px;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:88vh;overflow:auto}
+.rd-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px;border-bottom:1px solid var(--border)}
+.rd-title{font-weight:700;font-size:18px;color:var(--text-primary)}
+.rd-sub{font-size:13px;color:var(--text-muted);margin-top:5px}
+.rd-close{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);
+  background:var(--bg-input);border:1px solid var(--border);flex:0 0 auto}
+.rd-close svg{width:16px;height:16px}
+.rd-close:hover{color:var(--text-primary);border-color:var(--border-focus)}
+.rd-body{padding:20px}
+.rd-chart-wrap{position:relative;height:220px}
+
+/* ---------- KPI hero (two big cards) ---------- */
+.kpi-hero{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:860px){.kpi-hero{grid-template-columns:1fr}}
+.kpi-hero-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px 26px;
+  position:relative;overflow:hidden}
+.kpi-hero-card.ebitda{border-left:4px solid var(--accent)}
+.kpi-hero-card.breakeven{border-left:4px solid var(--gold)}
+.kpi-hero-lbl{font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:var(--text-secondary);font-weight:700;margin-bottom:10px}
+.kpi-hero-val{font-size:2.7rem;font-weight:700;font-family:var(--font-mono)}
+.kpi-hero-val.danger{color:var(--danger)}
+.kpi-hero-val.warn{color:var(--warning)}
+.kpi-hero-val.ok{color:var(--success)}
+.kpi-hero-sub{font-size:13.5px;color:var(--text-secondary);margin-top:10px}
+.kpi-hero-sub b{color:var(--text-primary)}
+.margin-bar{height:8px;border-radius:4px;background:var(--bg-input);margin-top:16px;overflow:hidden;position:relative}
+.margin-bar__fill{height:100%;border-radius:4px;transition:width .25s ease}
+
+/* ---------- KPI grid ---------- */
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:26px}
+@media(max-width:1200px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 18px;
+  transition:transform .15s,box-shadow .15s}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.kpi-lbl{font-size:.85rem;color:var(--text-secondary);margin-bottom:8px;font-weight:600}
+.kpi-val{font-size:1.55rem;font-weight:700;font-family:var(--font-mono)}
+.kpi-sub{font-size:.8rem;color:var(--text-muted);margin-top:6px}
+
+/* ---------- section card ---------- */
+.section{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:18px;overflow:hidden}
+.sec-head{display:flex;align-items:center;gap:11px;padding:17px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.sec-title{font-weight:700;font-size:17px;display:flex;align-items:center;gap:9px}
+.sec-title .ico{width:19px;height:19px;color:var(--accent)}
+.sec-note{font-size:12.5px;color:var(--text-muted)}
+.sec-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.sec-body{padding:22px}
+
+/* ---------- chart ---------- */
+.chart-wrap{position:relative;height:280px}
+
+/* ---------- assumptions grid ---------- */
+.assume-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:900px){.assume-grid{grid-template-columns:repeat(2,1fr)}}
+.field{display:flex;flex-direction:column;gap:7px}
+.field label{font-size:12px;letter-spacing:.4px;color:var(--text-secondary);font-weight:700}
+.field .hint{font-size:11.5px;color:var(--text-muted);font-weight:400}
+.field input,.field select{background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);
+  padding:11px 13px;border-radius:8px;font-size:15px;font-weight:600;width:100%}
+.field input:focus,.field select:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-glow)}
+.field input:disabled{opacity:.5;cursor:not-allowed}
+
+/* ---------- payroll table ---------- */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:760px}
+thead th{text-align:left;font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--text-muted);
+  font-weight:700;padding:11px 14px;border-bottom:1px solid var(--border)}
+tbody td{padding:13px 14px;border-bottom:1px solid rgba(255,255,255,.04);font-size:14.5px;vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:rgba(255,255,255,.02)}
+.office-tag{font-size:11px;font-weight:700;padding:4px 9px;border-radius:5px;letter-spacing:.3px}
+.office-tag.athens{background:var(--accent-glow);color:#7fb4e8}
+.office-tag.manila{background:var(--gold-bg);color:var(--gold)}
+.cell-input{background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:9px 10px;
+  border-radius:7px;font-size:14.5px;font-weight:600;width:100%;min-width:80px}
+.cell-input:focus{outline:none;border-color:var(--border-focus)}
+.row-del{width:30px;height:30px;border-radius:6px;background:transparent;border:1px solid transparent;color:var(--text-muted);
+  font-size:16px;display:flex;align-items:center;justify-content:center}
+.row-del:hover{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
+.btn{padding:10px 17px;border-radius:7px;font-weight:600;font-size:14px;background:transparent;border:1px solid var(--border);
+  color:var(--text-primary)}
+.btn:hover{background:var(--bg-card-hover)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-add{border-color:rgba(16,185,129,.4);color:var(--success)}
+.btn-add:hover{background:var(--success-bg)}
+.payroll-total-row td{font-weight:700;border-top:2px solid var(--border);padding-top:12px}
+
+/* ---------- viewer-locked card ---------- */
+.locked-card{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  padding:40px 24px;color:var(--text-muted);gap:10px}
+.locked-card svg{width:30px;height:30px;color:var(--text-muted)}
+.locked-card .big{font-size:1.9rem;font-weight:700;font-family:var(--font-mono);color:var(--text-primary)}
+.locked-card .agg-row{display:flex;gap:32px;margin-top:8px;flex-wrap:wrap;justify-content:center}
+.locked-card .agg-row div{text-align:center}
+.locked-card .agg-row .l{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);font-weight:600}
+.locked-card .agg-row .v{font-size:18px;font-weight:700;font-family:var(--font-mono);color:var(--text-primary);margin-top:5px}
+
+[hidden]{display:none!important}
+@media(max-width:768px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .content{padding:16px}
+}
+</style>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar__brand">
+      <div class="sidebar__logo">
+        <svg width="20" height="20" viewBox="0 0 100 100"><ellipse cx="50" cy="42" rx="38" ry="14" fill="none" stroke="#fff" stroke-width="3" opacity=".9" transform="rotate(-25 50 42)"/><path d="M32 72 L45 22 Q50 8 55 22 L68 72 L60 72 L55 52 Q50 30 45 52 L40 72 Z" fill="#fff"/></svg>
+      </div>
+      <div class="sidebar__brand-text">
+        <div class="sidebar__brand-title">Next2Cash</div>
+        <div class="sidebar__brand-sub" id="entitySub">Polaris</div>
+      </div>
+    </div>
+
+    <div class="entity-selector">
+      <button class="entity-btn" id="entityBtn" onclick="toggleEntityMenu()">
+        <span id="entityLabel">Polaris</span><span>▾</span>
+      </button>
+      <div class="entity-menu" id="entityMenu" hidden>
+        <div class="entity-option" data-e="Next2Me" onclick="pickEntity('Next2Me')">Next2Me</div>
+        <div class="entity-option" data-e="House" onclick="pickEntity('House')">House</div>
+        <div class="entity-option" data-e="Next2Me Group" onclick="pickEntity('Next2Me Group')">Next2Me Group</div>
+        <div class="entity-option active" data-e="Polaris" onclick="pickEntity('Polaris')">Polaris <span class="chip">NEW</span></div>
+      </div>
+    </div>
+
+    <nav class="sidebar__nav">
+      <div class="nav-section-label">ΚΥΡΙΑ</div>
+      <a class="nav-item"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z"/></svg><span class="nav-item__label">Πίνακας Ελέγχου</span></a>
+      <a class="nav-item"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10M7 12h10M7 17h6M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="nav-item__label">Κινήσεις</span></a>
+      <a class="nav-item"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg><span class="nav-item__label">Επαναλαμβανόμενες</span></a>
+
+      <div class="nav-section-label">POLARIS P&amp;L</div>
+      <a class="nav-item gold active" onclick="navTo('dashboard', this)"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 14l3-3 3 3 5-5"/></svg><span class="nav-item__label">P&amp;L Dashboard</span><span class="nav-badge">NEW</span></a>
+      <a class="nav-item gold" onclick="navTo('payroll', this)"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-item__label">Μισθοδοσία &amp; Προσωπικό</span><span class="nav-badge">NEW</span></a>
+      <a class="nav-item gold" onclick="navTo('forecast', this)"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><span class="nav-item__label">Προβλέψεις</span><span class="nav-badge">NEW</span></a>
+
+      <div class="nav-section-label">ΑΝΑΦΟΡΕΣ</div>
+      <a class="nav-item"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 14l3-3 3 3 5-5"/></svg><span class="nav-item__label">Σενάρια</span></a>
+      <a class="nav-item"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 16l3-6 4 3 4-8"/></svg><span class="nav-item__label">Προϋπολογισμός</span></a>
+
+      <div class="nav-section-label">ΔΙΑΧΕΙΡΙΣΗ</div>
+      <a class="nav-item"><svg class="nav-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0"/></svg><span class="nav-item__label">Admin Panel</span></a>
+    </nav>
+
+    <div class="sidebar__bottom">entity: <b style="color:#8da2b8">polaris</b> · concept mockup</div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <h1 class="topbar__title" id="topbarTitle">P&amp;L Dashboard</h1>
+      <div class="role-switch">
+        <span class="role-switch__label">ΠΡΟΒΟΛΗ ΩΣ</span>
+        <div class="role-pills">
+          <button class="role-pill active" data-role="admin" onclick="setRole('admin')">Admin</button>
+          <button class="role-pill" data-role="editor" onclick="setRole('editor')">Editor</button>
+          <button class="role-pill" data-role="viewer" onclick="setRole('viewer')">Viewer</button>
+        </div>
+      </div>
+      <div class="topbar__avatar">ΑΒ</div>
+    </header>
+
+    <main class="content">
+
+      <div class="concept-banner">
+        <div class="dot"></div>
+        <div><b>Concept mockup</b> — νέα entity "Polaris" μέσα στο Next2Cash. Sidebar, entity selector και ρόλοι (admin/user/viewer) είναι τα πραγματικά του Next2Cash· η μισθοδοσία εδώ θα γίνει recurring εγγραφές (<code>recurrence_patterns</code>) πάνω σε αυτή την entity, και το P&amp;L layer από πάνω διαβάζει το σύνολό τους ζωντανά. Καμία αλλαγή εδώ δεν πειράζει το production.</div>
+      </div>
+
+      <!-- ========================= PAGE: P&L Dashboard (pure KPIs, from the real actuals) ========================= -->
+      <div id="pageDashboard">
+
+      <div class="page-head">
+        <div>
+          <h1>P&amp;L Dashboard</h1>
+          <div class="sub" id="dashPeriodSub">Περίοδος 01/01/2026 – 27/10/2026 · ίδιες κατηγορίες με το Αστρολάβος</div>
+        </div>
+      </div>
+
+      <div id="dashboardKpis"></div>
+
+      </div>
+      <!-- ========================= /PAGE: P&L Dashboard ========================= -->
+
+      <!-- ========================= PAGE: Προβλέψεις ========================= -->
+      <div id="pageForecast" hidden>
+
+      <div class="page-head">
+        <div>
+          <h1>Προβλέψεις Κερδοφορίας</h1>
+          <div class="sub">16.800 μέλη · βάση Δεκ 2026 · network/monthly/audit/dental fees</div>
+        </div>
+        <div class="horizon-switch" id="horizonSwitch">
+          <button class="horizon-btn active" data-y="1" onclick="setHorizon(1)">1 έτος</button>
+          <button class="horizon-btn" data-y="3" onclick="setHorizon(3)">3 έτη</button>
+          <button class="horizon-btn" data-y="5" onclick="setHorizon(5)">5 έτη</button>
+        </div>
+      </div>
+
+      <div class="kpi-hero">
+        <div class="kpi-hero-card ebitda">
+          <div class="kpi-hero-lbl">EBITDA <span id="horizonLbl1">(έτος 1)</span></div>
+          <div class="kpi-hero-val tnum" id="kpiEbitda">$0</div>
+          <div class="kpi-hero-sub">Περιθώριο EBITDA: <b id="kpiEbitdaMargin" class="tnum">0%</b> · ανά μέλος <b id="kpiEbitdaPerMember" class="tnum">$0</b></div>
+          <div class="margin-bar"><div class="margin-bar__fill" id="ebitdaBar" style="background:var(--accent);width:0%"></div></div>
+        </div>
+        <div class="kpi-hero-card breakeven">
+          <div class="kpi-hero-lbl">Απόσταση από Break-even</div>
+          <div class="kpi-hero-val tnum" id="kpiBreakeven">0 μέλη</div>
+          <div class="kpi-hero-sub">Break-even στα <b id="kpiBeMembers" class="tnum">0</b> μέλη · τρέχοντα <b id="kpiCurMembers" class="tnum">16.800</b></div>
+          <div class="margin-bar"><div class="margin-bar__fill" id="beBar" style="background:var(--gold);width:0%"></div></div>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-lbl">Μέλη</div><div class="kpi-val tnum" id="kMembers">16.800</div><div class="kpi-sub">στο τέλος ορίζοντα</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Έσοδα / μέλος</div><div class="kpi-val tnum" id="kRevPerMember">$0</div><div class="kpi-sub">ετησίως</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Contribution margin</div><div class="kpi-val tnum" id="kContribMargin">0%</div><div class="kpi-sub">μετά 3rd-party κόστη</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Μισθοδοσία / Έσοδα</div><div class="kpi-val tnum" id="kPayrollPct">0%</div><div class="kpi-sub">Αθήνα + Μανίλα</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Κόστος 3rd-party / μέλος</div><div class="kpi-val tnum" id="kTpPerMember">$0</div><div class="kpi-sub">network+audit+dental payable</div></div>
+      </div>
+
+      <div class="section">
+        <div class="sec-head">
+          <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18M7 14l3-3 3 3 5-5"/></svg>Πρόβλεψη EBITDA &amp; Μελών</div>
+          <div class="sec-note" id="chartGranNote">ανά έτος, μέχρι τον επιλεγμένο ορίζοντα</div>
+          <div class="sec-actions">
+            <div class="mode-pills">
+              <button class="mode-pill active" id="granPillYear" onclick="setGranularity('year')">Ανά έτος</button>
+              <button class="mode-pill" id="granPillQuarter" onclick="setGranularity('quarter')">Ανά τρίμηνο</button>
+            </div>
+          </div>
+        </div>
+        <div class="sec-body">
+          <div class="chart-wrap"><canvas id="forecastChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section" id="assumeSection">
+        <div class="sec-head">
+          <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>Παραδοχές</div>
+          <div class="sec-note">μόνο admin — επηρεάζουν όλους τους υπολογισμούς παραπάνω</div>
+        </div>
+        <div class="sec-body">
+          <div class="assume-grid">
+            <div class="field"><label>Μέλη (σήμερα)</label><input type="number" id="inMembers" value="16800" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>Ετήσια μεταβολή μελών<span class="hint"> — ενεργό μόνο σε λειτουργία "Ποσοστό %"</span></label><input type="number" id="inMemberGrowth" value="0" step="0.5" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>Network access fee <span class="hint">$/μέλος/έτος</span></label><input type="number" id="inNetFee" value="24.5" step="0.1" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>Μηνιαίο fee <span class="hint">$/μέλος/μήνα</span></label><input type="number" id="inMonthlyFee" value="0.625" step="0.005" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>Audit fee rate <span class="hint">% επί $35 claims</span></label><input type="number" id="inAuditRate" value="0.15" step="0.01" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>Dental fee <span class="hint">$/μέλος/έτος</span></label><input type="number" id="inDentalFee" value="9.75" step="0.05" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>Network payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" id="inNetPay" value="12" step="0.5" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>Audit payable rate <span class="hint">% επί $35 + 12% ΦΠΑ</span></label><input type="number" id="inAuditPay" value="0.09" step="0.01" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>Dental payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" id="inDentalPay" value="5" step="0.5" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>PHP ανά USD<span class="hint"> — ισοτιμία γραφείου Μανίλα</span></label><input type="number" id="inPhpPerUsd" value="56.5" step="0.1" class="tnum" oninput="recalc()"></div>
+            <div class="field"><label>USD ανά EUR<span class="hint"> — για μετατροπή της μισθοδοσίας Αθήνας (EUR) σε $</span></label><input type="number" id="inUsdPerEur" value="1.08" step="0.01" class="tnum" oninput="recalc()"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Admin-only: member forecast — flat % growth OR manual milestones ===== -->
+      <div class="section" id="milestonesSection">
+        <div class="sec-head">
+          <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="4"/></svg>Πρόβλεψη Μελών</div>
+          <div class="sec-note">μόνο admin — επιλέγεις πώς υπολογίζονται τα μελλοντικά μέλη</div>
+          <div class="sec-actions">
+            <div class="mode-pills">
+              <button class="mode-pill" id="modePillGrowth" onclick="setMemberForecastMode('growth')">Ποσοστό %</button>
+              <button class="mode-pill" id="modePillMilestones" onclick="setMemberForecastMode('milestones')">Χειροκίνητοι στόχοι</button>
+            </div>
+          </div>
+        </div>
+        <div class="sec-body">
+          <div class="sec-note" id="modeGrowthNote">Ενεργό: το πεδίο "Ετήσια μεταβολή μελών" στις Παραδοχές — εφαρμόζεται σύνθετα ανά έτος.</div>
+          <div id="milestonesBox" style="margin-top:10px">
+            <div class="sec-note" style="display:flex;align-items:center;justify-content:space-between">
+              <span id="modeMilestonesNote">Χειροκίνητη πρόβλεψη: ορίζεις στόχο μελών για συγκεκριμένο μήνα/έτος.</span>
+              <button class="btn btn-add" id="addMilestoneBtn" onclick="addMilestone()">+ Προσθήκη στόχου</button>
+            </div>
+            <div class="table-wrap" style="margin-top:8px">
+              <table>
+                <thead><tr><th>Μέχρι (μήνας/έτος)</th><th>Στόχος μελών</th><th></th></tr></thead>
+                <tbody id="milestonesBody"></tbody>
+              </table>
+            </div>
+            <div class="sec-note" style="margin-top:8px">
+              Η καμπύλη μελών παρεμβάλλεται γραμμικά ανάμεσα στο σήμερα (<span id="milestoneBaseLabel">16.800 μέλη</span>) και τους στόχους που ορίζεις· μετά τον τελευταίο στόχο τα μέλη παραμένουν σταθερά στην τιμή του.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Admin / Editor: real actuals from Αστρολάβος (GL trial balance) ===== -->
+      <div class="section" id="actualsSection">
+        <div class="sec-head">
+          <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Πραγματικά Στοιχεία (Αστρολάβος)</div>
+          <div class="sec-note">admin/editor · ίδιες κατηγορίες με το trial balance του Αστρολάβος, για να επιβλέπεις από πού έρχονται τα έσοδα και πού πάνε τα έξοδα</div>
+          <div class="sec-actions"><button class="btn btn-add" id="uploadCsvBtn" disabled title="Ενεργό στην παραγωγή, όταν οριστικοποιηθεί η μορφή του CSV από το Αστρολάβος">⬆ Μεταφόρτωση CSV</button></div>
+        </div>
+        <div class="sec-body">
+          <div class="field" style="max-width:320px"><label>Περίοδος</label><input type="text" id="actPeriod" value="01/01/2026 – 27/10/2026" class="cell-input" onchange="recalc()"></div>
+          <div id="actualsGroups" style="margin-top:12px"></div>
+          <div class="agg-row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+            <div><div class="l">Σύνολο εσόδων</div><div class="v tnum" id="actRevenueTotal">$0</div></div>
+            <div><div class="l">Σύνολο εξόδων</div><div class="v tnum" id="actExpensesTotal">$0</div></div>
+            <div><div class="l">Καθαρό αποτέλεσμα (πραγματικό)</div><div class="v tnum" id="actNet">$0</div></div>
+            <div><div class="l">EBITDA forecast ίδιας περιόδου<span class="hint" style="display:block;font-size:10px"> — pro-rated από το μοντέλο</span></div><div class="v tnum" id="actForecast">$0</div></div>
+          </div>
+          <div class="sec-note" style="margin-top:10px">
+            ⚠️ Δεν είναι ακόμη 1:1 συγκρίσιμο με το forecast: το trial balance αναγνωρίζει έσοδα σε 3 επικαλυπτόμενα policy-years (24-25/25-26/26-27), ενώ το forecast είναι ανά ημερολογιακό έτος. Οι κατηγορίες παραπάνω όμως είναι ήδη οι ίδιες με του Αστρολάβος — μόλις ενεργοποιηθεί το CSV, θα γεμίζουν αυτόματα από τον αντίστοιχο κωδικό λογαριασμού.
+          </div>
+        </div>
+      </div>
+
+      </div>
+      <!-- ========================= /PAGE: Προβλέψεις ========================= -->
+
+      <!-- ========================= PAGE: Μισθοδοσία & Προσωπικό ========================= -->
+      <div id="pagePayroll" hidden>
+
+      <div class="page-head">
+        <div>
+          <h1>Μισθοδοσία &amp; Προσωπικό</h1>
+          <div class="sub">Αθήνα + Μανίλα · ξεχωριστή αύξηση ανά άτομο</div>
+        </div>
+      </div>
+
+      <!-- ===== Admin / Editor: full payroll table ===== -->
+      <div class="section" id="payrollFull">
+        <div class="sec-head">
+          <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Μισθοδοσία &amp; Προσωπικό</div>
+          <div class="sec-note" id="payrollEditNote">Αθήνα + Μανίλα · κάθε άτομο με δική του αύξηση · Αθήνα πληρώνεται σε EUR, Μανίλα σε PHP — όλα μετατρέπονται αυτόματα σε $ για το ενοποιημένο P&amp;L</div>
+          <div class="sec-actions"><button class="btn btn-add" id="addPersonBtn" onclick="addPerson()">+ Προσθήκη ατόμου</button></div>
+        </div>
+        <div class="sec-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Γραφείο</th><th>Όνομα / Θέση</th><th>Μισθός (έτος 1)</th><th>Αύξηση/έτος</th><th>Ισχύς από</th><th>Προβ. μισθός (ορίζοντας)</th><th></th>
+              </tr></thead>
+              <tbody id="payrollBody"></tbody>
+              <tfoot>
+                <tr class="payroll-total-row">
+                  <td colspan="5">Σύνολο μισθοδοσίας (ορίζοντας)</td>
+                  <td class="tnum" id="payrollTotalCell">$0</td><td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Viewer: aggregated-only card ===== -->
+      <div class="section" id="payrollLocked" hidden>
+        <div class="sec-head">
+          <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>Μισθοδοσία &amp; Προσωπικό</div>
+          <div class="sec-note">συγκεντρωτικά — χωρίς ονόματα/μισθούς</div>
+        </div>
+        <div class="sec-body locked-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <div>Το αναλυτικό προσωπικό είναι ορατό μόνο σε admin / editor.</div>
+          <div class="big tnum" id="lockedTotal">$0</div>
+          <div class="agg-row">
+            <div><div class="l">Αθήνα</div><div class="v tnum" id="lockedAthens">$0</div></div>
+            <div><div class="l">Μανίλα</div><div class="v tnum" id="lockedManila">$0</div></div>
+            <div><div class="l">Άτομα</div><div class="v tnum" id="lockedCount">0</div></div>
+          </div>
+        </div>
+      </div>
+
+      </div>
+      <!-- ========================= /PAGE: Μισθοδοσία & Προσωπικό ========================= -->
+
+    </main>
+  </div>
+</div>
+
+<!-- ========================= Row-detail modal ========================= -->
+<div class="rd-overlay" id="rdOverlay" hidden onclick="if(event.target===this) closeRowDetail()">
+  <div class="rd-modal">
+    <div class="rd-head">
+      <div>
+        <div class="rd-title" id="rdTitle">—</div>
+        <div class="rd-sub" id="rdSub">—</div>
+      </div>
+      <button class="rd-close" onclick="closeRowDetail()" aria-label="Κλείσιμο">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="rd-body">
+      <div class="dash-kpi-totals" id="rdTotals" style="margin-bottom:16px"></div>
+      <div class="rd-chart-wrap"><canvas id="rdChart"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+// ---------------- state ----------------
+let role = 'admin';
+let horizon = 1;
+let memberForecastMode = 'growth'; // 'growth' (flat %/year) or 'milestones' (manual targets)
+let granularity = 'year'; // 'year' or 'quarter' — chart/forecast step size
+let lastYear1Ebitda = 0; // set by recalc(), read by recalcActuals()
+let people = [
+  // Athens — fixed office roles, 0% raise (annual fees), not individually editable deletion target but still a row
+  {office:'Αθήνα', name:'Γραφείο Αθηνών', role:'Ενοίκιο & λειτουργικά', salary:10000, raise:0, effFrom:2027, rent:true},
+  {office:'Αθήνα', name:'General Manager',          role:'Διοίκηση', salary:62400, raise:0, effFrom:2027},
+  {office:'Αθήνα', name:'Business Director',        role:'Διοίκηση', salary:62400, raise:0, effFrom:2027},
+  {office:'Αθήνα', name:'Accounting Manager',       role:'Λογιστήριο', salary:46800, raise:0, effFrom:2027},
+  {office:'Αθήνα', name:'Marketing Manager',        role:'Marketing', salary:23400, raise:0, effFrom:2027},
+  {office:'Αθήνα', name:'IT & Developer',           role:'IT', salary:46800, raise:0, effFrom:2027},
+  {office:'Αθήνα', name:'Legal & Compliance Mgr',   role:'Νομικό', salary:20000, raise:0, effFrom:2027},
+  // Μανίλα: μισθός εισάγεται σε PHP (πέσος) — αυτόματη μετατροπή σε $ για το ενοποιημένο P&L
+  {office:'Μανίλα', name:'Γραφείο Μανίλα', role:'Ενοίκιο & λειτουργικά', salary:1130000, raise:0, effFrom:2027, rent:true},
+  {office:'Μανίλα', name:'Pia Guirao',      role:'COO', salary:1130000, raise:5, effFrom:2027},
+  {office:'Μανίλα', name:'Carmen Soriano',  role:'Network Co-ordinator', salary:2034000, raise:0, effFrom:2027},
+  {office:'Μανίλα', name:'Margilyn Nalupano', role:'Clerk 1', salary:678000, raise:41.7, effFrom:2027},
+  {office:'Μανίλα', name:'Victoria Lawless',  role:'Clerk 2', salary:678000, raise:41.7, effFrom:2027},
+  {office:'Μανίλα', name:'Stella Ducay',      role:'Clerk 3', salary:678000, raise:0, effFrom:2027},
+  {office:'Μανίλα', name:'Jinky',             role:'Clerk 3', salary:678000, raise:0, effFrom:2027},
+];
+
+// manual member-count forecast milestones: {month:'YYYY-MM', members:N}
+// seeded as editable examples — replace with the admin's own targets
+let milestones = [
+  {month:'2027-06', members:20000},
+  {month:'2028-03', members:30000},
+];
+
+function fmtUSD(n){
+  const s = Math.round(n).toLocaleString('el-GR');
+  return (n<0?'-$':'$') + s.replace('-','');
+}
+function fmtUSD2(n){
+  const s = n.toLocaleString('el-GR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  return (n<0?'-$':'$') + s.replace('-','');
+}
+function fmtPct(n){ return n.toFixed(1).replace('.', ',') + '%'; }
+function fmtInt(n){ return Math.round(n).toLocaleString('el-GR'); }
+
+// ---------------- FX: κάθε γραφείο πληρώνει στο δικό του νόμισμα, αλλά το
+// P&L ενοποιείται ΠΑΝΤΟΥ σε δολάρια (όπως το Αστρολάβος + το αρχικό Excel) ----
+function phpToUsd(php){
+  const el = document.getElementById('inPhpPerUsd');
+  const rate = el ? (parseFloat(el.value) || 56.5) : 56.5;
+  return php / rate;
+}
+function eurToUsd(eur){
+  const el = document.getElementById('inUsdPerEur');
+  const rate = el ? (parseFloat(el.value) || 1.08) : 1.08;
+  return eur * rate;
+}
+function isManila(p){ return p.office === 'Μανίλα'; }
+// $-equivalent of a person's salary at a given horizon — Αθήνα πληρώνεται σε EUR,
+// Μανίλα σε PHP, αλλά και τα δύο μετατρέπονται σε $ για το ενοποιημένο P&L
+function salaryUSD(p, years){
+  const native = projectedSalary(p, years);
+  return isManila(p) ? phpToUsd(native) : eurToUsd(native);
+}
+
+// ---------------- entity / role / horizon UI ----------------
+function toggleEntityMenu(){ document.getElementById('entityMenu').hidden = !document.getElementById('entityMenu').hidden; }
+function pickEntity(name){
+  document.getElementById('entityLabel').textContent = name;
+  document.getElementById('entitySub').textContent = name;
+  document.querySelectorAll('.entity-option').forEach(o=>o.classList.toggle('active', o.dataset.e===name));
+  document.getElementById('entityMenu').hidden = true;
+}
+const PAGE_TITLES = { dashboard: 'P&L Dashboard', payroll: 'Μισθοδοσία & Προσωπικό', forecast: 'Προβλέψεις' };
+function navTo(page, el){
+  document.querySelectorAll('.nav-item.gold').forEach(a => a.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('pageDashboard').hidden = (page !== 'dashboard');
+  document.getElementById('pagePayroll').hidden = (page !== 'payroll');
+  document.getElementById('pageForecast').hidden = (page !== 'forecast');
+  document.getElementById('topbarTitle').textContent = PAGE_TITLES[page] || 'P&L Dashboard';
+  document.querySelector('main.content').scrollTo({ top: 0, behavior: 'smooth' });
+}
+function setRole(r){
+  role = r;
+  document.querySelectorAll('.role-pill').forEach(p=>p.classList.toggle('active', p.dataset.role===r));
+  const canEdit = (r==='admin' || r==='editor');
+  const isAdmin = (r==='admin');
+  document.getElementById('payrollFull').hidden = !canEdit;
+  document.getElementById('payrollLocked').hidden = canEdit;
+  document.getElementById('assumeSection').hidden = !isAdmin;
+  document.getElementById('milestonesSection').hidden = !isAdmin;
+  document.getElementById('actualsSection').hidden = !canEdit;
+  document.getElementById('addPersonBtn').style.display = isAdmin ? '' : 'none';
+  document.getElementById('addMilestoneBtn').style.display = isAdmin ? '' : 'none';
+  document.querySelectorAll('.cell-input').forEach(i => i.disabled = !isAdmin);
+  document.querySelectorAll('.row-del').forEach(b => b.style.visibility = isAdmin ? 'visible' : 'hidden');
+  // editor can still key in actuals (it's data entry, not structure/formulas)
+  // the actuals group rows disable/enable themselves on each renderActualsGroups() call
+  if (canEdit){
+    ['actPeriod'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = false;
+    });
+  }
+  document.getElementById('payrollEditNote').textContent = isAdmin
+    ? 'Αθήνα + Μανίλα · κάθε άτομο με δική του αύξηση'
+    : 'Αθήνα + Μανίλα · μόνο προβολή (ο editor δεν αλλάζει δομή/τύπους)';
+  try{ localStorage.setItem('pl_role', r); }catch(e){}
+  recalc();
+}
+function setHorizon(y){
+  horizon = y;
+  document.querySelectorAll('.horizon-btn').forEach(b=>b.classList.toggle('active', Number(b.dataset.y)===y));
+  document.getElementById('horizonLbl1').textContent = y===1 ? '(έτος 1)' : `(έτος ${y})`;
+  try{ localStorage.setItem('pl_horizon', y); }catch(e){}
+  recalc();
+}
+function setGranularity(g){
+  granularity = g;
+  document.getElementById('granPillYear').classList.toggle('active', g==='year');
+  document.getElementById('granPillQuarter').classList.toggle('active', g==='quarter');
+  document.getElementById('chartGranNote').textContent = g==='quarter'
+    ? 'ανά τρίμηνο (Q1–Q4), μέχρι τον επιλεγμένο ορίζοντα'
+    : 'ανά έτος, μέχρι τον επιλεγμένο ορίζοντα';
+  try{ localStorage.setItem('pl_granularity', g); }catch(e){}
+  recalc();
+}
+
+// builds the time axis points for the chart, in whole years or quarters
+function buildTimePoints(){
+  const points = [];
+  if (granularity === 'quarter'){
+    for (let y = 1; y <= horizon; y++){
+      for (let q = 1; q <= 4; q++){
+        points.push({ y: y + (q-1)*0.25, label: `Q${q} · Έτος ${y}` });
+      }
+    }
+  } else {
+    for (let y = 1; y <= horizon; y++) points.push({ y, label: `Έτος ${y}` });
+  }
+  return points;
+}
+
+// ---------------- payroll table render ----------------
+function renderPayroll(){
+  const tbody = document.getElementById('payrollBody');
+  tbody.innerHTML = '';
+  people.forEach((p, idx) => {
+    const manila = isManila(p);
+    const projectedNative = projectedSalary(p, horizon);
+    const projectedUsd = salaryUSD(p, horizon);
+
+    // admin still enters payroll in the currency it's actually paid in
+    // (₱ Μανίλα, € Αθήνα) — but every rolled-up P&L figure is in $
+    const salaryCell = manila
+      ? `<input class="cell-input tnum" type="number" value="${p.salary}" onchange="updatePerson(${idx},'salary',this.value)"> ₱
+         <div class="fx-sub">≈ ${fmtUSD(phpToUsd(p.salary))}</div>`
+      : `<input class="cell-input tnum" type="number" value="${p.salary}" onchange="updatePerson(${idx},'salary',this.value)"> €
+         <div class="fx-sub">≈ ${fmtUSD(eurToUsd(p.salary))}</div>`;
+
+    const projectedCell = manila
+      ? `${fmtUSD(projectedUsd)}<div class="fx-sub">≈ ₱${fmtInt(projectedNative)} native</div>`
+      : `${fmtUSD(projectedUsd)}<div class="fx-sub">≈ €${fmtInt(projectedNative)} native</div>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="office-tag ${p.office==='Αθήνα'?'athens':'manila'}">${p.office}</span></td>
+      <td>
+        <div style="font-weight:600">${p.name}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${p.role}</div>
+      </td>
+      <td>${salaryCell}</td>
+      <td><input class="cell-input tnum" type="number" step="0.5" value="${p.raise}" onchange="updatePerson(${idx},'raise',this.value)">%</td>
+      <td><input class="cell-input" type="number" value="${p.effFrom}" onchange="updatePerson(${idx},'effFrom',this.value)"></td>
+      <td class="tnum" style="font-weight:600">${projectedCell}</td>
+      <td><button class="row-del" onclick="removePerson(${idx})" title="Αφαίρεση">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  const isAdmin = role === 'admin';
+  tbody.querySelectorAll('.cell-input').forEach(i => i.disabled = !isAdmin);
+  tbody.querySelectorAll('.row-del').forEach(b => b.style.visibility = isAdmin ? 'visible' : 'hidden');
+}
+function updatePerson(idx, field, val){
+  people[idx][field] = parseFloat(val) || 0;
+  recalc();
+}
+function removePerson(idx){
+  if (role !== 'admin') return;
+  people.splice(idx, 1);
+  recalc();
+}
+function addPerson(){
+  if (role !== 'admin') return;
+  people.push({office:'Αθήνα', name:'Νέο μέλος προσωπικού', role:'—', salary:0, raise:0, effFrom:2027});
+  recalc();
+}
+
+function projectedSalary(p, years){
+  // raise% compounds annually once the person has been on the raise schedule for N years within the horizon
+  const yearsApplied = Math.max(0, years - 1);
+  return p.salary * Math.pow(1 + (p.raise/100), yearsApplied);
+}
+
+// ---------------- member-count milestones (manual forecast) ----------------
+// "today" reference point for the milestone timeline — the member count in
+// inMembers is treated as the count as of now.
+const MILESTONE_BASE = new Date();
+MILESTONE_BASE.setDate(1);
+
+function monthsFromNow(monthStr){
+  if (!monthStr) return NaN;
+  const [y, m] = monthStr.split('-').map(Number);
+  if (!y || !m) return NaN;
+  return (y - MILESTONE_BASE.getFullYear()) * 12 + (m - 1 - MILESTONE_BASE.getMonth());
+}
+
+function sortedMilestonePoints(members0){
+  const pts = milestones
+    .map(m => ({ months: monthsFromNow(m.month), members: Number(m.members) || 0 }))
+    .filter(p => isFinite(p.months) && p.months > 0)
+    .sort((a,b) => a.months - b.months);
+  return [{ months: 0, members: members0 }, ...pts];
+}
+
+// piecewise-linear interpolation across the admin-set milestones; holds flat
+// at the last milestone's value beyond it (we don't guess past what was stated)
+function membersAtMonths(members0, targetMonths){
+  const pts = sortedMilestonePoints(members0);
+  if (targetMonths <= 0) return members0;
+  const last = pts[pts.length - 1];
+  if (targetMonths >= last.months) return last.members;
+  for (let i = 0; i < pts.length - 1; i++){
+    const a = pts[i], b = pts[i+1];
+    if (targetMonths >= a.months && targetMonths <= b.months){
+      const span = b.months - a.months;
+      const t = span > 0 ? (targetMonths - a.months) / span : 1;
+      return a.members + (b.members - a.members) * t;
+    }
+  }
+  return last.members;
+}
+
+function renderMilestones(){
+  const tbody = document.getElementById('milestonesBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (milestones.length === 0){
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted)">Δεν έχουν οριστεί στόχοι — τα μέλη θεωρούνται σταθερά.</td></tr>';
+  }
+  milestones.forEach((m, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input class="cell-input" type="month" value="${m.month || ''}" onchange="updateMilestone(${idx},'month',this.value)"></td>
+      <td><input class="cell-input tnum" type="number" step="100" value="${m.members}" onchange="updateMilestone(${idx},'members',this.value)"></td>
+      <td><button class="row-del" onclick="removeMilestone(${idx})" title="Αφαίρεση">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  const isAdmin = role === 'admin';
+  tbody.querySelectorAll('.cell-input').forEach(i => i.disabled = !isAdmin);
+  tbody.querySelectorAll('.row-del').forEach(b => b.style.visibility = isAdmin ? 'visible' : 'hidden');
+}
+function updateMilestone(idx, field, val){
+  if (role !== 'admin') return;
+  milestones[idx][field] = field === 'members' ? (parseFloat(val) || 0) : val;
+  recalc();
+}
+function removeMilestone(idx){
+  if (role !== 'admin') return;
+  milestones.splice(idx, 1);
+  recalc();
+}
+function addMilestone(){
+  if (role !== 'admin') return;
+  const members0 = parseFloat(document.getElementById('inMembers').value) || 0;
+  milestones.push({month:'', members: members0});
+  recalc();
+}
+
+// ---------------- actuals (from the Αστρολάβος trial balance) ----------------
+// same grouping as the real GL, pre-filled with the YTD numbers from the
+// trial-balance PDF (01/01/2026–27/10/2026) — Beginning + Period Change per
+// row, End is always computed (begin+change), exactly like a real ledger.
+// isRevenue flags which groups are income (for coloring/signs on the dashboard).
+// This will be fed automatically by the CSV import later, one row per mapped code.
+const actualsData = {
+  revenue: {
+    title: 'Έσοδα', code: 'κωδ. 91xxx', isRevenue: true,
+    rows: [
+      { label: 'Membership fees (όλα τα policy-years)', begin: 401606, change: 364913 },
+      { label: 'Admin fees AMAPHIL', begin: 44278, change: 38773 },
+      { label: 'Plan management fees', begin: 50219, change: 63360 },
+      { label: 'Λοιπά έσοδα (τόκοι κ.ά.)', begin: 32, change: 14 },
+    ]
+  },
+  opsCosts: {
+    title: 'Κόστη λειτουργίας', code: 'κωδ. 92xxx', isRevenue: false,
+    rows: [
+      { label: 'Κόστη membership / admin / claims', begin: 208259, change: 179041 },
+      { label: 'Τραπεζικά, ΦΠΑ, λοιπά λειτουργικά', begin: 33012, change: 31820 },
+    ]
+  },
+  payroll: {
+    title: 'Μισθοδοσία', code: 'κωδ. 96+97 · wages/bonus', isRevenue: false,
+    rows: [
+      { label: 'Μισθοί & bonus (Κύπρος + Φιλιππίνες)', begin: 209868, change: 169235 },
+    ]
+  },
+  contributions: {
+    title: 'Εισφορές', code: 'κωδ. 96+97 · wages contributions', isRevenue: false,
+    rows: [
+      { label: 'Εργοδοτικές εισφορές', begin: 28301, change: 16139 },
+    ]
+  },
+  taxes: {
+    title: 'Φόροι', code: 'κωδ. 96+97 · taxes/fees', isRevenue: false,
+    rows: [
+      { label: 'Φόροι / τέλη', begin: 7106, change: 59 },
+    ]
+  },
+  adminOpexOther: {
+    title: 'Λοιπά OPEX Διοίκησης', code: 'κωδ. 96+97 · υπόλοιπο', isRevenue: false,
+    rows: [
+      { label: 'Ενοίκιο / utilities', begin: 3263, change: 3040 },
+      { label: 'IT / Computer', begin: 30868, change: 1571 },
+      { label: 'Marketing / Διαφήμιση', begin: 1273, change: 5654 },
+      { label: 'Consultants / Audit / Legal', begin: 11634, change: 8857 },
+      { label: 'Ταξίδια / PR / λοιπά / σύνδεσμοι', begin: 19047, change: 1554 },
+      { label: 'Medical / 3rd-party (Φιλιππίνες)', begin: 6956, change: 21928 },
+    ]
+  },
+  other: {
+    title: 'Λοιπά', code: 'κωδ. 99xxx', isRevenue: false,
+    rows: [
+      { label: 'Αναπροσαρμογές / συναλλαγματικές / rounding', begin: 3733, change: 37210 },
+    ]
+  }
+};
+
+function rowEnd(row){ return row.begin + row.change; }
+
+// parses the "Περίοδος" field (π.χ. "01/01/2026 – 27/10/2026") into display dates
+function periodDates(){
+  const raw = (document.getElementById('actPeriod') || {}).value || '';
+  const parts = raw.split(/\s*[–-]\s*/).map(s => s.trim()).filter(Boolean);
+  if (parts.length >= 2) return { start: parts[0], end: parts[parts.length - 1] };
+  return { start: '—', end: '—' };
+}
+
+function updateActualAmount(groupKey, idx, field, val){
+  actualsData[groupKey].rows[idx][field] = parseFloat(val) || 0;
+  recalc();
+}
+
+function groupSum3(group){
+  return group.rows.reduce((s,r)=> ({
+    begin: s.begin + r.begin,
+    change: s.change + r.change,
+    end: s.end + rowEnd(r)
+  }), { begin:0, change:0, end:0 });
+}
+
+function renderActualsGroups(){
+  const el = document.getElementById('actualsGroups');
+  if (!el) return;
+  const isAdmin = role === 'admin';
+  const canEdit = isAdmin || role === 'editor';
+  const dates = periodDates();
+  let html = '';
+  Object.entries(actualsData).forEach(([key, group]) => {
+    const sum = groupSum3(group);
+    html += `<div class="actuals-group">
+      <div class="actuals-group-title">${group.title} <span class="hint">${group.code}</span></div>
+      <div class="actuals-row actuals-row--head"><span></span><span>Αρχή<span class="period-date">${dates.start}</span></span><span>Μεταβολή<span class="period-date">${dates.start}–${dates.end}</span></span><span>Τέλος<span class="period-date">${dates.end}</span></span></div>`;
+    group.rows.forEach((row, idx) => {
+      html += `<div class="actuals-row">
+        <label>${row.label}</label>
+        <input class="cell-input tnum" type="number" value="${row.begin}" ${canEdit?'':'disabled'}
+          onchange="updateActualAmount('${key}', ${idx}, 'begin', this.value)">
+        <input class="cell-input tnum" type="number" value="${row.change}" ${canEdit?'':'disabled'}
+          onchange="updateActualAmount('${key}', ${idx}, 'change', this.value)">
+        <span class="tnum actuals-end">${fmtUSD(rowEnd(row))}</span>
+      </div>`;
+    });
+    html += `<div class="actuals-subtotal"><span>Υποσύνολο</span><span class="tnum">${fmtUSD(sum.begin)}</span><span class="tnum">${fmtUSD(sum.change)}</span><span class="tnum">${fmtUSD(sum.end)}</span></div>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+// registry of clickable rows/totals for the current render, so onclick handlers
+// never have to inline raw (possibly Greek/slash-containing) strings into HTML
+let rowDetailRegistry = [];
+function registerRowDetail(entry){ rowDetailRegistry.push(entry); return rowDetailRegistry.length - 1; }
+
+function dashboardKpiCard(key, group, dates){
+  const sum = groupSum3(group);
+  const changeCls = group.isRevenue ? (sum.change >= 0 ? 'ok' : 'danger') : (sum.change <= 0 ? 'ok' : 'danger');
+  let rowsHtml = '';
+  group.rows.forEach(row => {
+    const ridx = registerRowDetail({
+      title: row.label, code: `${group.title} · ${group.code}`,
+      begin: row.begin, change: row.change, end: rowEnd(row)
+    });
+    rowsHtml += `<div class="dash-kpi-row" onclick="openRowDetail(${ridx})">
+      <span>${row.label}</span>
+      <span class="tnum">${fmtUSD(row.begin)}</span>
+      <span class="tnum">${fmtUSD(row.change)}</span>
+      <span class="tnum">${fmtUSD(rowEnd(row))}</span>
+    </div>`;
+  });
+  const cardIdx = registerRowDetail({ title: group.title, code: group.code, begin: sum.begin, change: sum.change, end: sum.end });
+  return `<div class="dash-kpi-card">
+    <div class="dash-kpi-head">
+      <div class="dash-kpi-title">${group.title}<span class="hint">${group.code}</span></div>
+    </div>
+    <div class="dash-kpi-totals" onclick="openRowDetail(${cardIdx})">
+      <div><span class="l">Αρχή περιόδου<span class="period-date">${dates.start}</span></span><span class="v tnum">${fmtUSD(sum.begin)}</span></div>
+      <div><span class="l">Μεταβολή περιόδου<span class="period-date">${dates.start}–${dates.end}</span></span><span class="v tnum ${changeCls}">${fmtUSD(sum.change)}</span></div>
+      <div><span class="l">Τέλος περιόδου<span class="period-date">${dates.end}</span></span><span class="v tnum">${fmtUSD(sum.end)}</span></div>
+    </div>
+    <div class="dash-kpi-rows">${rowsHtml}</div>
+  </div>`;
+}
+
+function renderDashboardKPIs(){
+  const el = document.getElementById('dashboardKpis');
+  if (!el) return;
+
+  rowDetailRegistry = [];
+  const dates = periodDates();
+
+  const revGroup = actualsData.revenue;
+  const expenseKeys = ['opsCosts','payroll','contributions','taxes','adminOpexOther','other'];
+  const revSum = groupSum3(revGroup);
+  const expSum = expenseKeys.reduce((s,k) => {
+    const g = groupSum3(actualsData[k]);
+    return { begin: s.begin+g.begin, change: s.change+g.change, end: s.end+g.end };
+  }, { begin:0, change:0, end:0 });
+  const netSum = {
+    begin: revSum.begin - expSum.begin,
+    change: revSum.change - expSum.change,
+    end: revSum.end - expSum.end
+  };
+
+  const revIdx = registerRowDetail({ title: 'Σύνολο Εσόδων', code: 'κωδ. 91xxx', begin: revSum.begin, change: revSum.change, end: revSum.end });
+  const expIdx = registerRowDetail({ title: 'Σύνολο Εξόδων', code: 'κωδ. 92/96/97/99xxx', begin: expSum.begin, change: expSum.change, end: expSum.end });
+  const netIdx = registerRowDetail({ title: 'Καθαρό Αποτέλεσμα', code: 'Έσοδα − Έξοδα', begin: netSum.begin, change: netSum.change, end: netSum.end });
+
+  let html = `<div class="dash-headline">
+    <div class="dash-headline-card" onclick="openRowDetail(${revIdx})">
+      <div class="l">Σύνολο Εσόδων</div>
+      <div class="dash-headline-vals">
+        <div><span class="t">Αρχή<span class="period-date">${dates.start}</span></span><span class="v tnum">${fmtUSD(revSum.begin)}</span></div>
+        <div><span class="t">Μεταβολή<span class="period-date">${dates.start}–${dates.end}</span></span><span class="v tnum ok">${fmtUSD(revSum.change)}</span></div>
+        <div><span class="t">Τέλος<span class="period-date">${dates.end}</span></span><span class="v tnum">${fmtUSD(revSum.end)}</span></div>
+      </div>
+    </div>
+    <div class="dash-headline-card expenses" onclick="openRowDetail(${expIdx})">
+      <div class="l">Σύνολο Εξόδων</div>
+      <div class="dash-headline-vals">
+        <div><span class="t">Αρχή<span class="period-date">${dates.start}</span></span><span class="v tnum">${fmtUSD(expSum.begin)}</span></div>
+        <div><span class="t">Μεταβολή<span class="period-date">${dates.start}–${dates.end}</span></span><span class="v tnum danger">${fmtUSD(expSum.change)}</span></div>
+        <div><span class="t">Τέλος<span class="period-date">${dates.end}</span></span><span class="v tnum">${fmtUSD(expSum.end)}</span></div>
+      </div>
+    </div>
+    <div class="dash-headline-card net" onclick="openRowDetail(${netIdx})">
+      <div class="l">Καθαρό Αποτέλεσμα</div>
+      <div class="dash-headline-vals">
+        <div><span class="t">Αρχή<span class="period-date">${dates.start}</span></span><span class="v tnum ${netSum.begin<0?'danger':'ok'}">${fmtUSD(netSum.begin)}</span></div>
+        <div><span class="t">Μεταβολή<span class="period-date">${dates.start}–${dates.end}</span></span><span class="v tnum ${netSum.change<0?'danger':'ok'}">${fmtUSD(netSum.change)}</span></div>
+        <div><span class="t">Τέλος<span class="period-date">${dates.end}</span></span><span class="v tnum ${netSum.end<0?'danger':'ok'}">${fmtUSD(netSum.end)}</span></div>
+      </div>
+    </div>
+  </div>`;
+
+  html += '<div class="dash-kpi-grid">';
+  html += dashboardKpiCard('revenue', revGroup, dates);
+  expenseKeys.forEach(k => { html += dashboardKpiCard(k, actualsData[k], dates); });
+  html += '</div>';
+
+  el.innerHTML = html;
+
+  const sub = document.getElementById('dashPeriodSub');
+  const periodEl = document.getElementById('actPeriod');
+  if (sub) sub.textContent = `Περίοδος ${periodEl ? periodEl.value : ''} · ίδιες κατηγορίες με το Αστρολάβος`;
+}
+
+// ---------------- row-detail modal (click any KPI row/total to see its chart) ----------------
+let rdChartInstance = null;
+function openRowDetail(idx){
+  const entry = rowDetailRegistry[idx];
+  if (!entry) return;
+  const dates = periodDates();
+
+  document.getElementById('rdTitle').textContent = entry.title;
+  document.getElementById('rdSub').textContent = `${entry.code} · περίοδος ${dates.start} – ${dates.end}`;
+
+  const changeCls = entry.change >= 0 ? 'ok' : 'danger';
+  document.getElementById('rdTotals').innerHTML = `
+    <div><span class="l">Αρχή περιόδου<span class="period-date">${dates.start}</span></span><span class="v tnum">${fmtUSD(entry.begin)}</span></div>
+    <div><span class="l">Μεταβολή περιόδου<span class="period-date">${dates.start}–${dates.end}</span></span><span class="v tnum ${changeCls}">${fmtUSD(entry.change)}</span></div>
+    <div><span class="l">Τέλος περιόδου<span class="period-date">${dates.end}</span></span><span class="v tnum">${fmtUSD(entry.end)}</span></div>`;
+
+  const overlay = document.getElementById('rdOverlay');
+  overlay.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  const ctx = document.getElementById('rdChart');
+  const txt = getComputedStyle(document.body).getPropertyValue('--text-secondary').trim() || '#8da2b8';
+  const grid = 'rgba(255,255,255,.06)';
+  if (rdChartInstance) rdChartInstance.destroy();
+  // waterfall layout: Αρχή is the base, Μεταβολή floats from Αρχή to Τέλος
+  // (so the bars visually sum up instead of looking like 3 unrelated numbers),
+  // Τέλος is the final cumulative bar from zero.
+  const changeRange = entry.change >= 0 ? [entry.begin, entry.end] : [entry.end, entry.begin];
+  rdChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: [`Αρχή (${dates.start})`, `Μεταβολή (${dates.start}–${dates.end})`, `Τέλος (${dates.end})`],
+      datasets: [{
+        label: entry.title,
+        data: [[0, entry.begin], changeRange, [0, entry.end]],
+        backgroundColor: [
+          'rgba(46,117,182,.65)',
+          entry.change < 0 ? 'rgba(239,68,68,.65)' : 'rgba(16,185,129,.65)',
+          'rgba(245,180,62,.65)'
+        ],
+        borderRadius: 6, maxBarThickness: 70
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1E3650', borderColor: '#2a4563', borderWidth: 1, titleColor: '#e8ecf4', bodyColor: '#e8ecf4',
+          callbacks: {
+            label: (c) => {
+              if (c.dataIndex === 1) return `Μεταβολή: ${fmtUSD(entry.change)}`;
+              return fmtUSD(c.dataIndex === 0 ? entry.begin : entry.end);
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: txt, font: { family: 'Montserrat', size: 11 } }, grid: { display: false } },
+        y: { ticks: { color: txt, callback: v => '$' + Math.round(v/1000) + 'k' }, grid: { color: grid } }
+      }
+    }
+  });
+}
+function closeRowDetail(){
+  document.getElementById('rdOverlay').hidden = true;
+  document.body.style.overflow = '';
+  if (rdChartInstance){ rdChartInstance.destroy(); rdChartInstance = null; }
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeRowDetail();
+});
+
+function recalcActuals(){
+  renderActualsGroups();
+  renderDashboardKPIs();
+
+  const revenueTotal = groupSum3(actualsData.revenue).end;
+  const expensesTotal = ['opsCosts','payroll','contributions','taxes','adminOpexOther','other']
+    .reduce((s,k) => s + groupSum3(actualsData[k]).end, 0);
+  const net = revenueTotal - expensesTotal;
+
+  document.getElementById('actRevenueTotal').textContent = fmtUSD(revenueTotal);
+  document.getElementById('actExpensesTotal').textContent = fmtUSD(expensesTotal);
+  const netEl = document.getElementById('actNet');
+  netEl.textContent = fmtUSD(net);
+  netEl.className = 'v tnum ' + (net < 0 ? 'danger' : 'ok');
+
+  // rough pro-rated forecast EBITDA for the same elapsed fraction of the year,
+  // using the model's own year-1 numbers (set by recalc()) — purely indicative, see caveat note
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
+  const fraction = Math.min(1, dayOfYear / 365);
+  document.getElementById('actForecast').textContent = fmtUSD(lastYear1Ebitda * fraction);
+}
+
+function setMemberForecastMode(mode){
+  memberForecastMode = mode;
+  const isGrowth = mode === 'growth';
+  document.getElementById('modePillGrowth').classList.toggle('active', isGrowth);
+  document.getElementById('modePillMilestones').classList.toggle('active', !isGrowth);
+  document.getElementById('modeGrowthNote').classList.toggle('dim', !isGrowth);
+  document.getElementById('milestonesBox').classList.toggle('dim', isGrowth);
+  const isAdmin = role === 'admin';
+  document.getElementById('inMemberGrowth').disabled = !isAdmin || !isGrowth;
+  try{ localStorage.setItem('pl_memberMode', mode); }catch(e){}
+  recalc();
+}
+
+// ---------------- core P&L math (mirrors the Excel model) ----------------
+function recalc(){
+  const members0 = parseFloat(document.getElementById('inMembers').value) || 0;
+  const growth = parseFloat(document.getElementById('inMemberGrowth').value) || 0;
+  const netFee = parseFloat(document.getElementById('inNetFee').value) || 0;
+  const monthlyFee = parseFloat(document.getElementById('inMonthlyFee').value) || 0;
+  const auditRate = parseFloat(document.getElementById('inAuditRate').value) || 0;
+  const dentalFee = parseFloat(document.getElementById('inDentalFee').value) || 0;
+  const netPay = parseFloat(document.getElementById('inNetPay').value) || 0;
+  const auditPay = parseFloat(document.getElementById('inAuditPay').value) || 0;
+  const dentalPay = parseFloat(document.getElementById('inDentalPay').value) || 0;
+  const claims = 35, netVat = 0.12, auditVat = 0.12, dentalVat = 0.12;
+
+  // member count at forecast year y (y=1 is "now") — either a flat % growth
+  // rate compounded annually, or the admin's manually-set member milestones
+  function membersAtYear(y){
+    if (memberForecastMode === 'milestones') return membersAtMonths(members0, (y-1)*12);
+    return members0 * Math.pow(1 + growth/100, y-1);
+  }
+
+  function pnlAtYear(y){
+    const members = membersAtYear(y);
+    // όλο το P&L ενοποιείται σε δολάρια — όπως το πραγματικό Αστρολάβος (Dashboard)
+    // και το αρχικό Excel μοντέλο (τα fees είναι ήδη $-denominated). Η μισθοδοσία
+    // μετατρέπεται σε $ ανά άτομο μέσω salaryUSD() (Αθήνα από EUR, Μανίλα από PHP).
+    const revenue = members*netFee + members*monthlyFee*12 + members*auditRate*claims + members*dentalFee;
+    const thirdParty = members*netPay*(1+netVat) + members*claims*auditPay*(1+auditVat) + members*dentalPay*(1+dentalVat);
+    const contribution = revenue - thirdParty;
+    const payroll = people.reduce((s,p)=> s + salaryUSD(p,y), 0);
+    const ebitda = contribution - payroll;
+    return {members, revenue, thirdParty, contribution, payroll, ebitda};
+  }
+
+  // break-even members at the selected horizon's cost base & per-member contribution
+  const cur = pnlAtYear(horizon);
+  lastYear1Ebitda = pnlAtYear(1).ebitda;
+  const contribPerMember = cur.members ? cur.contribution / cur.members : 0;
+  const breakEvenMembers = contribPerMember > 0 ? cur.payroll / contribPerMember : NaN;
+  const distance = cur.members - breakEvenMembers;
+
+  // ---- hero KPIs ----
+  const ebitdaEl = document.getElementById('kpiEbitda');
+  ebitdaEl.textContent = fmtUSD(cur.ebitda);
+  ebitdaEl.className = 'kpi-hero-val tnum ' + (cur.ebitda < 0 ? 'danger' : (cur.ebitda/cur.revenue < 0.03 ? 'warn' : 'ok'));
+  const ebitdaMargin = cur.revenue ? (cur.ebitda/cur.revenue*100) : 0;
+  document.getElementById('kpiEbitdaMargin').textContent = fmtPct(ebitdaMargin);
+  document.getElementById('kpiEbitdaPerMember').textContent = fmtUSD2(cur.members ? cur.ebitda/cur.members : 0);
+  document.getElementById('ebitdaBar').style.width = Math.max(2, Math.min(100, (ebitdaMargin/15*100))) + '%';
+  document.getElementById('ebitdaBar').style.background = cur.ebitda < 0 ? 'var(--danger)' : (ebitdaMargin < 3 ? 'var(--warning)' : 'var(--success)');
+
+  const beEl = document.getElementById('kpiBreakeven');
+  beEl.textContent = (isFinite(distance) ? (distance>=0?'+':'') + fmtInt(distance) : '—') + ' μέλη';
+  beEl.className = 'kpi-hero-val tnum ' + (distance < 0 ? 'danger' : (distance < 500 ? 'warn' : 'ok'));
+  document.getElementById('kpiBeMembers').textContent = isFinite(breakEvenMembers) ? fmtInt(breakEvenMembers) : '—';
+  document.getElementById('kpiCurMembers').textContent = fmtInt(cur.members);
+  const beSafety = cur.members ? Math.max(2, Math.min(100, (distance/cur.members*100 + 50))) : 2;
+  document.getElementById('beBar').style.width = beSafety + '%';
+  document.getElementById('beBar').style.background = distance < 0 ? 'var(--danger)' : 'var(--gold)';
+
+  // ---- small KPI grid ----
+  document.getElementById('kMembers').textContent = fmtInt(cur.members);
+  document.getElementById('kRevPerMember').textContent = fmtUSD(cur.members ? cur.revenue/cur.members : 0);
+  document.getElementById('kContribMargin').textContent = fmtPct(cur.revenue ? cur.contribution/cur.revenue*100 : 0);
+  document.getElementById('kPayrollPct').textContent = fmtPct(cur.revenue ? cur.payroll/cur.revenue*100 : 0);
+  document.getElementById('kTpPerMember').textContent = fmtUSD(cur.members ? cur.thirdParty/cur.members : 0);
+
+  // ---- member milestones ----
+  renderMilestones();
+  const baseLbl = document.getElementById('milestoneBaseLabel');
+  if (baseLbl) baseLbl.textContent = fmtInt(members0) + ' μέλη';
+
+  // ---- payroll table + totals ----
+  renderPayroll();
+  document.getElementById('payrollTotalCell').textContent = fmtUSD(cur.payroll);
+  const athensTotal = people.filter(p=>p.office==='Αθήνα').reduce((s,p)=>s+salaryUSD(p,horizon),0);
+  const manilaTotal = people.filter(p=>p.office==='Μανίλα').reduce((s,p)=>s+salaryUSD(p,horizon),0);
+  document.getElementById('lockedTotal').textContent = fmtUSD(cur.payroll);
+  document.getElementById('lockedAthens').textContent = fmtUSD(athensTotal);
+  document.getElementById('lockedManila').textContent = fmtUSD(manilaTotal);
+  document.getElementById('lockedCount').textContent = people.filter(p=>!p.rent).length;
+
+  // ---- chart ----
+  const points = buildTimePoints();
+  const labels = points.map(p => p.label);
+  const ebitdaSeries = points.map(p => pnlAtYear(p.y).ebitda);
+  const membersSeries = points.map(p => pnlAtYear(p.y).members);
+  drawChart(labels, ebitdaSeries, membersSeries);
+
+  // ---- actuals (Αστρολάβος) ----
+  recalcActuals();
+}
+
+let chartInstance = null;
+function drawChart(labels, ebitdaSeries, membersSeries){
+  const ctx = document.getElementById('forecastChart');
+  const txt = getComputedStyle(document.body).getPropertyValue('--text-secondary').trim() || '#8da2b8';
+  const grid = 'rgba(255,255,255,.06)';
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar', label: 'EBITDA ($)', data: ebitdaSeries, yAxisID: 'y',
+          backgroundColor: ebitdaSeries.map(v => v < 0 ? 'rgba(239,68,68,.55)' : 'rgba(46,117,182,.55)'),
+          borderRadius: 6, maxBarThickness: 46
+        },
+        {
+          type: 'line', label: 'Μέλη', data: membersSeries, yAxisID: 'y1',
+          borderColor: '#f5b43e', backgroundColor: 'rgba(245,180,62,.15)',
+          tension: .3, pointRadius: 4, pointBackgroundColor: '#f5b43e', fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: txt, font: { family: 'Montserrat', size: 11.5 } } },
+        tooltip: {
+          backgroundColor: '#1E3650', borderColor: '#2a4563', borderWidth: 1, titleColor: '#e8ecf4', bodyColor: '#e8ecf4',
+          callbacks: {
+            label: (c) => c.dataset.yAxisID === 'y1'
+              ? `Μέλη: ${Math.round(c.raw).toLocaleString('el-GR')}`
+              : `EBITDA: $${Math.round(c.raw).toLocaleString('el-GR')}`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: txt, font: { family: 'Montserrat', size: 11.5 } }, grid: { color: grid } },
+        y: { position: 'left', ticks: { color: txt, callback: v => '$' + Math.round(v/1000) + 'k' }, grid: { color: grid } },
+        y1: { position: 'right', ticks: { color: txt }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// boot
+(function(){
+  try{
+    const savedRole = localStorage.getItem('pl_role');
+    const savedHorizon = parseInt(localStorage.getItem('pl_horizon'));
+    const savedMode = localStorage.getItem('pl_memberMode');
+    const savedGran = localStorage.getItem('pl_granularity');
+    if (savedRole) role = savedRole;
+    if (savedHorizon) horizon = savedHorizon;
+    if (savedMode) memberForecastMode = savedMode;
+    if (savedGran) granularity = savedGran;
+  }catch(e){}
+  setRole(role);
+  setHorizon(horizon);
+  setGranularity(granularity);
+  setMemberForecastMode(memberForecastMode);
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('entityMenu');
+    if (!menu.hidden && !e.target.closest('.entity-selector')) menu.hidden = true;
+  });
+})();
+</script>
+
+</body></html>

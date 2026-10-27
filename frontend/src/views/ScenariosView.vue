@@ -30,18 +30,20 @@ const isAdmin = computed(() => {
   } catch { return false }
 })
 
-// "Next2Me Group" entity uses localStorage key 'next2megroup' (renamed from
-// 'polaris' in App.vue) but maps to the polaris UUID where the data lives.
+// "Next2Me Group" uses localStorage key 'next2megroup' (its old key 'polaris'
+// was renamed in App.vue). Since Polaris P&L, 'polaris' is the real Polaris
+// entity -- no longer an alias for Next2Me Group.
 const ENTITIES = {
   next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
   house: 'dea1f32c-7b30-4981-b625-633da9dbe71e',
   next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
-  polaris: '50317f44-9961-4fb4-add0-7a118e32dc14'
+  polaris: 'baf68357-f959-43cf-9d8c-4170abe2ffc0'
 }
 const ENTITY_NAMES = {
   '58202b71-4ddb-45c9-8e3c-39e816bde972': 'Next2Me',
   'dea1f32c-7b30-4981-b625-633da9dbe71e': 'House',
-  '50317f44-9961-4fb4-add0-7a118e32dc14': 'Next2Me Group'
+  '50317f44-9961-4fb4-add0-7a118e32dc14': 'Next2Me Group',
+  'baf68357-f959-43cf-9d8c-4170abe2ffc0': 'Polaris'
 }
 function entityName(id) { return ENTITY_NAMES[id] || '—' }
 function currentEntityId() {

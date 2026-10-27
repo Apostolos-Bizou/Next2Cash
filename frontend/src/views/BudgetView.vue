@@ -236,8 +236,9 @@ import api from '@/api'
 const ENTITY_MAP = {
   'next2me': '58202b71-4ddb-45c9-8e3c-39e816bde972',
   'house': 'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  'polaris': '50317f44-9961-4fb4-add0-7a118e32dc14',
   'next2megroup': '50317f44-9961-4fb4-add0-7a118e32dc14',
+  // Polaris P&L: 'polaris' is the real Polaris entity now -- no longer an alias for Next2Me Group
+  'polaris': 'baf68357-f959-43cf-9d8c-4170abe2ffc0',
 }
 const MONTH_NAMES = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μάι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ']
 
@@ -264,7 +265,7 @@ const vsToMonth = ref(12)
 
 function entityId() {
   const k = localStorage.getItem('n2c_entity') || 'next2me'
-  return ENTITY_MAP[k] || ENTITY_MAP['polaris']
+  return ENTITY_MAP[k] || ENTITY_MAP['next2megroup']
 }
 
 function cellKey(dir, cat, sub, m) { return dir + '|' + cat + '|' + (sub || '') + '|' + m }
