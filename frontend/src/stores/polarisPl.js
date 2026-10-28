@@ -17,6 +17,7 @@ import { ref, reactive, computed } from 'vue'
 import {
   fetchMyRole, fetchPayrollSummary, peopleApi, milestonesApi, assumptionsApi, actualsApi
 } from '@/api/polaris'
+import { calendarYear, nativeSalaryInYear, nativeToUsd, usdSalaryInYear } from './polarisMath'
 
 // ---------------- formatting (identical to the mockup) ----------------
 export function fmtUSD(n) {
@@ -83,7 +84,7 @@ export const ASSUMPTION_KEYS = {
   auditPay: 'audit_payable_rate',
   dentalPay: 'dental_payable',
   phpPerUsd: 'fx_php_per_usd',
-  usdPerEur: 'fx_usd_per_eur',
+  usdPerEur: 'fx_usd_per_eur',   // stored, but no longer used: Athens payroll is in USD (28 Oct 2026)
 }
 
 // ---------------- period helpers ("dd/mm/yyyy – dd/mm/yyyy" <-> ISO dates) ----------------
@@ -249,21 +250,21 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     try { return await fn() } catch (e) { saveError.value = apiError(e); await load({ keepSaveError: true }); return null }
   }
 
-  // ---------------- FX: every office pays in its own currency, the P&L is
-  // consolidated in USD everywhere (same as Αστρολάβος + the original Excel) ----
+  // ---------------- FX / raises (pure math in polarisMath.js) ----------------
+  // Αθήνα is paid in USD (no conversion); Μανίλα in PHP ÷ fx_php_per_usd.
+  // raise% is a one-time step from effective_from_year, flat afterwards.
+  // Forecast year y = 1 is the current calendar year.
+  const FORECAST_BASE_YEAR = new Date().getFullYear()
   function phpToUsd(php) { return php / num(inputs.phpPerUsd, 56.5) }
-  function eurToUsd(eur) { return eur * num(inputs.usdPerEur, 1.08) }
   function isManila(p) { return p.officeCode === 'MANILA' }
 
+  // native-currency salary at forecast point y (₱ Μανίλα, $ Αθήνα)
   function projectedSalary(p, years) {
-    // raise% compounds annually once the person has been on the raise schedule for N years within the horizon
-    const yearsApplied = Math.max(0, years - 1)
-    return p.salary * Math.pow(1 + (p.raise / 100), yearsApplied)
+    return nativeSalaryInYear(p, calendarYear(FORECAST_BASE_YEAR, years))
   }
-  // $-equivalent of a person's salary at a given horizon (Αθήνα EUR, Μανίλα PHP)
+  // $-equivalent of a person's salary at forecast point y
   function salaryUSD(p, years) {
-    const native = projectedSalary(p, years)
-    return isManila(p) ? phpToUsd(native) : eurToUsd(native)
+    return usdSalaryInYear(p, calendarYear(FORECAST_BASE_YEAR, years), num(inputs.phpPerUsd, 56.5))
   }
 
   // ---------------- payroll edits (admin) ----------------
@@ -445,7 +446,8 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     const netFee = num(inputs.netFee), monthlyFee = num(inputs.monthlyFee), auditRate = num(inputs.auditRate)
     const dentalFee = num(inputs.dentalFee), netPay = num(inputs.netPay), auditPay = num(inputs.auditPay)
     const dentalPay = num(inputs.dentalPay)
-    // the whole P&L is consolidated in USD; payroll converted per person via salaryUSD()
+    // the whole P&L is consolidated in USD; payroll (people + office-cost rows)
+    // converted per person via salaryUSD(), so EBITDA = contribution − TOTAL offices cost
     const revenue = members * netFee + members * monthlyFee * 12 + members * auditRate * claims + members * dentalFee
     const thirdParty = members * netPay * (1 + netVat) + members * claims * auditPay * (1 + auditVat) + members * dentalPay * (1 + dentalVat)
     const contribution = revenue - thirdParty
@@ -470,11 +472,11 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
   const manilaTotal = computed(() => people.value.filter(p => p.officeCode === 'MANILA').reduce((s, p) => s + salaryUSD(p, horizon.value), 0))
   const staffCount = computed(() => people.value.filter(p => !p.rent).length)
 
-  // viewer aggregate card (payroll/summary): year-1 base salaries per office, converted to $.
-  // No raise projection (that needs per-person rows) and the default FX rates
-  // (fx assumptions are admin-only).
+  // viewer aggregate card (payroll/summary): year-1 base salaries per office in $
+  // (Αθήνα already USD, Μανίλα ÷ PHP rate). No raise projection (that needs
+  // per-person rows) and the default FX rate (fx assumptions are admin-only).
   const summaryUsd = computed(() => {
-    const usd = s => s.officeCode === 'MANILA' ? phpToUsd(s.salaryTotal) : eurToUsd(s.salaryTotal)
+    const usd = s => nativeToUsd(s, s.salaryTotal, num(inputs.phpPerUsd, 56.5))
     const byOffice = code => payrollSummary.value.filter(s => s.officeCode === code).reduce((t, s) => t + usd(s), 0)
     return {
       athens: byOffice('ATHENS'),
@@ -510,7 +512,7 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     role, loading, loaded, loadError, saveError, load,
     horizon, memberForecastMode, granularity, inputs, actPeriod, people, milestones, actualsData,
     hasAccess, isAdmin, canEdit, setHorizon, setGranularity, setMemberForecastMode,
-    phpToUsd, eurToUsd, isManila, projectedSalary, salaryUSD,
+    phpToUsd, isManila, projectedSalary, salaryUSD,
     updatePerson, removePerson, addPerson,
     updateMilestone, removeMilestone, addMilestone,
     saveAssumption,

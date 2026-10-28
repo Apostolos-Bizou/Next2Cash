@@ -186,7 +186,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
           <div class="field"><label>Audit payable rate <span class="hint">% επί $35 + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.auditPay" step="0.01" class="tnum" @change="pl.saveAssumption('auditPay')"></div>
           <div class="field"><label>Dental payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.dentalPay" step="0.5" class="tnum" @change="pl.saveAssumption('dentalPay')"></div>
           <div class="field"><label>PHP ανά USD<span class="hint"> — ισοτιμία γραφείου Μανίλα</span></label><input type="number" v-model="pl.inputs.phpPerUsd" step="0.1" class="tnum" @change="pl.saveAssumption('phpPerUsd')"></div>
-          <div class="field"><label>USD ανά EUR<span class="hint"> — για μετατροπή της μισθοδοσίας Αθήνας (EUR) σε $</span></label><input type="number" v-model="pl.inputs.usdPerEur" step="0.01" class="tnum" @change="pl.saveAssumption('usdPerEur')"></div>
+          <div class="field"><label>USD ανά EUR<span class="hint"> — δεν χρησιμοποιείται: η μισθοδοσία Αθήνας είναι ήδη σε $</span></label><input type="number" v-model="pl.inputs.usdPerEur" step="0.01" class="tnum" @change="pl.saveAssumption('usdPerEur')"></div>
         </div>
       </div>
     </div>

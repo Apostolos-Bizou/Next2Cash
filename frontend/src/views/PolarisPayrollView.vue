@@ -60,14 +60,14 @@ const payrollEditNote = computed(() => pl.isAdmin
                   <div style="font-weight:600">{{ p.name }}</div>
                   <div style="font-size:11.5px;color:var(--text-muted)">{{ p.role }}</div>
                 </td>
-                <!-- payroll is entered in the currency it's paid in (₱ Μανίλα, € Αθήνα); every rolled-up figure is in $ -->
+                <!-- payroll is entered in the currency it's paid in (₱ Μανίλα, $ Αθήνα); every rolled-up figure is in $ -->
                 <td>
-                  <input class="cell-input tnum" type="number" :value="p.salary" :disabled="!pl.isAdmin" @change="pl.updatePerson(idx, 'salary', $event.target.value)"> {{ pl.isManila(p) ? '₱' : '€' }}
-                  <div class="fx-sub">≈ {{ fmtUSD(pl.isManila(p) ? pl.phpToUsd(p.salary) : pl.eurToUsd(p.salary)) }}</div>
+                  <input class="cell-input tnum" type="number" :value="p.salary" :disabled="!pl.isAdmin" @change="pl.updatePerson(idx, 'salary', $event.target.value)"> {{ pl.isManila(p) ? '₱' : '$' }}
+                  <div class="fx-sub" v-if="pl.isManila(p)">≈ {{ fmtUSD(pl.phpToUsd(p.salary)) }}</div>
                 </td>
                 <td><input class="cell-input tnum" type="number" step="0.5" :value="p.raise" :disabled="!pl.isAdmin" @change="pl.updatePerson(idx, 'raise', $event.target.value)">%</td>
                 <td><input class="cell-input" type="number" :value="p.effFrom" :disabled="!pl.isAdmin" @change="pl.updatePerson(idx, 'effFrom', $event.target.value)"></td>
-                <td class="tnum" style="font-weight:600">{{ fmtUSD(pl.salaryUSD(p, pl.horizon)) }}<div class="fx-sub">≈ {{ pl.isManila(p) ? '₱' : '€' }}{{ fmtInt(pl.projectedSalary(p, pl.horizon)) }} native</div></td>
+                <td class="tnum" style="font-weight:600">{{ fmtUSD(pl.salaryUSD(p, pl.horizon)) }}<div class="fx-sub" v-if="pl.isManila(p)">≈ ₱{{ fmtInt(pl.projectedSalary(p, pl.horizon)) }} native</div></td>
                 <td><button class="row-del" :style="{ visibility: pl.isAdmin ? 'visible' : 'hidden' }" @click="pl.removePerson(idx)" title="Αφαίρεση">✕</button></td>
               </tr>
             </tbody>
