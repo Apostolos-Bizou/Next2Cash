@@ -102,6 +102,41 @@ class PolarisPayrollControllerTest extends BaseIntegrationTest {
     }
 
     @Test
+    @DisplayName("people: single-field PUT leaves salary / raisePct / isOfficeCost / effectiveFromYear untouched")
+    void admin_peoplePartialUpdate_keepsOmittedFields() throws Exception {
+        // Regression for the 28 Oct 2026 incident: PUT {office} zeroed salary,
+        // raisePct and isOfficeCost on every Polaris row because the entity's
+        // field initializers made those fields non-null in the request body.
+        String bearer = tdb.bearerToken(admin);
+        String pid = polaris.getId().toString();
+        String id = createPerson(admin);   // salary 2500.00, raisePct 5.00, effectiveFromYear 2027
+
+        // make isOfficeCost true first so a silent reset to false is detectable
+        mockMvc.perform(put(PEOPLE + "/" + id).param("entityId", pid).header("Authorization", bearer)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"isOfficeCost\":true}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.isOfficeCost").value(true))
+            .andExpect(jsonPath("$.data.salary").value(2500.00));
+
+        mockMvc.perform(put(PEOPLE + "/" + id).param("entityId", pid).header("Authorization", bearer)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"office\":\"MANILA\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.office").value("MANILA"))
+            .andExpect(jsonPath("$.data.salary").value(2500.00))
+            .andExpect(jsonPath("$.data.raisePct").value(5.00))
+            .andExpect(jsonPath("$.data.isOfficeCost").value(true))
+            .andExpect(jsonPath("$.data.effectiveFromYear").value(2027))
+            .andExpect(jsonPath("$.data.name").value("Maria P."));
+
+        // and the stored row agrees with the response
+        mockMvc.perform(get(PEOPLE + "/" + id).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.salary").value(2500.00))
+            .andExpect(jsonPath("$.data.raisePct").value(5.00))
+            .andExpect(jsonPath("$.data.isOfficeCost").value(true));
+    }
+
+    @Test
     @DisplayName("Polaris admin: milestone targetMonth is normalized to the 1st of the month")
     void admin_milestoneNormalized() throws Exception {
         mockMvc.perform(post(MILESTONES).param("entityId", polaris.getId().toString())
@@ -165,6 +200,8 @@ class PolarisPayrollControllerTest extends BaseIntegrationTest {
         foreign.setOffice("ATHENS");
         foreign.setName("Foreign Row");
         foreign.setSalary(BigDecimal.TEN);
+        foreign.setRaisePct(BigDecimal.ZERO);
+        foreign.setIsOfficeCost(false);
         foreign.setEffectiveFromYear(2027);
         foreign = payrollPersonRepository.save(foreign);
 

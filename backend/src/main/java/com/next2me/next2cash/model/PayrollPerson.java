@@ -41,17 +41,22 @@ public class PayrollPerson {
     @Column(name = "role_title", length = 150)
     private String roleTitle;
 
+    // No field initializers here: this entity is also the request body of the
+    // partial PUT (PolarisPayrollService.updatePerson null-checks each field).
+    // A default of ZERO/false would be "present" in every body and overwrite
+    // the stored value on single-field updates (production incident 28 Oct 2026).
+    // Defaults for create live in the service.
     @Column(nullable = false, precision = 14, scale = 2)
-    private BigDecimal salary = BigDecimal.ZERO;
+    private BigDecimal salary;
 
     @Column(name = "raise_pct", nullable = false, precision = 6, scale = 2)
-    private BigDecimal raisePct = BigDecimal.ZERO;
+    private BigDecimal raisePct;
 
     @Column(name = "effective_from_year", nullable = false)
     private Integer effectiveFromYear;
 
     @Column(name = "is_office_cost", nullable = false)
-    private Boolean isOfficeCost = false;
+    private Boolean isOfficeCost;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

@@ -254,7 +254,8 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 { "ATHENS", "Athens Office", "300.00", true }, { "MANILA", "Carol Secret", "40000.00", false } }) {
             PayrollPerson p = new PayrollPerson();
             p.setEntityId(e); p.setOffice((String) r[0]); p.setName((String) r[1]);
-            p.setSalary(new BigDecimal((String) r[2])); p.setIsOfficeCost((Boolean) r[3]); p.setEffectiveFromYear(2027);
+            p.setSalary(new BigDecimal((String) r[2])); p.setRaisePct(BigDecimal.ZERO);
+            p.setIsOfficeCost((Boolean) r[3]); p.setEffectiveFromYear(2027);
             payrollPersonRepository.save(p);
         }
         User viewer = actor("viewer");
@@ -298,6 +299,8 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 p.setOffice("MANILA");
                 p.setName("Seed Person");
                 p.setSalary(BigDecimal.TEN);
+                p.setRaisePct(BigDecimal.ZERO);
+                p.setIsOfficeCost(false);
                 p.setEffectiveFromYear(2027);
                 yield payrollPersonRepository.save(p).getId();
             }
@@ -320,6 +323,8 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 r.setEntityId(e);
                 r.setGroupKey("seed");
                 r.setLabel("Seed Row");
+                r.setBeginAmount(BigDecimal.ZERO);
+                r.setChangeAmount(BigDecimal.ZERO);
                 r.setPeriodStart(LocalDate.of(2026, 8, 1));
                 r.setPeriodEnd(LocalDate.of(2026, 8, 31));
                 yield actualsRowRepository.save(r).getId();

@@ -134,6 +134,28 @@ class PolarisForecastControllerTest extends BaseIntegrationTest {
     }
 
     @Test
+    @DisplayName("actuals: single-field PUT leaves beginAmount / changeAmount untouched")
+    void actuals_partialUpdate_keepsAmounts() throws Exception {
+        // Same latent defect as payroll_people (28 Oct 2026): ZERO field
+        // initializers on the entity made a label-only PUT reset both amounts.
+        String id = idOf(mockMvc.perform(as(admin, post(ACTUALS)).content(
+                "{\"groupKey\":\"revenue\",\"label\":\"Membership fees\",\"beginAmount\":401606.00,"
+                + "\"changeAmount\":364913.00,\"periodStart\":\"2026-01-01\",\"periodEnd\":\"2026-10-27\"}"))
+            .andExpect(status().isOk()).andReturn());
+
+        mockMvc.perform(as(admin, put(ACTUALS + "/" + id)).content("{\"label\":\"Membership fees (net)\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.label").value("Membership fees (net)"))
+            .andExpect(jsonPath("$.data.beginAmount").value(401606.00))
+            .andExpect(jsonPath("$.data.changeAmount").value(364913.00));
+
+        mockMvc.perform(as(admin, get(ACTUALS + "/" + id)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.beginAmount").value(401606.00))
+            .andExpect(jsonPath("$.data.changeAmount").value(364913.00));
+    }
+
+    @Test
     @DisplayName("actuals: periodEnd before periodStart -> 400 (create and update)")
     void actuals_invalidPeriod_returns400() throws Exception {
         mockMvc.perform(as(admin, post(ACTUALS)).content(

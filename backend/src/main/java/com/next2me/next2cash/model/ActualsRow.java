@@ -38,11 +38,14 @@ public class ActualsRow {
     @Column(nullable = false, length = 200)
     private String label;
 
+    // No field initializers: the entity doubles as the partial-PUT body and
+    // PolarisForecastService.updateActual null-checks each field. Create
+    // defaults missing amounts to ZERO in the service.
     @Column(name = "begin_amount", nullable = false, precision = 14, scale = 2)
-    private BigDecimal beginAmount = BigDecimal.ZERO;
+    private BigDecimal beginAmount;
 
     @Column(name = "change_amount", nullable = false, precision = 14, scale = 2)
-    private BigDecimal changeAmount = BigDecimal.ZERO;
+    private BigDecimal changeAmount;
 
     @Column(name = "period_start", nullable = false)
     private LocalDate periodStart;
