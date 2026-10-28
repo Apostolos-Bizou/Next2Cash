@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import api from '@/api'
+import { UUID_TO_KEY } from '@/stores/entityScope'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -67,15 +68,9 @@ const login = async () => {
       // every time they logged back in.
       const user = res.data.user
       if (user.entityIds && user.entityIds.length > 0) {
-        // User has entity restriction - map UUID to key
-        const uuidToKey = {
-          '58202b71-4ddb-45c9-8e3c-39e816bde972': 'next2me',
-          'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
-          '50317f44-9961-4fb4-add0-7a118e32dc14': 'next2megroup',
-          'baf68357-f959-43cf-9d8c-4170abe2ffc0': 'polaris',
-        }
+        // User has entity restriction - map UUID to key (entityScope.js)
         const allowedKeys = user.entityIds
-          .map((id) => uuidToKey[id])
+          .map((id) => UUID_TO_KEY[id])
           .filter((k) => !!k)
         const stored = localStorage.getItem('n2c_entity')
         if (stored && allowedKeys.includes(stored)) {

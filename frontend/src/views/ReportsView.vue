@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
+import { KEY_TO_UUID as ENTITY_MAP } from '@/stores/entityScope'
 
 // ── Filters ────────────────────────────────────────────────────────
 const selectedYear   = ref('all')
@@ -49,11 +50,6 @@ const types = [
 const allTransactions = ref([])
 const loading = ref(false)
 
-const ENTITY_MAP = {
-  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
-  house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
-}
 
 const MONTH_NAMES = [
   'Ιανουάριος',

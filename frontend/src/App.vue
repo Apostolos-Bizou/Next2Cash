@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { useUserStore } from '@/stores/user'
-import { OPERATIONAL_ENTITY_KEYS } from '@/stores/entityScope'
+import { UUID_TO_KEY } from '@/stores/entityScope'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,9 +43,11 @@ const userRole = computed(() => (userStore.profile?.role || '').toLowerCase())
 const filteredNavSections = computed(() => {
   const allowed = userAllowedSections.value
   const roleOk = (item) => !item.roles || item.roles.includes(userRole.value)
-  // Polaris P&L: items with requiresEntity show only if that entity is in the user's scope
-  // (scopedEntities, not filteredEntities — Polaris is in scope but not operational)
-  const entityOk = (item) => !item.requiresEntity || scopedEntities.value.some(e => e.key === item.requiresEntity)
+  // Polaris P&L: items with requiresEntity show only if that entity is in the
+  // user's scope AND is the currently selected entity. The section is added on
+  // top of the normal nav while Polaris is selected; nothing else is removed.
+  const entityOk = (item) => !item.requiresEntity
+    || (filteredEntities.value.some(e => e.key === item.requiresEntity) && selectedEntity.value === item.requiresEntity)
 
   return navSections
     .map(section => ({
@@ -61,31 +63,18 @@ const filteredNavSections = computed(() => {
     .filter(section => section.items.length > 0) // remove empty sections
 })
 
-// M.6: Filter entities for restricted users (every entity in the user's scope,
-// operational or not — used to gate nav sections such as POLARIS P&L)
-const scopedEntities = computed(() => {
+// M.6: Filter entities for restricted users. Every entity in the user's scope
+// (Polaris included — it is a full entity like the others) feeds the switcher.
+const filteredEntities = computed(() => {
   const restricted = userEntityIds.value
   if (restricted === null) return entities.value // null = all entities
 
-  // Map entity UUIDs to keys
-  // Polaris P&L: 'polaris' is now a real entity (code 'polaris'), so the old
-  // Phase 0 rewrite 'polaris' -> 'next2megroup' was removed; an out-of-scope
-  // stored key is corrected in onMounted instead.
-  const uuidToKey = {
-    '58202b71-4ddb-45c9-8e3c-39e816bde972': 'next2me',
-    'dea1f32c-7b30-4981-b625-633da9dbe71e': 'house',
-    '50317f44-9961-4fb4-add0-7a118e32dc14': 'next2megroup',
-    'baf68357-f959-43cf-9d8c-4170abe2ffc0': 'polaris',
-  }
-  const allowedKeys = restricted.map(uuid => uuidToKey[uuid]).filter(Boolean)
+  // Map entity UUIDs to keys via the single source of truth (entityScope.js).
+  // Polaris P&L: 'polaris' is a real entity (code 'polaris'); an out-of-scope
+  // stored key is corrected in onMounted.
+  const allowedKeys = restricted.map(uuid => UUID_TO_KEY[uuid]).filter(Boolean)
   return entities.value.filter(e => allowedKeys.includes(e.key))
 })
-
-// Entities offered in the global switcher: in scope AND operational.
-// Polaris (P&L-only) is excluded here; its views use POLARIS_ENTITY_ID directly.
-const filteredEntities = computed(() =>
-  scopedEntities.value.filter(e => OPERATIONAL_ENTITY_KEYS.includes(e.key))
-)
 
 // M.6: User display name for topbar
 const userDisplayName = computed(() => {
@@ -141,9 +130,8 @@ onMounted(async () => {
   if (filteredEntities.value.length === 1 && selectedEntity.value !== filteredEntities.value[0].key) {
     selectEntity(filteredEntities.value[0])
   }
-  // Polaris P&L: a stored key outside the operational set (a legacy 'polaris'
-  // that used to mean Next2Me Group, or 'polaris' picked before it was excluded
-  // from the switcher) falls back to the first allowed operational entity.
+  // Polaris P&L: a stored key outside the user's scope (e.g. a legacy 'polaris'
+  // that used to mean Next2Me Group) falls back to the first allowed entity.
   else if (filteredEntities.value.length > 0 && !filteredEntities.value.some(e => e.key === selectedEntity.value)) {
     selectEntity(filteredEntities.value[0])
   }
