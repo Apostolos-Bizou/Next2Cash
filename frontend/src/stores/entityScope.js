@@ -24,6 +24,15 @@ const KEY_TO_LABEL = {
   polaris: 'Polaris',
 };
 
+// Entities that carry operational (transactional) data: transactions, bank
+// accounts, payments, obligations. Only these belong in the global entity
+// switcher that drives Dashboard / Transactions / Payments / etc.
+// Polaris intentionally excluded — P&L-only entity (payroll, forecast,
+// actuals) with no transactions or bank accounts; selecting it in the
+// operational views sends requests without a resolvable entityId (400).
+// Extend this list if Polaris ever gets operational data.
+export const OPERATIONAL_ENTITY_KEYS = ['next2me', 'house', 'next2megroup'];
+
 function readUser() {
   try {
     return JSON.parse(localStorage.getItem('n2c_user') || '{}') || {};
