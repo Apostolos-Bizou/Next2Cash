@@ -24,14 +24,33 @@ const KEY_TO_LABEL = {
   polaris: 'Polaris',
 };
 
-// Entities that carry operational (transactional) data: transactions, bank
-// accounts, payments, obligations. Only these belong in the global entity
-// switcher that drives Dashboard / Transactions / Payments / etc.
-// Polaris intentionally excluded — P&L-only entity (payroll, forecast,
-// actuals) with no transactions or bank accounts; selecting it in the
-// operational views sends requests without a resolvable entityId (400).
-// Extend this list if Polaris ever gets operational data.
-export const OPERATIONAL_ENTITY_KEYS = ['next2me', 'house', 'next2megroup'];
+// ── Derived views of the same map ──────────────────────────────────────
+// Every view used to carry its own copy of these (key→UUID, key→{id,label},
+// [{id,code,name}] …). Polaris was missed in those copies twice, so now the
+// shapes the views need are derived here from UUID_TO_KEY / KEY_TO_LABEL.
+// To add an entity: add ONE line to UUID_TO_KEY and ONE to KEY_TO_LABEL.
+
+// key → UUID  (e.g. ENTITIES[selectedEntity] in Dashboard/Transactions/…)
+export const KEY_TO_UUID = Object.fromEntries(
+  Object.entries(UUID_TO_KEY).map(([id, key]) => [key, id])
+);
+
+// UUID → label (e.g. ScenariosView entityName(id))
+export const UUID_TO_LABEL = Object.fromEntries(
+  Object.entries(UUID_TO_KEY).map(([id, key]) => [id, KEY_TO_LABEL[key]])
+);
+
+// key → { id, label }  (ForecastView / PricingCalculatorView / DocumentsView shape)
+export const ENTITY_DETAILS = Object.fromEntries(
+  Object.entries(KEY_TO_UUID).map(([key, id]) => [key, { id, label: KEY_TO_LABEL[key] }])
+);
+
+// [{ id, key, code, name, label }]  — same field names /api/config/entities
+// returns (id/code/name), so it doubles as the offline fallback for AdminView
+// and as the option list for ProjectsView.
+export const ENTITY_OPTIONS = Object.entries(KEY_TO_UUID).map(([key, id]) => ({
+  id, key, code: key, name: KEY_TO_LABEL[key], label: KEY_TO_LABEL[key],
+}));
 
 function readUser() {
   try {

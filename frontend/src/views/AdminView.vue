@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/api'
+import { KEY_TO_UUID as ENTITIES_MAP, ENTITY_OPTIONS } from '@/stores/entityScope'
 
 // ═══════════════════════════════════════════════════════════════════
 //  SESSION #2 — Full Admin Panel (Users tab)
@@ -155,12 +156,8 @@ async function fetchEntities() {
   } catch (e) {
     // Silent fallback
   }
-  // Hardcoded fallback (matches current database state)
-  entities.value = [
-    { id: '58202b71-4ddb-45c9-8e3c-39e816bde972', code: 'next2me', name: 'Next2Me' },
-    { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', code: 'house',   name: 'House'   },
-    { id: '50317f44-9961-4fb4-add0-7a118e32dc14', code: 'next2megroup', name: 'Next2Me Group' }
-  ]
+  // Offline fallback: same {id, code, name} shape as /api/config/entities
+  entities.value = ENTITY_OPTIONS.map(({ id, code, name }) => ({ id, code, name }))
 }
 
 function formatLastLogin(iso) {
@@ -510,11 +507,7 @@ const visibleUsers = computed(() => {
 // ═══════════════════════════════════════════════════════════════════
 //  M.7 — Config Management State (Categories, Subcategories, Banks)
 // ═══════════════════════════════════════════════════════════════════
-const ENTITIES_MAP = {
-  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
-  house:   'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
-}
+// ENTITIES_MAP (key → UUID) is imported from entityScope.js at the top
 const selectedEntity = ref(localStorage.getItem('n2c_entity') || 'next2me')
 const adminEntityId = computed(() => ENTITIES_MAP[selectedEntity.value])
 

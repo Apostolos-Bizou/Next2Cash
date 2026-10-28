@@ -7,20 +7,12 @@ import {
   BarElement, CategoryScale, LinearScale,
 } from 'chart.js'
 import api from '@/api'
-import { allowedEntityKeys, isRestrictedToSingleEntity, defaultEntityKey } from '@/stores/entityScope'
+import {
+  allowedEntityKeys, isRestrictedToSingleEntity, defaultEntityKey,
+  KEY_TO_UUID as ENTITY_MAP_S82, KEY_TO_LABEL as ENTITY_LABELS,
+} from '@/stores/entityScope'
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
-
-const ENTITY_MAP_S82 = {
-  next2me:      '58202b71-4ddb-45c9-8e3c-39e816bde972',
-  house:        'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
-}
-const ENTITY_LABELS = {
-  next2me:      'Next2Me',
-  house:        'House',
-  next2megroup: 'Next2Me Group',
-}
 
 const PROJECT_COLORS = [
   '#a855f7', '#10b981', '#06b6d4', '#f97316', '#ef4444',
@@ -448,7 +440,7 @@ onUnmounted(() => { window.removeEventListener('entity-changed', __syncEntityFro
       </div>
       <div class="hdr-right">
         <select v-if="showEntityDropdownRV()" v-model="entityKey" class="entity-sel">
-          <option v-for="k in (rvAllowedKeys() || ['next2me','house','next2megroup'])" :key="k" :value="k">{{ ENTITY_LABELS[k] }}</option>
+          <option v-for="k in (rvAllowedKeys() || Object.keys(ENTITY_LABELS))" :key="k" :value="k">{{ ENTITY_LABELS[k] }}</option>
         </select>
         <button class="refresh-btn" @click="loadAll" :disabled="loading">
           <i class="fas fa-redo"></i>

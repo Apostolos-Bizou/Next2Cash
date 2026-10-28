@@ -4,7 +4,7 @@
 // Spent/progress calculations are intentional placeholders until S71-D backend aggregation.
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '@/api'
-import { isViewer } from '@/stores/entityScope'
+import { isViewer, KEY_TO_UUID, ENTITY_OPTIONS as ENTITY_OPTIONS_S78 } from '@/stores/entityScope'
 
 // ── State ───────────────────────────────────────────────────────────
 const loading = ref(false)
@@ -89,11 +89,7 @@ const modalForm = ref({
   isActive: true,
 });
 
-const ENTITY_OPTIONS_S78 = [
-  { id: '58202b71-4ddb-45c9-8e3c-39e816bde972', name: 'Next2Me' },
-  { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', name: 'House' },
-  { id: '50317f44-9961-4fb4-add0-7a118e32dc14', name: 'Next2Me Group' },
-];
+// ENTITY_OPTIONS_S78 ([{ id, name }]) is imported from entityScope.js
 // S103: backend accepts all 6 lifecycle statuses (S78 hotfix comment was stale)
 const STATUS_OPTIONS_S78 = [
   { value: 'PLANNING',       label: 'Σχεδιασμός' },
@@ -331,14 +327,9 @@ async function loadProjects() {
   error.value = null
   try {
     // Backend supports activeOnly=false to include inactive
-    // S77-PATCH-APPLIED S77-HOTFIX-APPLIED: inline ENTITY_MAP (this file does not import it)
-    const ENTITY_MAP_S77 = {
-      next2me:      '58202b71-4ddb-45c9-8e3c-39e816bde972',
-      house:        'dea1f32c-7b30-4981-b625-633da9dbe71e',
-      next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
-    }
+    // S77: entity-scoped query; key → UUID from entityScope.js
     const entityKey = localStorage.getItem('n2c_entity') || 'next2me'
-    const entityIdForQuery = ENTITY_MAP_S77[entityKey] || null
+    const entityIdForQuery = KEY_TO_UUID[entityKey] || null
     const res = await api.get('/api/projects', {
       params: { entityId: entityIdForQuery, activeOnly: showInactive.value ? false : true },
     })

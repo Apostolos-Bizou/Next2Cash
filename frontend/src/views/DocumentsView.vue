@@ -1,18 +1,13 @@
 <script setup>
 import { ref, computed } from 'vue'
 import api from '@/api'
+import { ENTITY_DETAILS as ENTITIES } from '@/stores/entityScope'   // key → { id, label }
 
 // -----------------------------------------------------------------
 // DocumentsView — ZIP Export for accountants
 // Select entity + date range → download all documents as ZIP
 // Backend: GET /api/documents/export?entityId=X&from=YYYY-MM-DD&to=YYYY-MM-DD
 // -----------------------------------------------------------------
-
-const ENTITIES = {
-  'next2me': { id: '58202b71-4ddb-45c9-8e3c-39e816bde972', label: 'Next2me' },
-  'house':   { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', label: 'House' },
-  'next2megroup': { id: '50317f44-9961-4fb4-add0-7a118e32dc14', label: 'Next2Me Group' }
-}
 
 // PHASE_61B_ENTITY_FILTER: filter entities by user's allowed entityIds
 // If user.entityIds is null/missing => no restriction (show all).

@@ -10,12 +10,7 @@ import {
   listDispatches, getDispatch, createDispatch, previewDispatch, getDispatchPdf,
   deleteDispatch, getRecipients, buildDispatchPayload,
 } from '@/api/dispatches'
-
-const ENTITY_MAP = {
-  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
-  house: 'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
-}
+import { KEY_TO_UUID as ENTITY_MAP } from '@/stores/entityScope'
 const entityId = () => ENTITY_MAP[localStorage.getItem('n2c_entity') || 'next2me'] || ENTITY_MAP.next2me
 
 const route = useRoute()

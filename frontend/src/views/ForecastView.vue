@@ -16,22 +16,16 @@ import {
   PointElement, LineElement, Filler,
 } from 'chart.js'
 import api from '@/api'
-import { allowedEntityKeys, isRestrictedToSingleEntity, defaultEntityKey } from '@/stores/entityScope'
+import {
+  allowedEntityKeys, isRestrictedToSingleEntity, defaultEntityKey,
+  ENTITY_DETAILS as ENTITY_MAP,   // key → { id, label } (S77 entity-scoped)
+} from '@/stores/entityScope'
 
 ChartJS.register(
   Title, Tooltip, Legend,
   BarElement, CategoryScale, LinearScale,
   PointElement, LineElement, Filler
 )
-
-/* ----------------------------------------------------------------
-   Entity mapping (matches all other views; S77 entity-scoped)
-   ---------------------------------------------------------------- */
-const ENTITY_MAP = {
-  next2me:      { id: '58202b71-4ddb-45c9-8e3c-39e816bde972', label: 'Next2Me' },
-  house:        { id: 'dea1f32c-7b30-4981-b625-633da9dbe71e', label: 'House' },
-  next2megroup: { id: '50317f44-9961-4fb4-add0-7a118e32dc14', label: 'Next2Me Group' },
-}
 
 const entities = ref([])  // populated from /api/config/entities; falls back to hardcoded
 const entityKey = ref(defaultEntityKey('next2megroup'))
@@ -119,7 +113,7 @@ async function loadEntities() {
   } catch (e) {
     // 403 or other -- fall through to hardcoded
   }
-  // Fallback to hardcoded 3 entities
+  // Fallback to the central entity map
   const _allowed = allowedEntityKeys()
       entities.value = Object.keys(ENTITY_MAP)
         .filter(k => _allowed === null || _allowed.includes(k))

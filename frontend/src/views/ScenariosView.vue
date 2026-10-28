@@ -7,7 +7,7 @@
 // GET /api/forecast/compare. No new route/section.
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import api from '@/api'
-import { isRestrictedToSingleEntity } from '@/stores/entityScope'
+import { isRestrictedToSingleEntity, KEY_TO_UUID as ENTITIES, UUID_TO_LABEL as ENTITY_NAMES } from '@/stores/entityScope'
 import {
   Chart, LineController, LineElement, PointElement, LinearScale,
   CategoryScale, Tooltip, Legend, Filler
@@ -32,19 +32,8 @@ const isAdmin = computed(() => {
 
 // "Next2Me Group" uses localStorage key 'next2megroup' (its old key 'polaris'
 // was renamed in App.vue). Since Polaris P&L, 'polaris' is the real Polaris
-// entity -- no longer an alias for Next2Me Group.
-const ENTITIES = {
-  next2me: '58202b71-4ddb-45c9-8e3c-39e816bde972',
-  house: 'dea1f32c-7b30-4981-b625-633da9dbe71e',
-  next2megroup: '50317f44-9961-4fb4-add0-7a118e32dc14',
-  polaris: 'baf68357-f959-43cf-9d8c-4170abe2ffc0'
-}
-const ENTITY_NAMES = {
-  '58202b71-4ddb-45c9-8e3c-39e816bde972': 'Next2Me',
-  'dea1f32c-7b30-4981-b625-633da9dbe71e': 'House',
-  '50317f44-9961-4fb4-add0-7a118e32dc14': 'Next2Me Group',
-  'baf68357-f959-43cf-9d8c-4170abe2ffc0': 'Polaris'
-}
+// entity -- no longer an alias for Next2Me Group. ENTITIES (key → UUID) and
+// ENTITY_NAMES (UUID → label) come from entityScope.js.
 function entityName(id) { return ENTITY_NAMES[id] || '—' }
 function currentEntityId() {
   const key = localStorage.getItem('n2c_entity') || 'next2me'
