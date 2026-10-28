@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
 import { useUiStore } from '@/stores/ui'
 import { useUserStore } from '@/stores/user'
+import { OPERATIONAL_ENTITY_KEYS } from '@/stores/entityScope'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,7 +44,8 @@ const filteredNavSections = computed(() => {
   const allowed = userAllowedSections.value
   const roleOk = (item) => !item.roles || item.roles.includes(userRole.value)
   // Polaris P&L: items with requiresEntity show only if that entity is in the user's scope
-  const entityOk = (item) => !item.requiresEntity || filteredEntities.value.some(e => e.key === item.requiresEntity)
+  // (scopedEntities, not filteredEntities — Polaris is in scope but not operational)
+  const entityOk = (item) => !item.requiresEntity || scopedEntities.value.some(e => e.key === item.requiresEntity)
 
   return navSections
     .map(section => ({
@@ -59,8 +61,9 @@ const filteredNavSections = computed(() => {
     .filter(section => section.items.length > 0) // remove empty sections
 })
 
-// M.6: Filter entities for restricted users
-const filteredEntities = computed(() => {
+// M.6: Filter entities for restricted users (every entity in the user's scope,
+// operational or not — used to gate nav sections such as POLARIS P&L)
+const scopedEntities = computed(() => {
   const restricted = userEntityIds.value
   if (restricted === null) return entities.value // null = all entities
 
@@ -77,6 +80,12 @@ const filteredEntities = computed(() => {
   const allowedKeys = restricted.map(uuid => uuidToKey[uuid]).filter(Boolean)
   return entities.value.filter(e => allowedKeys.includes(e.key))
 })
+
+// Entities offered in the global switcher: in scope AND operational.
+// Polaris (P&L-only) is excluded here; its views use POLARIS_ENTITY_ID directly.
+const filteredEntities = computed(() =>
+  scopedEntities.value.filter(e => OPERATIONAL_ENTITY_KEYS.includes(e.key))
+)
 
 // M.6: User display name for topbar
 const userDisplayName = computed(() => {
@@ -132,8 +141,9 @@ onMounted(async () => {
   if (filteredEntities.value.length === 1 && selectedEntity.value !== filteredEntities.value[0].key) {
     selectEntity(filteredEntities.value[0])
   }
-  // Polaris P&L: a stored key outside the user's scope (e.g. a legacy 'polaris'
-  // that used to mean Next2Me Group) falls back to the first allowed entity.
+  // Polaris P&L: a stored key outside the operational set (a legacy 'polaris'
+  // that used to mean Next2Me Group, or 'polaris' picked before it was excluded
+  // from the switcher) falls back to the first allowed operational entity.
   else if (filteredEntities.value.length > 0 && !filteredEntities.value.some(e => e.key === selectedEntity.value)) {
     selectEntity(filteredEntities.value[0])
   }
@@ -219,7 +229,7 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
           <span>▾</span>
         </div>
         <div class="entity-menu" v-if="showEntityMenu">
-          <div v-for="e in filteredEntities" :key="e.key" class="entity-option" :class="{ active: e.key === selectedEntity }" @click="selectEntity(e)">{{ e.label }}<span v-if="e.key === 'polaris'" class="entity-chip">NEW</span></div>
+          <div v-for="e in filteredEntities" :key="e.key" class="entity-option" :class="{ active: e.key === selectedEntity }" @click="selectEntity(e)">{{ e.label }}</div>
         </div>
       </div>
 
@@ -311,7 +321,6 @@ const currentTitle = computed(() => route.meta?.title || 'Next2Cash')
 .nav-item--gold.nav-item--active { background: rgba(245,180,62,.14); color: #f5b43e; }
 .nav-item--gold .nav-badge { background: #f5b43e; color: #241a04; font-size: .58rem; }
 .entity-option { display: flex; align-items: center; justify-content: space-between; }
-.entity-chip { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(245,180,62,.14); color: #f5b43e; }
 /* ─── end Polaris P&L ─── */
 .sidebar__bottom { padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.06); }
 .logout-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 8px; background: none; border: none; color: #8899aa; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 120ms ease; }
