@@ -8,13 +8,22 @@
 - **Users:** 4 — Απόστολος Βίζου (admin, all entities), Sissy (user, data entry), Λεωνίδας (accountant, read-only + ZIP export), Σίμος Βαρίας (viewer, **ONLY Next2Me Group**, investor)
 - **Stack:** Vue 3.5.13 + Vite 6.0.3 + Pinia 2.2.6 + Spring Boot 3.2.4 (Java 17) + PostgreSQL 15 + Azure
 
-## Entities (3)
+## Entities (4)
 | Code | Name | Currency | Transactions |
 |---|---|---|---|
 | `next2me` | Next2Me | EUR | 4.764 |
 | `house` | House | EUR | 187 |
 | `next2megroup` | Next2Me Group | EUR | 41 |
+| `polaris` | Polaris (P&L module, Oct 2026) | USD | — (no cash-flow transactions; payroll/forecast/actuals tables only) |
 Total: 4.992 live transactions · 19 bank accounts · 25 recurrence patterns
+
+## Polaris P&L module (Oct 2026)
+- Views: `/polaris/dashboard` (any Polaris role incl. global VIEWER), `/polaris/payroll`, `/polaris/forecast` (admin/user/accountant). Access = `entity_roles` (admin / editor / viewer) checked per endpoint via `UserAccessService.assertPolaris*`.
+- Tables (manual SQL, no Flyway): `payroll_people`, `payroll_person_raises`, `payroll_milestones`, `forecast_assumptions`, `cost_milestones`, `actuals_rows`, `entity_roles`, `user_notices`.
+- Math parity: `PolarisForecastMath.java` ↔ `frontend/src/stores/polarisMath.js` (tests on both sides, hand-verified fixtures). Rules: members interpolate; payroll raises = compounding STEPS; **OPEX = STEP from $0** (latest target dated ≤ the point, 30 Oct 2026); employer contributions = `employer_contrib_pct` % of STAFF salaries (rent rows excluded).
+- OPEX categories (9): Consultants, Audit, Legal, IT / Computer, Marketing / Διαφήμιση, Ταξίδια, PR, Λοιπά, Σύνδεσμοι — Astrolavos actuals stay combined (`OPEX_ACTUALS_LABEL`), run-rate hint shown as the combined figure.
+- Excel export: `GET /api/polaris/forecast/export?years=1|3|5` (admin+editor, never VIEWER) → `PolarisForecastExportService` (Apache POI, same pattern as `CardExportService`). Export only — no import path.
+- Seed / migrations: `docs/specs/polaris_seed.sql` (canonical, idempotent), `docs/specs/polaris_cost_milestones_split.sql` (rename of the one legacy combined-category row — owner decision).
 
 ## Local setup
 - Path: `C:\Users\akage\Documents\Next2Cash`
@@ -35,15 +44,16 @@ Total: 4.992 live transactions · 19 bank accounts · 25 recurrence patterns
 5. **`vite.config.js secure:true`** (×2 — server + preview proxy)
 
 ## Recent context
-- Last session: **S103** (Projects board ↔ Notion portfolio alignment + lifecycle sort + S78 status-coercion fix)
-- HEAD: `d44f1c9` (main, clean tree) · Last stable tag: `after-status-edit-fix-20260604_154346`
-- ProjectsView: 19 projects on board, default sort = **Κύκλος ζωής** (LIVE→IN_DEVELOPMENT→TESTING→PLANNING→PAUSED→CANCELLED); edit modal now preserves real status (S78 hotfix removed)
-- Tests: 211 passing across 28 files · Backend: 22 controllers / 18 services / 14 repos / 15 entities · Frontend: 20 views
+- Last session: **30 Oct 2026 — Polaris backlog close-out** (OPEX step function + 9 categories, `employer_contrib_pct`, Excel export, branch/firewall/password cleanup). Before that: Polaris P&L Phases 0–4 (PRs #1–#6, 27–29 Oct 2026); S103 (Projects board lifecycle sort) was the last pre-Polaris session.
+- Last stable tags: `after-polaris-opex-raises` (29 Oct 2026) · `after-status-edit-fix-20260604_154346` (pre-Polaris)
+- Branch hygiene (30 Oct 2026): every merged `feat/*`, `feature/*`, `fix/*` branch deleted locally and on origin; only `main`, `docs/add-claude-md`, `feat/phase-b-entity-filtering`, `feature/pdf-download-filename` (unmerged) remain.
+- Tests: 25 frontend (node --test, 4 files) + 485 backend JUnit (39 test files; Polaris classes: Math, Summary, Export, OpexAndRaises, Payroll, Forecast, PreAuthorizeInvariant, UserAccessServicePolaris) · Backend: 30 controllers / 23 services / 25 repos / 27 entities · Frontend: 24 views
 
 ## Pending / Backlog
-- 🔧 Security debt (HIGH): App Service `httpsOnly = FALSE` → flip true · server-side entity filter · rotate PostgreSQL password + JWT secret · migrate secrets to Key Vault
+- 🔧 Security debt (HIGH): App Service `httpsOnly = FALSE` → flip true · server-side entity filter · rotate JWT secret (still hardcoded in `application.properties`, overridden by App Service `NEXT2CASH_JWT_SECRET`) · migrate secrets to Key Vault. DONE 30 Oct 2026: stale PostgreSQL password removed from `application.properties` (`${SPRING_DATASOURCE_PASSWORD:}`), 4 orphaned `akage-*` DB firewall rules deleted (only `AllowAzureServices` remains; temp rules per session, deleted in `finally`).
+- Polaris: decide the category for the one legacy `cost_milestones` row (`docs/specs/polaris_cost_milestones_split.sql`) · set `employer_contrib_pct` in Παραδοχές (defaults to 0) · per-investor reports (Simos-facing PDF/Excel)
 - S89.2 white-theme NewEntryView (locally patched, ready to deploy)
-- Per-investor reports (Simos-facing PDF/Excel) · multi-currency `fxRate` live API · Azure region Central US → North Europe
+- multi-currency `fxRate` live API · Azure region Central US → North Europe
 
 ## Project-specific risks
 - **Σίμος Βαρίας (investor)** = single most dangerous user — verify σε incognito μετά από κάθε security-touching change
