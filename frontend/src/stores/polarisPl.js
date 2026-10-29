@@ -85,7 +85,13 @@ export const ASSUMPTION_KEYS = {
   dentalPay: 'dental_payable',
   phpPerUsd: 'fx_php_per_usd',
   usdPerEur: 'fx_usd_per_eur',   // stored, but no longer used: Athens payroll is in USD (28 Oct 2026)
+  // member-forecast mode of the Forecast page, persisted so the server-side
+  // Dashboard summary (GET /forecast/summary) matches the admin's view:
+  // 1 = 'milestones' (Χειροκίνητοι στόχοι), 0 / absent = 'growth' (Ποσοστό %)
+  membersMode: 'members_mode',
 }
+const MEMBERS_MODE_VALUE = { growth: 0, milestones: 1 }
+const membersModeFromValue = v => Number(v) >= 1 ? 'milestones' : 'growth'
 
 // ---------------- period helpers ("dd/mm/yyyy – dd/mm/yyyy" <-> ISO dates) ----------------
 const pad = n => String(n).padStart(2, '0')
@@ -191,7 +197,16 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
 
   function setHorizon(y) { horizon.value = y; writeLs('pl_horizon', y) }
   function setGranularity(g) { granularity.value = g; writeLs('pl_granularity', g) }
-  function setMemberForecastMode(mode) { memberForecastMode.value = mode; writeLs('pl_memberMode', mode) }
+  // The server value is the source of truth (it drives the Dashboard summary for
+  // every role); localStorage is only a cache for the first paint before load().
+  function setMemberForecastMode(mode) {
+    memberForecastMode.value = mode
+    writeLs('pl_memberMode', mode)
+    if (role.value === 'admin') {
+      inputs.membersMode = MEMBERS_MODE_VALUE[mode] ?? 0
+      return saveAssumption('membersMode')
+    }
+  }
 
   // ---------------- load ----------------
   // keepSaveError: the resync after a failed write keeps its error visible;
@@ -226,6 +241,13 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
       for (const a of asm) {
         const field = Object.keys(ASSUMPTION_KEYS).find(k => ASSUMPTION_KEYS[k] === a.key)
         if (field) { inputs[field] = Number(a.value); assumptionIds[field] = a.id }
+      }
+      // persisted member-forecast mode wins over the localStorage cache (admin only
+      // loads assumptions; other roles keep their cached/default value, which is
+      // irrelevant to them since the Dashboard summary is computed server-side)
+      if (inputs.membersMode !== '') {
+        memberForecastMode.value = membersModeFromValue(inputs.membersMode)
+        writeLs('pl_memberMode', memberForecastMode.value)
       }
       actualsRows.value = act.map(actualFromApi)
       // active period = the latest one that has rows, else 1 Jan – today

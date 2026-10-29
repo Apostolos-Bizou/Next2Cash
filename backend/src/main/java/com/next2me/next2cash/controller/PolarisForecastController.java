@@ -4,6 +4,7 @@ import com.next2me.next2cash.model.ActualsRow;
 import com.next2me.next2cash.model.ForecastAssumption;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.service.PolarisForecastService;
+import com.next2me.next2cash.service.PolarisForecastSummaryService;
 import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,10 +17,10 @@ import java.util.*;
  * Polaris P&L forecast endpoints (Phase 1, Oct 2026): assumptions + actuals.
  *
  * Same security model as PolarisPayrollController:
- *   1. @PreAuthorize (class level): ADMIN, USER, ACCOUNTANT. Exactly one
- *      method-level override: GET /actuals (the Dashboard's data source) also
- *      admits the global VIEWER role. Every write keeps the class-level gate,
- *      so VIEWER can never reach a POST/PUT/DELETE (Invariant 1).
+ *   1. @PreAuthorize (class level): ADMIN, USER, ACCOUNTANT. Exactly two
+ *      method-level overrides: GET /actuals and GET /summary (the Dashboard's
+ *      data sources) also admit the global VIEWER role. Every write keeps the
+ *      class-level gate, so VIEWER can never reach a POST/PUT/DELETE (Invariant 1).
  *   2. entity_roles for the Polaris entity, checked per endpoint here:
  *
  *        resource     | GET            | POST / PUT / DELETE
@@ -34,6 +35,10 @@ import java.util.*;
  *   PUT    /api/polaris/forecast/assumptions/{id}?entityId=X
  *   DELETE /api/polaris/forecast/assumptions/{id}?entityId=X
  *   (same five for /api/polaris/forecast/actuals)
+ *   GET    /api/polaris/forecast/summary?entityId=X&years=1|3|5[&membersMode=growth|milestones]
+ *          -> computed aggregates only (EBITDA, break-even, KPIs, per-year series);
+ *             any Polaris role (admin / editor / viewer); never person rows,
+ *             names, salaries or raw assumption values.
  */
 @RestController
 @RequestMapping("/api/polaris/forecast")
@@ -43,7 +48,24 @@ import java.util.*;
 public class PolarisForecastController {
 
     private final PolarisForecastService polarisForecastService;
+    private final PolarisForecastSummaryService polarisForecastSummaryService;
     private final UserAccessService userAccessService;
+
+    // -------------------------------------------------------------------
+    // forecast summary -- GET: admin+editor+viewer, computed aggregates only
+    // -------------------------------------------------------------------
+
+    @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')")  // GET-only override; entity_roles still decides
+    public ResponseEntity<?> forecastSummary(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId,
+            @RequestParam(defaultValue = "1") int years,
+            @RequestParam(required = false) String membersMode) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisRead(user, entityId);
+        return ok(polarisForecastSummaryService.summary(entityId, years, membersMode));
+    }
 
     // -------------------------------------------------------------------
     // forecast_assumptions -- GET: admin, writes: admin

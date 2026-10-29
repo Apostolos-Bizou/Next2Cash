@@ -40,9 +40,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Invariant 1 + per-endpoint access matrix for the Polaris controllers.
  *
  * Part A (reflection): every Polaris controller is gated by the class-level
- * @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT')"). Exactly three
+ * @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT')"). Exactly four
  * GET endpoints carry a method-level override that also admits VIEWER
- * (my-role, actuals list, payroll summary -- what the P&L Dashboard reads).
+ * (my-role, actuals list, payroll summary, forecast summary -- what the P&L
+ * Dashboard reads).
  * No write ever carries a method-level annotation, so VIEWER can never reach
  * a POST/PUT/DELETE (Invariant 1).
  *
@@ -55,7 +56,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   assumptions  | admin           | admin
  *   actuals      | admin, editor, viewer | admin, editor
  *
- * Part C: my-role, Part D: payroll summary (GET-only, aggregate, any role).
+ * Part C: my-role, Part D: payroll summary, Part E: forecast summary
+ * (all GET-only, aggregate, any Polaris role incl. the global VIEWER).
  *
  * Actors: Polaris admin / editor / viewer and a user with NO role all hold the
  * global role 'user', so only entity_roles decides. global-viewer (Simos-style)
@@ -70,6 +72,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
     private static final Set<String> VIEWER_GET_OVERRIDES = Set.of(
         "PolarisAccessController#myRole",
         "PolarisForecastController#listActuals",
+        "PolarisForecastController#forecastSummary",
         "PolarisPayrollController#payrollSummary");
     private static final List<Class<?>> CONTROLLERS =
         List.of(PolarisPayrollController.class, PolarisForecastController.class, PolarisAccessController.class);
@@ -88,7 +91,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("A2: only the 3 Dashboard GETs override the class-level gate; no write does (22 endpoints, 12 writes)")
+    @DisplayName("A2: only the 4 Dashboard GETs override the class-level gate; no write does (23 endpoints, 12 writes)")
     void onlyDashboardGetsOverride() {
         List<String> violations = new ArrayList<>();
         Set<String> found = new java.util.HashSet<>();
@@ -111,7 +114,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 else found.add(name);
             }
         }
-        assertEquals(22, endpoints, "expected 22 endpoints (5 per resource x 4 resources + my-role + payroll summary)");
+        assertEquals(23, endpoints, "expected 23 endpoints (5 per resource x 4 resources + my-role + payroll summary + forecast summary)");
         assertEquals(12, writes, "expected 12 write endpoints (3 per resource x 4 resources)");
         assertTrue(violations.isEmpty(), "method-level @PreAuthorize violations: " + violations);
         assertEquals(VIEWER_GET_OVERRIDES, found, "every Dashboard GET must carry the VIEWER gate");
@@ -295,6 +298,28 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
         assertFalse(body.contains("Secret"), "summary must not contain names: " + body);
         assertFalse(body.contains("\"id\""), "summary must not contain row ids: " + body);
         assertFalse(body.contains("1000") || body.contains("2500.5"), "summary must not contain per-person amounts: " + body);
+    }
+
+    // ─── Part E: GET /api/polaris/forecast/summary ───────────────────────
+
+    static Stream<Arguments> forecastSummaryMatrix() {
+        return Stream.of(
+            Arguments.of("admin", 200), Arguments.of("editor", 200), Arguments.of("viewer", 200),
+            Arguments.of("none", 403), Arguments.of("global-viewer", 200), Arguments.of("global-viewer-none", 403));
+    }
+
+    @ParameterizedTest(name = "forecast summary as {0} -> {1}")
+    @MethodSource("forecastSummaryMatrix")
+    @DisplayName("E: forecast summary for any Polaris role (global VIEWER included); no row -> 403")
+    void forecastSummaryMatrix(String actor, int expected) throws Exception {
+        seed(Res.PEOPLE);
+        seed(Res.ASSUMPTIONS);
+        User user = actor(actor);
+        mockMvc.perform(get("/api/polaris/forecast/summary")
+                .param("entityId", polaris.getId().toString())
+                .param("years", "3")
+                .header("Authorization", tdb.bearerToken(user)))
+            .andExpect(status().is(expected));
     }
 
     private User actor(String actor) {
