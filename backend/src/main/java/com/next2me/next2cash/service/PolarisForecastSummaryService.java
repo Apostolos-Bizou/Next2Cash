@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +38,11 @@ import static com.next2me.next2cash.service.PolarisForecastMath.OPEX_CATEGORIES;
  * names, salaries, raises, category names or milestone dates, and no raw
  * assumption values other than the current member count.
  *
+ * {@link #detail} (30 Oct 2026) is the full per-year P&L (revenue lines,
+ * third-party lines, payroll per office, employer contributions, OPEX per
+ * category, EBITDA) behind the Excel export. It is admin/editor material: the
+ * controller never serves it to a viewer.
+ *
  * The math is a 1:1 port of the frontend store (polarisPl.js / polarisMath.js),
  * which mirrors the Polaris xlsx model:
  *   - forecast year y = 1 is the current calendar year; year y is evaluated at
@@ -46,21 +52,26 @@ import static com.next2me.next2cash.service.PolarisForecastMath.OPEX_CATEGORIES;
  *     a person with no rows falls back to the legacy one-time raise_pct from
  *     effective_from_year;
  *   - office-cost rows are part of the payroll total;
+ *   - employer contributions (30 Oct 2026): the forecast_assumptions key
+ *     `employer_contrib_pct` (%) applied to the STAFF salaries of the year
+ *     (office-cost rows such as rent carry no contributions);
  *   - members: flat % growth compounded per year ("growth"), or the shared
  *     milestone interpolation over payroll_milestones ("milestones");
  *   - which of the two applies is the admin's choice on the Forecast page,
  *     persisted as the forecast_assumptions row `members_mode`
  *     (value 1 = milestones, anything else / absent = growth), so this summary
  *     matches what the admin sees. An explicit membersMode argument overrides it.
- *   - OPEX: for each PolarisForecastMath.OPEX_CATEGORIES label, the
- *     cost_milestones of that category interpolate with the same rule as members
- *     from a $0 baseline (decision 29 Oct 2026): a category without milestones
- *     contributes nothing, and the admin adds a first target near today at the
- *     current run-rate when the present cost should count too (the Forecast page
- *     shows that run-rate as a hint). EBITDA = contribution − payroll − OPEX.
+ *   - OPEX: for each PolarisForecastMath.OPEX_CATEGORIES label (9 since 30 Oct
+ *     2026), the cost_milestones of that category form a STEP function from a
+ *     $0 baseline (PolarisForecastMath#stepAt): the annual amount in force at a
+ *     forecast point is the latest target dated on or before it; a category
+ *     without milestones contributes nothing, and the admin adds a first target
+ *     near today at the current run-rate when the present cost should count too
+ *     (the Forecast page shows that run-rate as a hint).
+ *     EBITDA = contribution − payroll − employer contributions − OPEX.
  *
  * Access control is NOT done here: PolarisForecastController runs the
- * entity_roles guard first (any Polaris role may read this).
+ * entity_roles guard first (any Polaris role may read the summary).
  */
 @Service
 @RequiredArgsConstructor
@@ -82,6 +93,8 @@ public class PolarisForecastSummaryService {
         K_PHP_PER_USD = "fx_php_per_usd";
     /** forecast_assumptions key holding the member-forecast mode: 1 = milestones, else growth. */
     public static final String K_MEMBERS_MODE = "members_mode";
+    /** forecast_assumptions key: employer social contributions as % of staff salaries (30 Oct 2026). */
+    public static final String K_EMPLOYER_CONTRIB_PCT = "employer_contrib_pct";
 
     private final PayrollPersonRepository payrollPersonRepository;
     private final PayrollPersonRaiseRepository payrollPersonRaiseRepository;
@@ -116,8 +129,27 @@ public class PolarisForecastSummaryService {
         List<SeriesPoint> series
     ) {}
 
+    // -------------------------------------------------------------------
+    // Detail shape (Excel export; admin/editor only -- never a viewer)
+    // -------------------------------------------------------------------
+
+    /** One forecast year, every line of the P&L model. opexByCategory keeps OPEX_CATEGORIES order. */
+    public record YearDetail(
+        int year, int calendarYear, double members,
+        double revenueNetworkFee, double revenueMonthlyFee, double revenueAuditFee, double revenueDentalFee, double revenue,
+        double thirdPartyNetwork, double thirdPartyAudit, double thirdPartyDental, double thirdParty,
+        double contribution,
+        double payrollAthens, double payrollManila, double payrollOther, double payroll,
+        double staffSalaries, double employerContribPct, double employerContrib,
+        Map<String, Double> opexByCategory, double opex,
+        double ebitda
+    ) {}
+
+    public record ForecastDetail(int years, int baseYear, String membersMode, double phpPerUsd, List<YearDetail> rows) {}
+
     /** One forecast point (the store's pnlAtYear). Package-private for tests. */
-    record Pnl(double members, double revenue, double thirdParty, double contribution, double payroll, double opex, double ebitda) {}
+    record Pnl(double members, double revenue, double thirdParty, double contribution, double payroll,
+               double employerContrib, double opex, double ebitda) {}
 
     /** Everything pnlAtYear needs, loaded once per request. Package-private for tests. */
     record Inputs(
@@ -147,8 +179,9 @@ public class PolarisForecastSummaryService {
 
         Pnl cur = pnlAtYear(years, in);
         double contribPerMember = cur.members() != 0 ? cur.contribution() / cur.members() : 0;
-        // break-even: members needed to cover the fixed cost base (payroll + OPEX) at the horizon's per-member contribution
-        Double breakEven = contribPerMember > 0 ? (cur.payroll() + cur.opex()) / contribPerMember : null;
+        // break-even: members needed to cover the fixed cost base (payroll + contributions + OPEX) at the horizon's per-member contribution
+        double fixedCosts = cur.payroll() + cur.employerContrib() + cur.opex();
+        Double breakEven = contribPerMember > 0 ? fixedCosts / contribPerMember : null;
         Double breakEvenDistance = breakEven == null ? null : cur.members() - breakEven;
 
         List<SeriesPoint> series = new ArrayList<>();
@@ -177,7 +210,22 @@ public class PolarisForecastSummaryService {
         );
     }
 
-    /** Loads assumptions, people + raises, member milestones, OPEX run-rates + milestones. Package-private for tests. */
+    public ForecastDetail detail(UUID entityId, int years) {
+        return detail(entityId, years, LocalDate.now());
+    }
+
+    /** Full per-year P&L for the export (the admin's persisted members_mode applies). */
+    public ForecastDetail detail(UUID entityId, int years, LocalDate today) {
+        if (!ALLOWED_YEARS.contains(years)) {
+            throw new IllegalArgumentException("years must be one of 1, 3, 5");
+        }
+        Inputs in = loadInputs(entityId, null, today);
+        List<YearDetail> rows = new ArrayList<>();
+        for (int y = 1; y <= years; y++) rows.add(yearDetail(y, in));
+        return new ForecastDetail(years, in.baseYear(), in.membersMode(), phpPerUsd(in.assumptions()), rows);
+    }
+
+    /** Loads assumptions, people + raises, member milestones, OPEX milestones. Package-private for tests. */
     Inputs loadInputs(UUID entityId, String membersMode, LocalDate today) {
         Map<String, Double> a = forecastAssumptionRepository.findByEntityIdOrderByKeyAsc(entityId).stream()
             .collect(Collectors.toMap(ForecastAssumption::getKey, x -> num(x.getValue()), (x, y) -> y));
@@ -230,22 +278,58 @@ public class PolarisForecastSummaryService {
     // -------------------------------------------------------------------
 
     static Pnl pnlAtYear(int y, Inputs in) {
+        YearDetail d = yearDetail(y, in);
+        return new Pnl(d.members(), d.revenue(), d.thirdParty(), d.contribution(), d.payroll(),
+            d.employerContrib(), d.opex(), d.ebitda());
+    }
+
+    /** Every line of the model at forecast year y (the store's pnlAtYear, itemised). */
+    static YearDetail yearDetail(int y, Inputs in) {
         Map<String, Double> a = in.assumptions();
         double members = membersAtYear(y, in);
         double netFee = a.getOrDefault(K_NET_FEE, 0.0), monthlyFee = a.getOrDefault(K_MONTHLY_FEE, 0.0);
         double auditRate = a.getOrDefault(K_AUDIT_RATE, 0.0), dentalFee = a.getOrDefault(K_DENTAL_FEE, 0.0);
         double netPay = a.getOrDefault(K_NET_PAY, 0.0), auditPay = a.getOrDefault(K_AUDIT_PAY, 0.0);
         double dentalPay = a.getOrDefault(K_DENTAL_PAY, 0.0);
-        double phpPerUsd = a.getOrDefault(K_PHP_PER_USD, 0.0);
-        if (phpPerUsd == 0) phpPerUsd = DEFAULT_PHP_PER_USD;   // store: num(inputs.phpPerUsd, 56.5)
+        double phpPerUsd = phpPerUsd(a);
+        double contribPct = a.getOrDefault(K_EMPLOYER_CONTRIB_PCT, 0.0);
 
-        double revenue = members * netFee + members * monthlyFee * 12 + members * auditRate * CLAIMS + members * dentalFee;
-        double thirdParty = members * netPay * (1 + NET_VAT) + members * CLAIMS * auditPay * (1 + AUDIT_VAT)
-            + members * dentalPay * (1 + DENTAL_VAT);
+        double revNet = members * netFee, revMonthly = members * monthlyFee * 12;
+        double revAudit = members * auditRate * CLAIMS, revDental = members * dentalFee;
+        double revenue = revNet + revMonthly + revAudit + revDental;
+        double tpNet = members * netPay * (1 + NET_VAT), tpAudit = members * CLAIMS * auditPay * (1 + AUDIT_VAT);
+        double tpDental = members * dentalPay * (1 + DENTAL_VAT);
+        double thirdParty = tpNet + tpAudit + tpDental;
         double contribution = revenue - thirdParty;
-        double payroll = payrollUsdInYear(in.people(), in.raisesByPerson(), calendarYear(in.baseYear(), y), phpPerUsd);
-        double opex = opexAtYear(y, in);
-        return new Pnl(members, revenue, thirdParty, contribution, payroll, opex, contribution - payroll - opex);
+
+        int calYear = calendarYear(in.baseYear(), y);
+        double athens = 0, manila = 0, other = 0, staff = 0;
+        for (PayrollPerson p : in.people()) {
+            double usd = usdSalaryInYear(p, in.raisesByPerson().getOrDefault(p.getId(), List.of()), calYear, phpPerUsd);
+            if ("ATHENS".equalsIgnoreCase(p.getOffice())) athens += usd;
+            else if ("MANILA".equalsIgnoreCase(p.getOffice())) manila += usd;
+            else other += usd;
+            if (!Boolean.TRUE.equals(p.getIsOfficeCost())) staff += usd;
+        }
+        double payroll = athens + manila + other;
+        double employerContrib = staff * contribPct / 100;
+
+        Map<String, Double> opexByCat = new LinkedHashMap<>();
+        double opex = 0;
+        for (String cat : OPEX_CATEGORIES) {
+            double v = PolarisForecastMath.stepAt(0, (y - 1) * 12, in.opexMilestones().getOrDefault(cat, List.of()));
+            opexByCat.put(cat, v);
+            opex += v;
+        }
+        double ebitda = contribution - payroll - employerContrib - opex;
+        return new YearDetail(y, calYear, members,
+            revNet, revMonthly, revAudit, revDental, revenue,
+            tpNet, tpAudit, tpDental, thirdParty,
+            contribution,
+            athens, manila, other, payroll,
+            staff, contribPct, employerContrib,
+            opexByCat, opex,
+            ebitda);
     }
 
     /** membersAtYear: compounded % growth, or the shared milestone interpolation at (y−1)·12 months. */
@@ -258,14 +342,19 @@ public class PolarisForecastSummaryService {
         return members0 * Math.pow(1 + growth / 100, y - 1);
     }
 
-    /** Sum over OPEX categories of the interpolated annual amount at (y−1)·12 months, from a $0 baseline. */
+    /** Sum over OPEX categories of the step amount in force at (y−1)·12 months, from a $0 baseline. */
     static double opexAtYear(int y, Inputs in) {
         double total = 0;
         for (String cat : OPEX_CATEGORIES) {
             List<Point> pts = in.opexMilestones().getOrDefault(cat, List.of());
-            total += PolarisForecastMath.interpolate(0, (y - 1) * 12, pts);
+            total += PolarisForecastMath.stepAt(0, (y - 1) * 12, pts);
         }
         return total;
+    }
+
+    static double phpPerUsd(Map<String, Double> assumptions) {
+        double v = assumptions.getOrDefault(K_PHP_PER_USD, 0.0);
+        return v == 0 ? DEFAULT_PHP_PER_USD : v;   // store: num(inputs.phpPerUsd, 56.5)
     }
 
     // ---- polarisMath.js ----
@@ -306,6 +395,16 @@ public class PolarisForecastSummaryService {
     /** Legacy-only variant (no raise rows): kept for the polarisMath parity tests. */
     public static double payrollUsdInYear(List<PayrollPerson> people, int year, double phpPerUsd) {
         return payrollUsdInYear(people, Map.of(), year, phpPerUsd);
+    }
+
+    /** USD salaries of STAFF only (office-cost rows excluded): the base of the employer contributions. */
+    public static double staffSalariesUsdInYear(List<PayrollPerson> people, Map<UUID, List<Raise>> raisesByPerson, int year, double phpPerUsd) {
+        double s = 0;
+        for (PayrollPerson p : people) {
+            if (Boolean.TRUE.equals(p.getIsOfficeCost())) continue;
+            s += usdSalaryInYear(p, raisesByPerson.getOrDefault(p.getId(), List.of()), year, phpPerUsd);
+        }
+        return s;
     }
 
     // ---- helpers ----

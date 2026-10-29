@@ -12,6 +12,7 @@
 //   forecast/summary     GET admin+editor+viewer (computed aggregates: EBITDA,
 //                        break-even, KPIs, per-year series -- never people/assumptions)
 //   forecast/cost-milestones  GET admin+editor | writes admin   (OPEX forecast)
+//   forecast/export           GET admin+editor (the full per-year P&L as .xlsx; never VIEWER)
 //   payroll/raises            GET admin+editor | writes admin   (per-person raise steps)
 
 import api from '@/api'
@@ -28,6 +29,19 @@ export async function fetchMyRole() {
 /** Server-side forecast aggregates for the Dashboard block. years: 1 | 3 | 5. */
 export async function fetchForecastSummary(years = 1) {
   return data(await api.get('/api/polaris/forecast/summary', { params: { entityId: POLARIS_ENTITY_ID, years } }))
+}
+
+/**
+ * Excel export of the forecast P&L (30 Oct 2026). years: 1 | 3 | 5.
+ * Returns { blob, filename } -- the filename comes from Content-Disposition.
+ */
+export async function fetchForecastExcel(years = 1) {
+  const res = await api.get('/api/polaris/forecast/export', {
+    params: { entityId: POLARIS_ENTITY_ID, years }, responseType: 'blob', timeout: 60000,
+  })
+  const disposition = res.headers['content-disposition'] || ''
+  const m = disposition.match(/filename="?([^"]+)"?/)
+  return { blob: res.data, filename: m ? m[1] : `Polaris_PL_Forecast_${years}y.xlsx` }
 }
 
 export async function fetchPayrollSummary() {

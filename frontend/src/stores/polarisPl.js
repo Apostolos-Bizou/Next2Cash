@@ -18,10 +18,11 @@ import {
   fetchMyRole, fetchPayrollSummary, peopleApi, milestonesApi, assumptionsApi, actualsApi, costMilestonesApi, raisesApi
 } from '@/api/polaris'
 import {
-  calendarYear, nativeSalaryInYear, nativeToUsd, usdSalaryInYear, salaryAt,
-  interpolateMilestones, monthsFromBase, annualRunRate, OPEX_CATEGORIES, OPEX_GROUP_KEY,
+  calendarYear, nativeSalaryInYear, nativeToUsd, usdSalaryInYear, salaryAt, employerContribUsdInYear,
+  interpolateMilestones, stepMilestones, monthsFromBase, annualRunRate,
+  OPEX_CATEGORIES, OPEX_ACTUALS_LABEL, OPEX_GROUP_KEY, opexSiblings,
 } from './polarisMath'
-export { OPEX_CATEGORIES }
+export { OPEX_CATEGORIES, OPEX_ACTUALS_LABEL, opexSiblings }
 
 // ---------------- formatting (identical to the mockup) ----------------
 export function fmtUSD(n) {
@@ -89,6 +90,8 @@ export const ASSUMPTION_KEYS = {
   dentalPay: 'dental_payable',
   phpPerUsd: 'fx_php_per_usd',
   usdPerEur: 'fx_usd_per_eur',   // stored, but no longer used: Athens payroll is in USD (28 Oct 2026)
+  // employer social contributions as % of STAFF salaries (office-cost rows excluded) -- 30 Oct 2026
+  employerContribPct: 'employer_contrib_pct',
   // member-forecast mode of the Forecast page, persisted so the server-side
   // Dashboard summary (GET /forecast/summary) matches the admin's view:
   // 1 = 'milestones' (Χειροκίνητοι στόχοι), 0 / absent = 'growth' (Ποσοστό %)
@@ -356,20 +359,32 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
 
   // ---------------- OPEX milestones (Πρόβλεψη Λειτουργικών Εξόδων, admin) ----------------
   // Baseline is $0 (decision 29 Oct 2026): a category without targets adds nothing to
-  // EBITDA until its first target. The current run-rate below is shown as a HINT and used
-  // as the default value of a new target, so the admin can anchor "today" with one click.
-  // run-rate = in-period change of the category's LATEST actuals period, annualised by days
-  const opexRunRates = computed(() => Object.fromEntries(OPEX_CATEGORIES.map(cat => {
-    const mine = actualsRows.value.filter(r => r.groupKey === OPEX_GROUP_KEY && r.label === cat && r.periodEnd)
-    if (!mine.length) return [cat, 0]
-    const latestEnd = mine.reduce((m, r) => (r.periodEnd > m ? r.periodEnd : m), mine[0].periodEnd)
-    return [cat, mine.filter(r => r.periodEnd === latestEnd).reduce((s, r) => s + annualRunRate(r.change, r.periodStart, r.periodEnd), 0)]
-  })))
+  // EBITDA until its first target. Targets are a STEP function (30 Oct 2026, same
+  // semantics as payroll raises): the latest target dated <= the forecast point is in
+  // force, flat until the next one. The current run-rate below is shown as a HINT and
+  // used as the default value of a new target, so the admin can anchor "today" with one
+  // click. run-rate = in-period change of the category's Astrolavos actuals label in its
+  // LATEST period, annualised by days. Several categories share one Astrolavos label
+  // (Consultants/Audit/Legal, Ταξίδια/PR/Λοιπά/Σύνδεσμοι): they all show the SAME
+  // combined figure -- the source has no split and we fabricate none.
+  const opexRunRatesByLabel = computed(() => {
+    const out = {}
+    for (const label of new Set(Object.values(OPEX_ACTUALS_LABEL))) {
+      const mine = actualsRows.value.filter(r => r.groupKey === OPEX_GROUP_KEY && r.label === label && r.periodEnd)
+      if (!mine.length) { out[label] = 0; continue }
+      const latestEnd = mine.reduce((m, r) => (r.periodEnd > m ? r.periodEnd : m), mine[0].periodEnd)
+      out[label] = mine.filter(r => r.periodEnd === latestEnd).reduce((s, r) => s + annualRunRate(r.change, r.periodStart, r.periodEnd), 0)
+    }
+    return out
+  })
+  const opexRunRates = computed(() => Object.fromEntries(OPEX_CATEGORIES.map(cat => [cat, opexRunRatesByLabel.value[OPEX_ACTUALS_LABEL[cat]] || 0])))
+  // true when the run-rate shown for `cat` is a combined Astrolavos figure shared with sibling categories
+  function opexRunRateIsCombined(cat) { return opexSiblings(cat).length > 1 }
   function costMilestonesOf(cat) { return costMilestones.value.filter(c => c.category === cat) }
-  // annual $ of one category at forecast point y ((y−1)·12 months out), from the $0 baseline
+  // annual $ of one category at forecast point y ((y−1)·12 months out): step from the $0 baseline
   function opexCategoryAtYear(cat, y) {
     const pts = costMilestonesOf(cat).map(c => ({ months: monthsFromNow(c.month), value: Number(c.value) || 0 }))
-    return interpolateMilestones(0, (y - 1) * 12, pts)
+    return stepMilestones(0, (y - 1) * 12, pts)
   }
   function opexAtYear(y) { return OPEX_CATEGORIES.reduce((s, cat) => s + opexCategoryAtYear(cat, y), 0) }
 
@@ -390,11 +405,13 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
   }
   async function addCostMilestone(category) {
     if (role.value !== 'admin') return
-    // default: next month at the category's current run-rate -- i.e. the "anchor today" target the intro banner describes
+    // default: next month at the category's current run-rate -- i.e. the "anchor today" target the intro
+    // banner describes. A category whose Astrolavos figure is COMBINED with siblings starts at 0 instead:
+    // pre-filling the whole combined amount into each of 3 (or 4) sub-categories would count it 3-4 times.
     const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1)
     const created = await persist(() => costMilestonesApi.create({
       category, targetDate: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`,
-      targetValue: Math.round(opexRunRates.value[category] || 0),
+      targetValue: opexRunRateIsCombined(category) ? 0 : Math.round(opexRunRates.value[category] || 0),
     }))
     if (created) costMilestones.value.push(costMilestoneFromApi(created))
   }
@@ -563,24 +580,26 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     const dentalFee = num(inputs.dentalFee), netPay = num(inputs.netPay), auditPay = num(inputs.auditPay)
     const dentalPay = num(inputs.dentalPay)
     // the whole P&L is consolidated in USD; payroll (people + office-cost rows)
-    // converted per person via salaryUSD(), OPEX from the category milestones,
-    // so EBITDA = contribution − TOTAL offices cost − OPEX (same as the server summary)
+    // converted per person via salaryUSD(), employer contributions as % of the STAFF
+    // salaries (rent rows excluded), OPEX from the category milestones (step), so
+    // EBITDA = contribution − TOTAL offices cost − employer contributions − OPEX (same as the server summary)
     const revenue = members * netFee + members * monthlyFee * 12 + members * auditRate * claims + members * dentalFee
     const thirdParty = members * netPay * (1 + netVat) + members * claims * auditPay * (1 + auditVat) + members * dentalPay * (1 + dentalVat)
     const contribution = revenue - thirdParty
     const payroll = people.value.reduce((s, p) => s + salaryUSD(p, y), 0)
+    const employerContrib = employerContribUsdInYear(people.value, calendarYear(FORECAST_BASE_YEAR, y), num(inputs.phpPerUsd, 56.5), num(inputs.employerContribPct))
     const opex = opexAtYear(y)
-    const ebitda = contribution - payroll - opex
-    return { members, revenue, thirdParty, contribution, payroll, opex, ebitda }
+    const ebitda = contribution - payroll - employerContrib - opex
+    return { members, revenue, thirdParty, contribution, payroll, employerContrib, opex, ebitda }
   }
 
-  // break-even members at the selected horizon's fixed-cost base (payroll + OPEX) & per-member contribution
+  // break-even members at the selected horizon's fixed-cost base (payroll + contributions + OPEX) & per-member contribution
   const cur = computed(() => pnlAtYear(horizon.value))
   const lastYear1Ebitda = computed(() => pnlAtYear(1).ebitda)
   const breakEvenMembers = computed(() => {
     const c = cur.value
     const contribPerMember = c.members ? c.contribution / c.members : 0
-    return contribPerMember > 0 ? (c.payroll + c.opex) / contribPerMember : NaN
+    return contribPerMember > 0 ? (c.payroll + c.employerContrib + c.opex) / contribPerMember : NaN
   })
   const breakEvenDistance = computed(() => cur.value.members - breakEvenMembers.value)
   const ebitdaMargin = computed(() => cur.value.revenue ? (cur.value.ebitda / cur.value.revenue * 100) : 0)
@@ -633,7 +652,7 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     phpToUsd, isManila, projectedSalary, salaryUSD, salaryAtDate,
     updatePerson, removePerson, addPerson,
     updateMilestone, removeMilestone, addMilestone,
-    costMilestones, opexRunRates, costMilestonesOf, opexCategoryAtYear, opexAtYear,
+    costMilestones, opexRunRates, opexRunRateIsCombined, costMilestonesOf, opexCategoryAtYear, opexAtYear,
     addCostMilestone, updateCostMilestone, removeCostMilestone,
     addRaise, updateRaise, removeRaise,
     saveAssumption,

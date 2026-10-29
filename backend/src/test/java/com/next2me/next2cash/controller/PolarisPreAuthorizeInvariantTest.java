@@ -91,7 +91,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("A2: only the 4 Dashboard GETs override the class-level gate; no write does (32 endpoints, 18 writes)")
+    @DisplayName("A2: only the 4 Dashboard GETs override the class-level gate; no write does (33 endpoints, 18 writes)")
     void onlyDashboardGetsOverride() {
         List<String> violations = new ArrayList<>();
         Set<String> found = new java.util.HashSet<>();
@@ -114,7 +114,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 else found.add(name);
             }
         }
-        assertEquals(32, endpoints, "expected 32 endpoints (5 x 5 CRUD resources + my-role + payroll summary + forecast summary + 4 raises)");
+        assertEquals(33, endpoints, "expected 33 endpoints (5 x 5 CRUD resources + my-role + payroll summary + forecast summary + forecast export + 4 raises)");
         assertEquals(18, writes, "expected 18 write endpoints (3 x 5 CRUD resources + 3 raises)");
         assertTrue(violations.isEmpty(), "method-level @PreAuthorize violations: " + violations);
         assertEquals(VIEWER_GET_OVERRIDES, found, "every Dashboard GET must carry the VIEWER gate");

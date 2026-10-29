@@ -4,10 +4,14 @@ import com.next2me.next2cash.model.ActualsRow;
 import com.next2me.next2cash.model.CostMilestone;
 import com.next2me.next2cash.model.ForecastAssumption;
 import com.next2me.next2cash.model.User;
+import com.next2me.next2cash.service.PolarisForecastExportService;
 import com.next2me.next2cash.service.PolarisForecastService;
 import com.next2me.next2cash.service.PolarisForecastSummaryService;
 import com.next2me.next2cash.service.UserAccessService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -41,6 +45,10 @@ import java.util.*;
  *          -> computed aggregates only (EBITDA, break-even, KPIs, per-year series);
  *             any Polaris role (admin / editor / viewer); never person rows,
  *             names, salaries or raw assumption values.
+ *   GET    /api/polaris/forecast/export?entityId=X&years=1|3|5
+ *          -> the full per-year P&L as an .xlsx (REVENUE / THIRD-PARTY /
+ *             CONTRIBUTION / OPERATING COSTS by office / OPEX by category /
+ *             EBITDA); admin + editor only, class-level Spring gate (never VIEWER).
  */
 @RestController
 @RequestMapping("/api/polaris/forecast")
@@ -51,7 +59,29 @@ public class PolarisForecastController {
 
     private final PolarisForecastService polarisForecastService;
     private final PolarisForecastSummaryService polarisForecastSummaryService;
+    private final PolarisForecastExportService polarisForecastExportService;
     private final UserAccessService userAccessService;
+
+    // -------------------------------------------------------------------
+    // forecast Excel export -- GET: admin+editor (class gate: never VIEWER)
+    // -------------------------------------------------------------------
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportForecast(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId,
+            @RequestParam(defaultValue = "1") int years) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOrEditor(user, entityId);
+        byte[] bytes = polarisForecastExportService.generateExcel(entityId, years);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDispositionFormData("attachment", PolarisForecastExportService.filename(years));
+        headers.setContentLength(bytes.length);
+        headers.setCacheControl("no-cache, no-store, must-revalidate");
+        return new ResponseEntity<>(bytes, headers, HttpStatus.OK);
+    }
 
     // -------------------------------------------------------------------
     // forecast summary -- GET: admin+editor+viewer, computed aggregates only

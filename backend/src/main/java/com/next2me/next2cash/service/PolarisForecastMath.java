@@ -5,16 +5,20 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Pure forecast math shared by the Polaris P&L (Oct 2026). Mirrors
  * frontend/src/stores/polarisMath.js line for line -- client and server must
  * stay identical (parity tests on both sides).
  *
- *  - {@link #interpolate}: the ONE milestone rule used for both the member
- *    curve and every OPEX category: before the first milestone the base value
- *    (today's members / the actuals run-rate), between two milestones linear
+ *  - {@link #interpolate}: the MEMBER milestone rule: before the first
+ *    milestone the base value (today's members), between two milestones linear
  *    interpolation, after the last one flat.
+ *  - {@link #stepAt}: the OPEX milestone rule (30 Oct 2026 decision): a STEP
+ *    function with the same semantics as payroll raises -- the value of the
+ *    LATEST target whose month <= the forecast month, the base ($0) before the
+ *    first target, flat between targets and after the last one. No ramps.
  *  - {@link #salaryAt}: the payroll raise STEP function: base, then each raise
  *    with effectiveDate <= the date applied once, in date order, compounding on
  *    the prior step; flat before the first and between steps.
@@ -25,12 +29,39 @@ public final class PolarisForecastMath {
 
     private PolarisForecastMath() {}
 
-    /** The "Λοιπά OPEX Διοίκησης" actuals labels that get date-based milestones (29 Oct 2026 decision). */
+    /**
+     * The 9 "Λοιπά OPEX Διοίκησης" forecast categories (30 Oct 2026 split):
+     * the Astrolavos lines "Consultants / Audit / Legal" and
+     * "Ταξίδια / PR / λοιπά / σύνδεσμοι" are forecast per sub-category.
+     * cost_milestones.category holds one of these strings.
+     */
     public static final List<String> OPEX_CATEGORIES = List.of(
-        "Consultants / Audit / Legal",
+        "Consultants",
+        "Audit",
+        "Legal",
         "IT / Computer",
         "Marketing / Διαφήμιση",
-        "Ταξίδια / PR / λοιπά / σύνδεσμοι");
+        "Ταξίδια",
+        "PR",
+        "Λοιπά",
+        "Σύνδεσμοι");
+
+    /**
+     * Forecast category -> the Astrolavos actuals_rows label that carries its
+     * actuals. Several categories share one label because Astrolavos only
+     * reports the combined total (no split exists in the source data).
+     */
+    public static final Map<String, String> OPEX_ACTUALS_LABEL = Map.of(
+        "Consultants", "Consultants / Audit / Legal",
+        "Audit", "Consultants / Audit / Legal",
+        "Legal", "Consultants / Audit / Legal",
+        "IT / Computer", "IT / Computer",
+        "Marketing / Διαφήμιση", "Marketing / Διαφήμιση",
+        "Ταξίδια", "Ταξίδια / PR / λοιπά / σύνδεσμοι",
+        "PR", "Ταξίδια / PR / λοιπά / σύνδεσμοι",
+        "Λοιπά", "Ταξίδια / PR / λοιπά / σύνδεσμοι",
+        "Σύνδεσμοι", "Ταξίδια / PR / λοιπά / σύνδεσμοι");
+
     /** actuals_rows.group_key of those labels. */
     public static final String OPEX_GROUP_KEY = "adminOpexOther";
 
@@ -46,7 +77,7 @@ public final class PolarisForecastMath {
     }
 
     /**
-     * Piecewise-linear milestone interpolation.
+     * Piecewise-linear milestone interpolation (members).
      * points: milestones in any order; those with months <= 0 are ignored (the
      * base value already stands for "now"). Returns baseValue when targetMonths <= 0.
      */
@@ -69,6 +100,28 @@ public final class PolarisForecastMath {
             }
         }
         return last.value();
+    }
+
+    /**
+     * Step function over milestones (OPEX): the value of the LATEST target whose
+     * months <= targetMonths; baseValue when no target has been reached yet.
+     * Targets in the past or in the current month (months <= 0) count like a
+     * raise whose effective date has passed: they are in force from "now".
+     * Flat between targets, flat after the last one -- no interpolation.
+     */
+    public static double stepAt(double baseValue, double targetMonths, List<Point> milestones) {
+        double v = baseValue;
+        boolean hit = false;
+        double hitMonths = 0;
+        for (Point p : milestones) {
+            if (p.months() > targetMonths) continue;
+            if (!hit || p.months() >= hitMonths) {   // the latest reached target wins (ties: last listed)
+                v = p.value();
+                hitMonths = p.months();
+                hit = true;
+            }
+        }
+        return v;
     }
 
     /**
