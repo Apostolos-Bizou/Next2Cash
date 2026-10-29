@@ -30,14 +30,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   global USER  + entity_roles admin   -> full CRUD (no global-ADMIN gate)
  *   global ADMIN + entity_roles editor  -> people GET 200, people writes 403, milestones 403
  *   global ADMIN, no entity_roles row   -> 403 (no bypass)
- *   global VIEWER + entity_roles viewer -> 403 everywhere (Spring gate)
- *   Simos-style viewer (next2megroup)   -> 403 even with a Polaris role row
+ *   global VIEWER + entity_roles admin  -> 403 on people/milestones (Spring gate), summary 200
+ *   Simos-style viewer (next2megroup)   -> 403 without Polaris scope; with scope + viewer row:
+ *                                          my-role + summary 200, people/milestones + every write 403
  *   non-Polaris entityId                -> 400
  */
 class PolarisPayrollControllerTest extends BaseIntegrationTest {
 
     private static final String PEOPLE = "/api/polaris/payroll/people";
     private static final String MILESTONES = "/api/polaris/payroll/milestones";
+    private static final String SUMMARY = "/api/polaris/payroll/summary";
+    private static final String MY_ROLE = "/api/polaris/my-role";
 
     @Autowired private TestDataBuilder tdb;
     @Autowired private PolarisTestSupport pts;
@@ -232,31 +235,68 @@ class PolarisPayrollControllerTest extends BaseIntegrationTest {
     // ─── Access control ──────────────────────────────────────────────────
 
     @Test
-    @DisplayName("Simos-style viewer (next2megroup only) -> 403 on Polaris, even with a role row")
-    void simosStyleViewer_forbidden() throws Exception {
+    @DisplayName("Simos-style viewer: 403 without Polaris scope; with scope + viewer row -> my-role/summary 200, people + writes 403")
+    void simosStyleViewer_dashboardReadOnly() throws Exception {
+        String id = createPerson(admin);
         User simos = tdb.createViewer("simos");
         tdb.assignEntities(simos, group);
         String bearer = tdb.bearerToken(simos);
+        String pid = polaris.getId().toString();
 
-        mockMvc.perform(get(PEOPLE).param("entityId", polaris.getId().toString())
-                .header("Authorization", bearer))
+        // 1. next2megroup only: Polaris out of scope -> 403 on every read, summary included
+        mockMvc.perform(get(SUMMARY).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(get(MY_ROLE).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(get(PEOPLE).param("entityId", pid).header("Authorization", bearer))
             .andExpect(status().isForbidden());
 
-        pts.grantRole(simos, polaris, "viewer");  // role row without user_entities
-        mockMvc.perform(get(MILESTONES).param("entityId", polaris.getId().toString())
-                .header("Authorization", bearer))
+        // 2. role row without user_entities scope: still 403 (scope check comes first)
+        pts.grantRole(simos, polaris, "viewer");
+        mockMvc.perform(get(SUMMARY).param("entityId", pid).header("Authorization", bearer))
             .andExpect(status().isForbidden());
+
+        // 3. scope + viewer row (the intended Simos setup): Dashboard reads 200
+        tdb.assignEntities(simos, polaris);  // group already assigned above
+        mockMvc.perform(get(MY_ROLE).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.role").value("viewer"));
+        mockMvc.perform(get(SUMMARY).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isOk());
+
+        // ... but names/salaries, milestones and every write stay 403 (Spring gate, before entity_roles)
+        mockMvc.perform(get(PEOPLE).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(get(PEOPLE + "/" + id).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(get(MILESTONES).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(post(PEOPLE).param("entityId", pid).header("Authorization", bearer)
+                .contentType(MediaType.APPLICATION_JSON).content(personJson("ATHENS", "X")))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(put(PEOPLE + "/" + id).param("entityId", pid).header("Authorization", bearer)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"salary\":1}"))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(delete(PEOPLE + "/" + id).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(post(MILESTONES).param("entityId", pid).header("Authorization", bearer)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"targetMonth\":\"2027-05-01\",\"membersTarget\":10}"))
+            .andExpect(status().isForbidden());
+        // nothing was written
+        org.junit.jupiter.api.Assertions.assertEquals(1, payrollPersonRepository.count());
     }
 
     @Test
-    @DisplayName("global VIEWER, even with a Polaris viewer or admin row: 403 on every payroll endpoint")
-    void globalViewer_forbiddenEverywhere() throws Exception {
+    @DisplayName("global VIEWER with a Polaris admin row: summary 200, but 403 on people/milestones and every write")
+    void globalViewer_forbiddenExceptSummary() throws Exception {
         String id = createPerson(admin);
         User viewer = tdb.createViewer("investor");
         pts.assignWithRole(viewer, polaris, "admin");
         String bearer = tdb.bearerToken(viewer);
         String pid = polaris.getId().toString();
 
+        mockMvc.perform(get(SUMMARY).param("entityId", pid).header("Authorization", bearer))
+            .andExpect(status().isOk());
         mockMvc.perform(get(PEOPLE).param("entityId", pid).header("Authorization", bearer))
             .andExpect(status().isForbidden());
         mockMvc.perform(get(PEOPLE + "/" + id).param("entityId", pid).header("Authorization", bearer))

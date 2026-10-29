@@ -16,8 +16,10 @@ import java.util.*;
  * Polaris P&L forecast endpoints (Phase 1, Oct 2026): assumptions + actuals.
  *
  * Same security model as PolarisPayrollController:
- *   1. @PreAuthorize (class level, every method): ADMIN, USER, ACCOUNTANT --
- *      never VIEWER.
+ *   1. @PreAuthorize (class level): ADMIN, USER, ACCOUNTANT. Exactly one
+ *      method-level override: GET /actuals (the Dashboard's data source) also
+ *      admits the global VIEWER role. Every write keeps the class-level gate,
+ *      so VIEWER can never reach a POST/PUT/DELETE (Invariant 1).
  *   2. entity_roles for the Polaris entity, checked per endpoint here:
  *
  *        resource     | GET            | POST / PUT / DELETE
@@ -103,6 +105,7 @@ public class PolarisForecastController {
     // -------------------------------------------------------------------
 
     @GetMapping("/actuals")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')")  // GET-only override; entity_roles still decides
     public ResponseEntity<?> listActuals(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID entityId) {

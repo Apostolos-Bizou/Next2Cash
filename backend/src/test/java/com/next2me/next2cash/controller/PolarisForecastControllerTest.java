@@ -198,22 +198,40 @@ class PolarisForecastControllerTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("Polaris viewer: actuals GET 200, actuals writes + assumptions 403; global VIEWER: 403 everywhere")
+    @DisplayName("Polaris viewer + Simos-style global VIEWER (viewer row): actuals GET 200; actuals writes + assumptions 403")
     void viewers_readActualsOnly() throws Exception {
+        String rid = idOf(mockMvc.perform(as(admin, post(ACTUALS)).content(
+                "{\"groupKey\":\"seed\",\"label\":\"seed\",\"periodStart\":\"2026-08-01\",\"periodEnd\":\"2026-08-31\"}"))
+            .andExpect(status().isOk()).andReturn());
+
         User polarisViewer = tdb.createUser("polaris-viewer");
         pts.assignWithRole(polarisViewer, polaris, "viewer");
-        User globalViewer = tdb.createViewer("investor");
-        pts.assignWithRole(globalViewer, polaris, "admin");
+        User globalViewer = tdb.createViewer("investor");          // Simos-style
+        pts.assignWithRole(globalViewer, polaris, "viewer");
+        User globalViewerNoRow = tdb.createViewer("investor-norow");
+        tdb.assignEntities(globalViewerNoRow, polaris);
 
         mockMvc.perform(as(polarisViewer, get(ACTUALS))).andExpect(status().isOk());
-        mockMvc.perform(as(globalViewer, get(ACTUALS))).andExpect(status().isForbidden());
+        mockMvc.perform(as(globalViewer, get(ACTUALS))).andExpect(status().isOk());
+        mockMvc.perform(as(globalViewerNoRow, get(ACTUALS))).andExpect(status().isForbidden());
+        // GET by id is not a Dashboard read -> the class-level gate still applies to global VIEWER
+        mockMvc.perform(as(globalViewer, get(ACTUALS + "/" + rid))).andExpect(status().isForbidden());
 
-        for (User u : new User[] { polarisViewer, globalViewer }) {
+        for (User u : new User[] { polarisViewer, globalViewer, globalViewerNoRow }) {
             mockMvc.perform(as(u, get(ASSUMPTIONS))).andExpect(status().isForbidden());
+            mockMvc.perform(as(u, post(ASSUMPTIONS)).content("{\"key\":\"k\",\"value\":1}"))
+                .andExpect(status().isForbidden());
             mockMvc.perform(as(u, post(ACTUALS)).content(
                     "{\"groupKey\":\"g\",\"label\":\"l\",\"periodStart\":\"2026-09-01\",\"periodEnd\":\"2026-09-30\"}"))
                 .andExpect(status().isForbidden());
+            mockMvc.perform(as(u, put(ACTUALS + "/" + rid)).content("{\"label\":\"hacked\"}"))
+                .andExpect(status().isForbidden());
+            mockMvc.perform(as(u, delete(ACTUALS + "/" + rid))).andExpect(status().isForbidden());
         }
+        // the seeded row is untouched
+        mockMvc.perform(as(admin, get(ACTUALS + "/" + rid)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.label").value("seed"));
     }
 
     @Test

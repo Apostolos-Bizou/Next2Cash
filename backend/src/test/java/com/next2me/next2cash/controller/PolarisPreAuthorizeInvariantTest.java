@@ -39,9 +39,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Invariant 1 + per-endpoint access matrix for the Polaris controllers.
  *
- * Part A (reflection): every Polaris endpoint is gated by the class-level
- * @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT')") -- no method-level
- * override, and VIEWER never appears (so it can never reach a write).
+ * Part A (reflection): every Polaris controller is gated by the class-level
+ * @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT')"). Exactly three
+ * GET endpoints carry a method-level override that also admits VIEWER
+ * (my-role, actuals list, payroll summary -- what the P&L Dashboard reads).
+ * No write ever carries a method-level annotation, so VIEWER can never reach
+ * a POST/PUT/DELETE (Invariant 1).
  *
  * Part B (HTTP matrix): 4 resources x 5 operations x 5 actors, through MockMvc.
  *
@@ -55,13 +58,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Part C: my-role, Part D: payroll summary (GET-only, aggregate, any role).
  *
  * Actors: Polaris admin / editor / viewer and a user with NO role all hold the
- * global role 'user', so only entity_roles decides. global-viewer holds a
- * Polaris admin row but the global role 'viewer' -> 403 everywhere at the
- * Spring gate.
+ * global role 'user', so only entity_roles decides. global-viewer (Simos-style)
+ * holds the global role 'viewer' plus a Polaris 'viewer' row -> 200 only on the
+ * three VIEWER-admitting GETs, 403 everywhere else at the Spring gate.
  */
 class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
 
     private static final String SPRING_GATE = "hasAnyRole('ADMIN','USER','ACCOUNTANT')";
+    private static final String VIEWER_GET_GATE = "hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')";
+    /** The only endpoints allowed to override the class-level gate -- all GET, all read-only. */
+    private static final Set<String> VIEWER_GET_OVERRIDES = Set.of(
+        "PolarisAccessController#myRole",
+        "PolarisForecastController#listActuals",
+        "PolarisPayrollController#payrollSummary");
     private static final List<Class<?>> CONTROLLERS =
         List.of(PolarisPayrollController.class, PolarisForecastController.class, PolarisAccessController.class);
 
@@ -79,9 +88,10 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("A2: no endpoint overrides the class-level gate (22 endpoints, 12 writes)")
-    void noMethodLevelOverride() {
+    @DisplayName("A2: only the 3 Dashboard GETs override the class-level gate; no write does (22 endpoints, 12 writes)")
+    void onlyDashboardGetsOverride() {
         List<String> violations = new ArrayList<>();
+        Set<String> found = new java.util.HashSet<>();
         int endpoints = 0, writes = 0;
         for (Class<?> c : CONTROLLERS) {
             for (Method m : c.getDeclaredMethods()) {
@@ -92,13 +102,19 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 if (!isEndpoint) continue;
                 endpoints++;
                 if (isWrite) writes++;
+                String name = c.getSimpleName() + "#" + m.getName();
                 PreAuthorize pa = m.getAnnotation(PreAuthorize.class);
-                if (pa != null) violations.add(c.getSimpleName() + "#" + m.getName() + " -> " + pa.value());
+                if (pa == null) continue;
+                if (isWrite) violations.add("WRITE with method-level gate: " + name + " -> " + pa.value());
+                else if (!VIEWER_GET_OVERRIDES.contains(name)) violations.add("unexpected GET override: " + name + " -> " + pa.value());
+                else if (!VIEWER_GET_GATE.equals(pa.value())) violations.add("wrong gate on " + name + " -> " + pa.value());
+                else found.add(name);
             }
         }
         assertEquals(22, endpoints, "expected 22 endpoints (5 per resource x 4 resources + my-role + payroll summary)");
         assertEquals(12, writes, "expected 12 write endpoints (3 per resource x 4 resources)");
-        assertTrue(violations.isEmpty(), "method-level @PreAuthorize overrides: " + violations);
+        assertTrue(violations.isEmpty(), "method-level @PreAuthorize violations: " + violations);
+        assertEquals(VIEWER_GET_OVERRIDES, found, "every Dashboard GET must carry the VIEWER gate");
     }
 
     // ─── Part B: HTTP matrix ─────────────────────────────────────────────
@@ -137,10 +153,15 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
         boolean isWrite() { return this == POST || this == PUT || this == DELETE; }
     }
 
-    /** Polaris role holders are global 'user'; global-viewer is global 'viewer' with a Polaris admin row. */
+    /** Polaris role holders are global 'user'; global-viewer is global 'viewer' with a Polaris viewer row (Simos-style). */
     static final List<String> ACTORS = List.of("admin", "editor", "viewer", "none", "global-viewer");
 
     static int expectedStatus(Res res, Op op, String actor) {
+        if ("global-viewer".equals(actor)) {
+            // Spring gate admits VIEWER on the actuals LIST only (the Dashboard's read);
+            // every other endpoint -- including GET by id and every write -- is 403.
+            return (res == Res.ACTUALS && op == Op.LIST) ? 200 : 403;
+        }
         Set<String> allowed = op.isWrite() ? res.write : res.read;
         return allowed.contains(actor) ? 200 : 403;
     }
@@ -197,12 +218,13 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
             Arguments.of("editor", 200, "editor"),
             Arguments.of("viewer", 200, "viewer"),
             Arguments.of("none", 403, null),
-            Arguments.of("global-viewer", 403, null));
+            Arguments.of("global-viewer", 200, "viewer"),
+            Arguments.of("global-viewer-none", 403, null));
     }
 
     @ParameterizedTest(name = "my-role as {0} -> {1}")
     @MethodSource("myRoleMatrix")
-    @DisplayName("C: my-role returns the entity_roles role; no row or global VIEWER -> 403")
+    @DisplayName("C: my-role returns the entity_roles role (global VIEWER included); no row -> 403")
     void myRoleMatrix(String actor, int expected, String role) throws Exception {
         User user = actor(actor);
         var res = mockMvc.perform(get("/api/polaris/my-role")
@@ -230,12 +252,12 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
     static Stream<Arguments> summaryMatrix() {
         return Stream.of(
             Arguments.of("admin", 200), Arguments.of("editor", 200), Arguments.of("viewer", 200),
-            Arguments.of("none", 403), Arguments.of("global-viewer", 403));
+            Arguments.of("none", 403), Arguments.of("global-viewer", 200), Arguments.of("global-viewer-none", 403));
     }
 
     @ParameterizedTest(name = "payroll summary as {0} -> {1}")
     @MethodSource("summaryMatrix")
-    @DisplayName("D: payroll summary for any Polaris role; no row or global VIEWER -> 403")
+    @DisplayName("D: payroll summary for any Polaris role (global VIEWER included); no row -> 403")
     void summaryMatrix(String actor, int expected) throws Exception {
         seed(Res.PEOPLE);
         User user = actor(actor);
@@ -277,8 +299,15 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
 
     private User actor(String actor) {
         if ("global-viewer".equals(actor)) {
+            // Simos-style: global 'viewer' + Polaris in scope + entity_roles viewer row
             User u = tdb.createViewer("global-viewer");
-            pts.assignWithRole(u, polaris, "admin");
+            pts.assignWithRole(u, polaris, "viewer");
+            return u;
+        }
+        if ("global-viewer-none".equals(actor)) {
+            // global 'viewer' with Polaris in scope but NO entity_roles row -> 403 on every GET
+            User u = tdb.createViewer("global-viewer-none");
+            tdb.assignEntities(u, polaris);
             return u;
         }
         User u = tdb.createUser("polaris-" + actor);

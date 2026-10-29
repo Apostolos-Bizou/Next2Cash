@@ -152,10 +152,12 @@ const navSections = [
     ]
   },
   {
-    // Polaris P&L (Phase 2): never VIEWER, and only when Polaris is in the user's entity scope
+    // Polaris P&L (Phase 2): only when Polaris is in the user's entity scope.
+    // Dashboard admits the global VIEWER role too (read-only aggregate, entity_roles still
+    // decides server-side); payroll + forecast stay admin/user/accountant only.
     label: 'POLARIS P&L',
     items: [
-      { to: '/polaris/dashboard', section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], requiresEntity: 'polaris', gold: true, label: 'P&L Dashboard',           icon: 'M3 3v18h18M7 14l3-3 3 3 5-5', badge: 'NEW' },
+      { to: '/polaris/dashboard', section: 'polaris-pl', roles: ['admin', 'user', 'accountant', 'viewer'], requiresEntity: 'polaris', gold: true, label: 'P&L Dashboard',           icon: 'M3 3v18h18M7 14l3-3 3 3 5-5', badge: 'NEW' },
       { to: '/polaris/payroll',   section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], requiresEntity: 'polaris', gold: true, label: 'Μισθοδοσία & Προσωπικό', icon: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75', badge: 'NEW' },
       { to: '/polaris/forecast',  section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], requiresEntity: 'polaris', gold: true, label: 'Προβλέψεις',             icon: 'M22 12h-4l-3 9L9 3l-3 9H2', badge: 'NEW' },
     ]

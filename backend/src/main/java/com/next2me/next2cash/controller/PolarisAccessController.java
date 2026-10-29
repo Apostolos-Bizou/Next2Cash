@@ -18,7 +18,9 @@ import java.util.*;
  * Polaris page from this role instead of a toggle.
  *
  * Security model (same as the other Polaris controllers):
- *   1. @PreAuthorize: ADMIN, USER, ACCOUNTANT -- never VIEWER.
+ *   1. @PreAuthorize: class-level ADMIN, USER, ACCOUNTANT. GET /my-role carries a
+ *      method-level gate that also admits the global VIEWER role (read-only;
+ *      the Dashboard needs it to learn its entity_roles role). No write exists here.
  *   2. entity_roles: a row is required (admin / editor / viewer); no row -> 403.
  *      Same rules as UserAccessService#getPolarisRole (active user, existing
  *      entity scope, known role).
@@ -36,6 +38,7 @@ public class PolarisAccessController {
     private final UserAccessService userAccessService;
 
     @GetMapping("/my-role")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')")  // GET-only override; entity_roles still decides
     public ResponseEntity<?> myRole(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID entityId) {
