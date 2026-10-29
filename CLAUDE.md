@@ -23,7 +23,7 @@ Total: 4.992 live transactions · 19 bank accounts · 25 recurrence patterns
 - Math parity: `PolarisForecastMath.java` ↔ `frontend/src/stores/polarisMath.js` (tests on both sides, hand-verified fixtures). Rules: members interpolate; payroll raises = compounding STEPS; **OPEX = STEP from $0** (latest target dated ≤ the point, 30 Oct 2026); employer contributions = `employer_contrib_pct` % of STAFF salaries (rent rows excluded).
 - OPEX categories (9): Consultants, Audit, Legal, IT / Computer, Marketing / Διαφήμιση, Ταξίδια, PR, Λοιπά, Σύνδεσμοι — Astrolavos actuals stay combined (`OPEX_ACTUALS_LABEL`), run-rate hint shown as the combined figure.
 - Excel export: `GET /api/polaris/forecast/export?years=1|3|5` (admin+editor, never VIEWER) → `PolarisForecastExportService` (Apache POI, same pattern as `CardExportService`). Export only — no import path.
-- Seed / migrations: `docs/specs/polaris_seed.sql` (canonical, idempotent), `docs/specs/polaris_cost_milestones_split.sql` (rename of the one legacy combined-category row — owner decision).
+- Seed / migrations: `docs/specs/polaris_seed.sql` (canonical, idempotent). `cost_milestones` was emptied on 29 Oct 2026 (the one legacy combined-category test row deleted, backup `next2cash-db_pre-cost-milestone-delete-COMMIT_20261029_220038.dump`), so all 9 categories start at $0.
 
 ## Local setup
 - Path: `C:\Users\akage\Documents\Next2Cash`
@@ -51,7 +51,7 @@ Total: 4.992 live transactions · 19 bank accounts · 25 recurrence patterns
 
 ## Pending / Backlog
 - 🔧 Security debt (HIGH): App Service `httpsOnly = FALSE` → flip true · server-side entity filter · rotate JWT secret (still hardcoded in `application.properties`, overridden by App Service `NEXT2CASH_JWT_SECRET`) · migrate secrets to Key Vault. DONE 30 Oct 2026: stale PostgreSQL password removed from `application.properties` (`${SPRING_DATASOURCE_PASSWORD:}`), 4 orphaned `akage-*` DB firewall rules deleted (only `AllowAzureServices` remains; temp rules per session, deleted in `finally`).
-- Polaris: decide the category for the one legacy `cost_milestones` row (`docs/specs/polaris_cost_milestones_split.sql`) · set `employer_contrib_pct` in Παραδοχές (defaults to 0) · per-investor reports (Simos-facing PDF/Excel)
+- Polaris: set `employer_contrib_pct` in Παραδοχές (defaults to 0) · add the first OPEX targets per category (table is empty) · per-investor reports (Simos-facing PDF/Excel)
 - S89.2 white-theme NewEntryView (locally patched, ready to deploy)
 - multi-currency `fxRate` live API · Azure region Central US → North Europe
 
