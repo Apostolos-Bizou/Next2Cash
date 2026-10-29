@@ -25,8 +25,9 @@ const router = createRouter({
     { path: '/admin',          component: () => import('@/views/AdminView.vue'),         meta: { section: 'admin', title: 'Admin Panel' } },
     { path: '/investor-reports', component: () => import('@/views/ForecastView.vue'),   meta: { section: 'investor-reports', title: 'Investor Reports' } },
     { path: '/pricing-calculator', component: () => import('@/views/PricingCalculatorView.vue'),   meta: { section: 'pricing-calculator', title: 'Pricing Calculator' } },
-    // Polaris P&L (Phase 2 mockup port) -- never VIEWER (Invariant 1 mirror of the backend gate)
-    { path: '/polaris/dashboard', component: () => import('@/views/PolarisDashboardView.vue'), meta: { section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], polaris: true, title: 'P&L Dashboard' } },
+    // Polaris P&L (Phase 2 mockup port) -- mirror of the backend gate: the Dashboard
+    // (read-only aggregate) admits the global VIEWER role; payroll + forecast never do.
+    { path: '/polaris/dashboard', component: () => import('@/views/PolarisDashboardView.vue'), meta: { section: 'polaris-pl', roles: ['admin', 'user', 'accountant', 'viewer'], polaris: true, title: 'P&L Dashboard' } },
     { path: '/polaris/payroll',   component: () => import('@/views/PolarisPayrollView.vue'),   meta: { section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], polaris: true, title: 'Μισθοδοσία & Προσωπικό' } },
     { path: '/polaris/forecast',  component: () => import('@/views/PolarisForecastView.vue'),  meta: { section: 'polaris-pl', roles: ['admin', 'user', 'accountant'], polaris: true, title: 'Προβλέψεις' } },
   ]

@@ -18,9 +18,11 @@ import java.util.*;
  * Entity-scoped: every call takes ?entityId=<polaris id>; any other entity -> 400.
  *
  * Security model:
- *   1. @PreAuthorize (class level, every method): ADMIN, USER, ACCOUNTANT.
- *      VIEWER is never admitted (Invariant 1). This is only a coarse gate --
- *      there is no global-ADMIN requirement for writes.
+ *   1. @PreAuthorize (class level): ADMIN, USER, ACCOUNTANT. Exactly one
+ *      method-level override: GET /summary (aggregate, no names) also admits
+ *      the global VIEWER role. Every other endpoint, and every write, keeps the
+ *      class-level gate (Invariant 1). This is only a coarse gate -- there is
+ *      no global-ADMIN requirement for writes.
  *   2. entity_roles for the Polaris entity, checked per endpoint here:
  *
  *        resource     | GET                    | POST / PUT / DELETE
@@ -55,6 +57,7 @@ public class PolarisPayrollController {
     // -------------------------------------------------------------------
 
     @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('ADMIN','USER','ACCOUNTANT','VIEWER')")  // GET-only override; entity_roles still decides
     public ResponseEntity<?> payrollSummary(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam UUID entityId) {
