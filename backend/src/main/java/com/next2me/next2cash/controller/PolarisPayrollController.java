@@ -2,6 +2,7 @@ package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.model.PayrollMilestone;
 import com.next2me.next2cash.model.PayrollPerson;
+import com.next2me.next2cash.model.PayrollPersonRaise;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.service.PolarisPayrollService;
 import com.next2me.next2cash.service.UserAccessService;
@@ -30,6 +31,7 @@ import java.util.*;
  *        people       | admin, editor          | admin
  *        summary      | admin, editor, viewer  | (read-only aggregate)
  *        milestones   | admin                  | admin
+ *        raises       | admin, editor          | admin   (payroll_person_raises, Oct 2026)
  *
  *      No entity_roles row -> 403, even for a global ADMIN.
  *
@@ -173,6 +175,53 @@ public class PolarisPayrollController {
         User user = userAccessService.getCurrentUser(authHeader);
         userAccessService.assertPolarisAdminOnly(user, entityId);
         polarisPayrollService.deleteMilestone(user, entityId, id);
+        return deleted(id);
+    }
+
+    // -------------------------------------------------------------------
+    // payroll_person_raises -- GET: admin+editor (same tier as people), writes: admin
+    // -------------------------------------------------------------------
+
+    /** Every raise of every person of the entity. */
+    @GetMapping("/raises")
+    public ResponseEntity<?> listRaises(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOrEditor(user, entityId);
+        return okList(polarisPayrollService.listRaises(entityId));
+    }
+
+    @PostMapping("/people/{personId}/raises")
+    public ResponseEntity<?> createRaise(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable UUID personId,
+            @RequestParam UUID entityId,
+            @RequestBody PayrollPersonRaise body) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOnly(user, entityId);
+        return ok(polarisPayrollService.createRaise(user, entityId, personId, body));
+    }
+
+    @PutMapping("/raises/{id}")
+    public ResponseEntity<?> updateRaise(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId,
+            @RequestBody PayrollPersonRaise body) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOnly(user, entityId);
+        return ok(polarisPayrollService.updateRaise(user, entityId, id, body));
+    }
+
+    @DeleteMapping("/raises/{id}")
+    public ResponseEntity<?> deleteRaise(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOnly(user, entityId);
+        polarisPayrollService.deleteRaise(user, entityId, id);
         return deleted(id);
     }
 

@@ -2,8 +2,10 @@ package com.next2me.next2cash.service;
 
 import com.next2me.next2cash.model.PayrollMilestone;
 import com.next2me.next2cash.model.PayrollPerson;
+import com.next2me.next2cash.model.PayrollPersonRaise;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.PayrollMilestoneRepository;
+import com.next2me.next2cash.repository.PayrollPersonRaiseRepository;
 import com.next2me.next2cash.repository.PayrollPersonRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -40,7 +42,62 @@ public class PolarisPayrollService {
 
     private final PayrollPersonRepository payrollPersonRepository;
     private final PayrollMilestoneRepository payrollMilestoneRepository;
+    private final PayrollPersonRaiseRepository payrollPersonRaiseRepository;
     private final AuditLogService auditLogService;
+
+    // -------------------------------------------------------------------
+    // payroll_person_raises (multi-raise steps, Oct 2026)
+    // -------------------------------------------------------------------
+
+    /** Every raise of every person of the entity (ordered by person, date). */
+    public List<PayrollPersonRaise> listRaises(UUID entityId) {
+        return payrollPersonRaiseRepository.findAllForEntity(entityId);
+    }
+
+    @Transactional
+    public PayrollPersonRaise createRaise(User user, UUID entityId, UUID personId, PayrollPersonRaise body) {
+        if (body == null) throw new IllegalArgumentException("Request body is required");
+        if (body.getEffectiveDate() == null) throw new IllegalArgumentException("effectiveDate is required");
+        if (body.getRaisePct() == null) throw new IllegalArgumentException("raisePct is required");
+        PayrollPerson person = findPerson(entityId, personId);   // 404 if the person is not in this entity
+
+        PayrollPersonRaise r = new PayrollPersonRaise();
+        r.setPayrollPersonId(person.getId());
+        r.setEffectiveDate(body.getEffectiveDate());
+        r.setRaisePct(validRaisePct(body.getRaisePct()));
+
+        PayrollPersonRaise saved = payrollPersonRaiseRepository.save(r);
+        audit(user, entityId, "POLARIS_PAYROLL_RAISE_CREATE", "payroll_person_raises", saved.getId(),
+            "person=" + person.getId() + ", effectiveDate=" + saved.getEffectiveDate() + ", raisePct=" + saved.getRaisePct());
+        return saved;
+    }
+
+    /** Partial update: null fields in the body leave the stored value unchanged. */
+    @Transactional
+    public PayrollPersonRaise updateRaise(User user, UUID entityId, UUID id, PayrollPersonRaise body) {
+        if (body == null) throw new IllegalArgumentException("Request body is required");
+        PayrollPersonRaise r = findRaise(entityId, id);
+
+        if (body.getEffectiveDate() != null) r.setEffectiveDate(body.getEffectiveDate());
+        if (body.getRaisePct() != null) r.setRaisePct(validRaisePct(body.getRaisePct()));
+
+        PayrollPersonRaise saved = payrollPersonRaiseRepository.save(r);
+        audit(user, entityId, "POLARIS_PAYROLL_RAISE_UPDATE", "payroll_person_raises", saved.getId(),
+            "effectiveDate=" + saved.getEffectiveDate() + ", raisePct=" + saved.getRaisePct());
+        return saved;
+    }
+
+    @Transactional
+    public void deleteRaise(User user, UUID entityId, UUID id) {
+        PayrollPersonRaise r = findRaise(entityId, id);
+        payrollPersonRaiseRepository.delete(r);
+        audit(user, entityId, "POLARIS_PAYROLL_RAISE_DELETE", "payroll_person_raises", id, "Hard delete");
+    }
+
+    private PayrollPersonRaise findRaise(UUID entityId, UUID id) {
+        return payrollPersonRaiseRepository.findByIdForEntity(id, entityId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Payroll raise not found"));
+    }
 
     // -------------------------------------------------------------------
     // payroll_people

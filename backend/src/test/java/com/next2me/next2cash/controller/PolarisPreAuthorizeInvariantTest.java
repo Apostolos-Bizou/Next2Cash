@@ -91,7 +91,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("A2: only the 4 Dashboard GETs override the class-level gate; no write does (23 endpoints, 12 writes)")
+    @DisplayName("A2: only the 4 Dashboard GETs override the class-level gate; no write does (32 endpoints, 18 writes)")
     void onlyDashboardGetsOverride() {
         List<String> violations = new ArrayList<>();
         Set<String> found = new java.util.HashSet<>();
@@ -114,8 +114,8 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 else found.add(name);
             }
         }
-        assertEquals(23, endpoints, "expected 23 endpoints (5 per resource x 4 resources + my-role + payroll summary + forecast summary)");
-        assertEquals(12, writes, "expected 12 write endpoints (3 per resource x 4 resources)");
+        assertEquals(32, endpoints, "expected 32 endpoints (5 x 5 CRUD resources + my-role + payroll summary + forecast summary + 4 raises)");
+        assertEquals(18, writes, "expected 18 write endpoints (3 x 5 CRUD resources + 3 raises)");
         assertTrue(violations.isEmpty(), "method-level @PreAuthorize violations: " + violations);
         assertEquals(VIEWER_GET_OVERRIDES, found, "every Dashboard GET must carry the VIEWER gate");
     }
@@ -134,7 +134,10 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
             "{\"value\":2}"),
         ACTUALS("/api/polaris/forecast/actuals", Set.of("admin", "editor", "viewer"), Set.of("admin", "editor"),
             "{\"groupKey\":\"g\",\"label\":\"l\",\"periodStart\":\"2026-09-01\",\"periodEnd\":\"2026-09-30\"}",
-            "{\"label\":\"l2\"}");
+            "{\"label\":\"l2\"}"),
+        COST_MILESTONES("/api/polaris/forecast/cost-milestones", Set.of("admin", "editor"), Set.of("admin"),
+            "{\"category\":\"IT / Computer\",\"targetDate\":\"2027-06-01\",\"targetValue\":1000}",
+            "{\"targetValue\":2000}");
 
         final String path;
         final Set<String> read;
@@ -184,6 +187,7 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
     @Autowired private PayrollMilestoneRepository payrollMilestoneRepository;
     @Autowired private ForecastAssumptionRepository forecastAssumptionRepository;
     @Autowired private ActualsRowRepository actualsRowRepository;
+    @Autowired private com.next2me.next2cash.repository.CostMilestoneRepository costMilestoneRepository;
 
     private CompanyEntity polaris;
 
@@ -382,6 +386,14 @@ class PolarisPreAuthorizeInvariantTest extends BaseIntegrationTest {
                 r.setPeriodStart(LocalDate.of(2026, 8, 1));
                 r.setPeriodEnd(LocalDate.of(2026, 8, 31));
                 yield actualsRowRepository.save(r).getId();
+            }
+            case COST_MILESTONES -> {
+                com.next2me.next2cash.model.CostMilestone c = new com.next2me.next2cash.model.CostMilestone();
+                c.setEntityId(e);
+                c.setCategory("Marketing / Διαφήμιση");
+                c.setTargetDate(LocalDate.of(2027, 6, 1));
+                c.setTargetValue(BigDecimal.TEN);
+                yield costMilestoneRepository.save(c).getId();
             }
         };
     }

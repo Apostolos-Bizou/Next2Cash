@@ -7,12 +7,25 @@
 //   admin  -> full table, editable (incl. office / name / role, so new rows can be filled in)
 //   editor -> full table, read-only
 //   viewer -> the mockup's aggregate card, from /api/polaris/payroll/summary (no names / salaries)
-import { computed } from 'vue'
+//   raises (Oct 2026): each row expands to its list of (ημερομηνία, ποσοστό) steps
+//   from payroll_person_raises; the ΑΥΞΗΣΗ / ΙΣΧΥΣ ΑΠΟ columns stay as a shortcut
+//   that writes the first step.
+import { computed, ref } from 'vue'
 import PolarisStatus from '@/components/PolarisStatus.vue'
+import PolarisIntroBanner from '@/components/PolarisIntroBanner.vue'
 import { usePolarisPlStore, fmtUSD, fmtInt, OFFICES } from '@/stores/polarisPl'
 import '@/styles/polaris-pl.css'
 
 const pl = usePolarisPlStore()
+
+// expanded raise lists, by person id
+const expanded = ref(new Set())
+function toggleRaises(p) {
+  const s = new Set(expanded.value)
+  if (s.has(p.id)) s.delete(p.id); else s.add(p.id)
+  expanded.value = s
+}
+const fmtPctSigned = n => (n > 0 ? '+' : '') + String(n).replace('.', ',') + '%'
 
 const payrollEditNote = computed(() => pl.isAdmin
   ? 'Αθήνα + Μανίλα · κάθε άτομο με δική του αύξηση'
@@ -22,6 +35,9 @@ const payrollEditNote = computed(() => pl.isAdmin
 <template>
   <div class="polaris-pl">
     <PolarisStatus :allowed="pl.hasAccess">
+
+    <!-- one-time intro for the OPEX / raises features: roles that can write here, until dismissed (per user) -->
+    <PolarisIntroBanner v-if="pl.canEdit" />
 
     <div class="page-head">
       <div>
@@ -45,7 +61,8 @@ const payrollEditNote = computed(() => pl.isAdmin
             </tr></thead>
             <tbody>
               <tr v-if="pl.people.length === 0"><td colspan="7" style="color:var(--text-muted)">Δεν έχουν καταχωρηθεί άτομα ακόμα.</td></tr>
-              <tr v-for="(p, idx) in pl.people" :key="p.id">
+              <template v-for="(p, idx) in pl.people" :key="p.id">
+              <tr>
                 <td>
                   <select v-if="pl.isAdmin" class="cell-input" :value="p.officeCode" @change="pl.updatePerson(idx, 'officeCode', $event.target.value)">
                     <option v-for="o in OFFICES" :key="o.code" :value="o.code">{{ o.label }}</option>
@@ -55,10 +72,12 @@ const payrollEditNote = computed(() => pl.isAdmin
                 <td v-if="pl.isAdmin">
                   <input class="cell-input" type="text" :value="p.name" @change="pl.updatePerson(idx, 'name', $event.target.value)">
                   <input class="cell-input" type="text" :value="p.role" style="margin-top:4px;font-size:12px;font-weight:500" @change="pl.updatePerson(idx, 'role', $event.target.value)">
+                  <button class="raises-toggle" @click="toggleRaises(p)">{{ expanded.has(p.id) ? '▾' : '▸' }} Αυξήσεις ({{ p.raises.length }})</button>
                 </td>
                 <td v-else>
                   <div style="font-weight:600">{{ p.name }}</div>
                   <div style="font-size:11.5px;color:var(--text-muted)">{{ p.role }}</div>
+                  <button class="raises-toggle" @click="toggleRaises(p)">{{ expanded.has(p.id) ? '▾' : '▸' }} Αυξήσεις ({{ p.raises.length }})</button>
                 </td>
                 <!-- payroll is entered in the currency it's paid in (₱ Μανίλα, $ Αθήνα); every rolled-up figure is in $ -->
                 <td>
@@ -70,6 +89,30 @@ const payrollEditNote = computed(() => pl.isAdmin
                 <td class="tnum" style="font-weight:600">{{ fmtUSD(pl.salaryUSD(p, pl.horizon)) }}<div class="fx-sub" v-if="pl.isManila(p)">≈ ₱{{ fmtInt(pl.projectedSalary(p, pl.horizon)) }} native</div></td>
                 <td><button class="row-del" :style="{ visibility: pl.isAdmin ? 'visible' : 'hidden' }" @click="pl.removePerson(idx)" title="Αφαίρεση">✕</button></td>
               </tr>
+              <!-- raise steps: each applies once on the step before it, flat until the next -->
+              <tr v-if="expanded.has(p.id)" class="raises-row">
+                <td colspan="7">
+                  <div class="raises-panel">
+                    <div class="sec-note" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                      <span>Βήματα αύξησης · κάθε ποσοστό εφαρμόζεται μία φορά πάνω στο προηγούμενο βήμα και μένει σταθερό μέχρι το επόμενο. Οι στήλες ΑΥΞΗΣΗ / ΙΣΧΥΣ ΑΠΟ γράφουν το πρώτο βήμα.</span>
+                      <button v-if="pl.isAdmin" class="btn btn-add" @click="pl.addRaise(p)">+ Προσθήκη βήματος</button>
+                    </div>
+                    <table style="min-width:0;margin-top:8px">
+                      <thead><tr><th>Ισχύει από (ημερομηνία)</th><th>Ποσοστό</th><th>Μισθός μετά το βήμα</th><th></th></tr></thead>
+                      <tbody>
+                        <tr v-if="p.raises.length === 0"><td colspan="4" style="color:var(--text-muted)">Χωρίς βήματα — ισχύει η απλή αύξηση των στηλών ΑΥΞΗΣΗ / ΙΣΧΥΣ ΑΠΟ.</td></tr>
+                        <tr v-for="r in p.raises" :key="r.id">
+                          <td><input class="cell-input" type="date" :value="r.date" :disabled="!pl.isAdmin" @change="pl.updateRaise(p, r, 'date', $event.target.value)"></td>
+                          <td><input class="cell-input tnum" type="number" step="0.5" :value="r.pct" :disabled="!pl.isAdmin" @change="pl.updateRaise(p, r, 'pct', $event.target.value)">%</td>
+                          <td class="tnum">{{ pl.isManila(p) ? '₱' : '$' }}{{ fmtInt(pl.salaryAtDate(p, r.date)) }} <span class="fx-sub" style="display:inline">({{ fmtPctSigned(r.pct) }})</span></td>
+                          <td><button class="row-del" :style="{ visibility: pl.isAdmin ? 'visible' : 'hidden' }" @click="pl.removeRaise(p, r)" title="Αφαίρεση">✕</button></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+              </template>
             </tbody>
             <tfoot>
               <tr class="payroll-total-row">
@@ -102,3 +145,10 @@ const payrollEditNote = computed(() => pl.isAdmin
     </PolarisStatus>
   </div>
 </template>
+
+<style scoped>
+.raises-toggle{margin-top:6px;background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11.5px;font-weight:600;color:var(--text-secondary)}
+.raises-toggle:hover{color:var(--text-primary);border-color:var(--border-focus)}
+.raises-row td{padding-top:0}
+.raises-panel{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px 14px;margin:0 0 10px}
+</style>
