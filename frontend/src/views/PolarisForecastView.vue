@@ -12,7 +12,8 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import PolarisStatus from '@/components/PolarisStatus.vue'
 import PolarisIntroBanner from '@/components/PolarisIntroBanner.vue'
-import { usePolarisPlStore, fmtUSD, fmtUSD2, fmtPct, fmtInt, groupSum3, rowEnd, OPEX_CATEGORIES } from '@/stores/polarisPl'
+import { usePolarisPlStore, fmtUSD, fmtUSD2, fmtPct, fmtInt, groupSum3, rowEnd, OPEX_CATEGORIES, opexSiblings } from '@/stores/polarisPl'
+import { fetchForecastExcel } from '@/api/polaris'
 import '@/styles/polaris-pl.css'
 
 Chart.register(...registerables)
@@ -20,6 +21,37 @@ Chart.register(...registerables)
 const pl = usePolarisPlStore()
 const dates = computed(() => pl.periodDates)
 const isGrowth = computed(() => pl.memberForecastMode === 'growth')
+
+// ---- Excel export (30 Oct 2026): the current horizon, server-computed, downloaded as .xlsx ----
+const exporting = ref(false)
+const exportError = ref(null)
+async function exportExcel() {
+  if (exporting.value) return
+  exporting.value = true
+  exportError.value = null
+  try {
+    const { blob, filename } = await fetchForecastExcel(pl.horizon)
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  } catch (e) {
+    exportError.value = e?.response?.status === 403 ? 'Δεν έχεις δικαίωμα εξαγωγής.' : 'Η εξαγωγή σε Excel απέτυχε.'
+  } finally {
+    exporting.value = false
+  }
+}
+
+// run-rate hint per OPEX category: the combined Astrolavos figure is labelled as such
+function runRateHint(cat) {
+  const sib = opexSiblings(cat)
+  if (sib.length > 1) return `συνδυασμένο run-rate Αστρολάβος «${sib.join(' + ')}» ${fmtUSD(pl.opexRunRates[cat])}/έτος (η πηγή δεν δίνει ανάλυση ανά υποκατηγορία)`
+  return `σημερινό run-rate (Αστρολάβος) ${fmtUSD(pl.opexRunRates[cat])}/έτος`
+}
 
 // ---- hero KPIs (same thresholds/colors as the mockup) ----
 const ebitdaCls = computed(() => {
@@ -129,8 +161,12 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
       </div>
       <div class="horizon-switch" v-if="pl.isAdmin">
         <button v-for="y in [1, 3, 5]" :key="y" class="horizon-btn" :class="{ active: pl.horizon === y }" @click="pl.setHorizon(y)">{{ y === 1 ? '1 έτος' : `${y} έτη` }}</button>
+        <button class="btn btn-add" style="margin-left:10px" :disabled="exporting" @click="exportExcel" title="Κατέβασε το P&L του επιλεγμένου ορίζοντα σε .xlsx (REVENUE · THIRD-PARTY · CONTRIBUTION · OPERATING COSTS ανά γραφείο · OPEX ανά κατηγορία · EBITDA)">
+          {{ exporting ? 'Εξαγωγή…' : '⬇ Εξαγωγή σε Excel' }}
+        </button>
       </div>
     </div>
+    <div v-if="exportError" class="sec-note danger" style="margin-bottom:10px">{{ exportError }}</div>
 
     <template v-if="pl.isAdmin">
     <div class="kpi-hero">
@@ -189,6 +225,7 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
           <div class="field"><label>Network payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.netPay" step="0.5" class="tnum" @change="pl.saveAssumption('netPay')"></div>
           <div class="field"><label>Audit payable rate <span class="hint">% επί $35 + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.auditPay" step="0.01" class="tnum" @change="pl.saveAssumption('auditPay')"></div>
           <div class="field"><label>Dental payable <span class="hint">$/μέλος + 12% ΦΠΑ</span></label><input type="number" v-model="pl.inputs.dentalPay" step="0.5" class="tnum" @change="pl.saveAssumption('dentalPay')"></div>
+          <div class="field"><label>Εργοδοτικές εισφορές <span class="hint">% επί μισθών προσωπικού (όχι ενοίκια)</span></label><input type="number" v-model="pl.inputs.employerContribPct" step="0.1" class="tnum" @change="pl.saveAssumption('employerContribPct')"></div>
           <div class="field"><label>PHP ανά USD<span class="hint"> — ισοτιμία γραφείου Μανίλα</span></label><input type="number" v-model="pl.inputs.phpPerUsd" step="0.1" class="tnum" @change="pl.saveAssumption('phpPerUsd')"></div>
           <div class="field"><label>USD ανά EUR<span class="hint"> — δεν χρησιμοποιείται: η μισθοδοσία Αθήνας είναι ήδη σε $</span></label><input type="number" v-model="pl.inputs.usdPerEur" step="0.01" class="tnum" @change="pl.saveAssumption('usdPerEur')"></div>
         </div>
@@ -234,32 +271,34 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
       </div>
     </div>
 
-    <!-- ===== Admin only: OPEX forecast — date-based milestones per "Λοιπά OPEX Διοίκησης" category (same rule as members) ===== -->
+    <!-- ===== Admin only: OPEX forecast — date-based STEP targets per "Λοιπά OPEX Διοίκησης" category (9, same rule as payroll raises) ===== -->
     <div class="section">
       <div class="sec-head">
         <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18M7 16l4-6 4 3 5-8"/></svg>Πρόβλεψη Λειτουργικών Εξόδων</div>
-        <div class="sec-note">μόνο admin — ετήσιος ρυθμός ($/έτος) ανά κατηγορία · κάθε κατηγορία ξεκινάει στα $0 μέχρι τον πρώτο στόχο · ανάμεσα σε στόχους γραμμική παρεμβολή · μετά τον τελευταίο σταθερός</div>
+        <div class="sec-note">μόνο admin — ετήσιος ρυθμός ($/έτος) σε 9 κατηγορίες · κάθε κατηγορία ξεκινάει στα $0 μέχρι τον πρώτο στόχο · κάθε στόχος ισχύει ΒΗΜΑΤΙΚΑ από τον μήνα του (όπως οι αυξήσεις μισθών: καμία γραμμική παρεμβολή) · μετά τον τελευταίο σταθερός</div>
       </div>
       <div class="sec-body">
         <div class="agg-row" style="margin-bottom:14px">
           <div><div class="l">Σύνολο OPEX σήμερα</div><div class="v tnum">{{ fmtUSD(pl.opexAtYear(1)) }}</div></div>
           <div><div class="l">Σύνολο OPEX (ορίζοντας)</div><div class="v tnum">{{ fmtUSD(pl.cur.opex) }}</div></div>
           <div><div class="l">OPEX / Έσοδα (ορίζοντας)</div><div class="v tnum">{{ fmtPct(pl.cur.revenue ? pl.cur.opex / pl.cur.revenue * 100 : 0) }}</div></div>
+          <div><div class="l">Εργοδοτικές εισφορές (ορίζοντας)</div><div class="v tnum">{{ fmtUSD(pl.cur.employerContrib) }}</div></div>
         </div>
         <div v-for="cat in OPEX_CATEGORIES" :key="cat" class="actuals-group">
           <div class="actuals-group-title">
             {{ cat }}
-            <span class="hint">σημερινό run-rate (Αστρολάβος) {{ fmtUSD(pl.opexRunRates[cat]) }}/έτος · στο μοντέλο σήμερα {{ fmtUSD(pl.opexCategoryAtYear(cat, 1)) }} · ορίζοντας {{ fmtUSD(pl.opexCategoryAtYear(cat, pl.horizon)) }}/έτος</span>
+            <span class="hint">{{ runRateHint(cat) }} · στο μοντέλο σήμερα {{ fmtUSD(pl.opexCategoryAtYear(cat, 1)) }} · ορίζοντας {{ fmtUSD(pl.opexCategoryAtYear(cat, pl.horizon)) }}/έτος</span>
           </div>
           <div class="sec-note" style="display:flex;align-items:center;justify-content:space-between">
-            <span>Στόχοι ετήσιου ρυθμού για συγκεκριμένο μήνα/έτος. Ο πρώτος νέος στόχος προτείνεται στον επόμενο μήνα με το σημερινό run-rate, για να μετρήσει και το σημερινό κόστος.</span>
+            <span v-if="pl.opexRunRateIsCombined(cat)">Στόχοι ετήσιου ρυθμού για συγκεκριμένο μήνα/έτος — ισχύουν από τον μήνα τους και μετά. Ο Αστρολάβος δίνει μόνο το συνδυασμένο ποσό των {{ opexSiblings(cat).length }} υποκατηγοριών, άρα ο νέος στόχος προτείνεται στα $0: μοίρασέ το εσύ.</span>
+            <span v-else>Στόχοι ετήσιου ρυθμού για συγκεκριμένο μήνα/έτος — ισχύουν από τον μήνα τους και μετά. Ο πρώτος νέος στόχος προτείνεται στον επόμενο μήνα με το σημερινό run-rate, για να μετρήσει και το σημερινό κόστος.</span>
             <button class="btn btn-add" @click="pl.addCostMilestone(cat)">+ Προσθήκη στόχου</button>
           </div>
           <div class="table-wrap" style="margin-top:8px">
             <table style="min-width:0">
-              <thead><tr><th>Μέχρι (μήνας/έτος)</th><th>Στόχος ($/έτος)</th><th></th></tr></thead>
+              <thead><tr><th>Από (μήνας/έτος)</th><th>Στόχος ($/έτος)</th><th></th></tr></thead>
               <tbody>
-                <tr v-if="pl.costMilestonesOf(cat).length === 0"><td colspan="3" style="color:var(--text-muted)">Δεν έχουν οριστεί στόχοι — ο ρυθμός θεωρείται σταθερός στον τρέχοντα.</td></tr>
+                <tr v-if="pl.costMilestonesOf(cat).length === 0"><td colspan="3" style="color:var(--text-muted)">Δεν έχουν οριστεί στόχοι — η κατηγορία μετράει $0 στο EBITDA.</td></tr>
                 <tr v-for="cm in pl.costMilestonesOf(cat)" :key="cm.id">
                   <td><input class="cell-input" type="month" :value="cm.month || ''" @change="pl.updateCostMilestone(cm, 'month', $event.target.value)"></td>
                   <td><input class="cell-input tnum" type="number" step="100" :value="cm.value" @change="pl.updateCostMilestone(cm, 'value', $event.target.value)"></td>
