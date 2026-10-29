@@ -9,6 +9,8 @@
 //   payroll/milestones   GET admin               | writes admin
 //   forecast/assumptions GET admin               | writes admin
 //   forecast/actuals     GET admin+editor+viewer | writes admin+editor
+//   forecast/summary     GET admin+editor+viewer (computed aggregates: EBITDA,
+//                        break-even, KPIs, per-year series -- never people/assumptions)
 
 import api from '@/api'
 
@@ -19,6 +21,11 @@ const data = (res) => res.data?.data
 
 export async function fetchMyRole() {
   return data(await api.get('/api/polaris/my-role', params()))?.role || null
+}
+
+/** Server-side forecast aggregates for the Dashboard block. years: 1 | 3 | 5. */
+export async function fetchForecastSummary(years = 1) {
+  return data(await api.get('/api/polaris/forecast/summary', { params: { entityId: POLARIS_ENTITY_ID, years } }))
 }
 
 export async function fetchPayrollSummary() {
