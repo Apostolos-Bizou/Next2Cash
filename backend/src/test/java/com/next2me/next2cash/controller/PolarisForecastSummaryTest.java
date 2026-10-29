@@ -158,7 +158,7 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
         for (String forbidden : List.of("name", "salary", "salaryTotal", "raisePct", "roleTitle", "office", "key", "value",
                                         "network_fee", "monthly_fee", "audit_fee_rate", "dental_fee",
                                         "network_payable", "audit_payable_rate", "dental_payable", "fx_php_per_usd", "member_growth_pct",
-                                        "members_mode",
+                                        "members_mode", "employer_contrib_pct", "employerContrib", "employerContribPct",
                                         // OPEX milestones + raises (Oct 2026): aggregates only
                                         "category", "targetDate", "targetValue", "targetMonth", "membersTarget",
                                         "effectiveDate", "payrollPersonId", "groupKey", "changeAmount", "beginAmount")) {
@@ -314,10 +314,19 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
         assertEquals("growth", summaryService.summary(polaris.getId(), 3, null, TODAY).membersMode());
     }
 
-    // ─── 4. OPEX milestones + payroll raise steps wired into EBITDA (hand-verified) ───
+    // ─── 4. OPEX milestones (STEP rule, 30 Oct 2026) + payroll raise steps wired into EBITDA (hand-verified) ───
+    //
+    // Hand computation of the OPEX line (base month Oct 2026, $0 baseline, step = latest target dated <= the point):
+    //   Έτος 1 (month 0):  no target yet                 ->      0
+    //   Έτος 2 (month 12): 24,000 @ +8 reached           -> 24,000   (old interpolation gave 26,400)
+    //   Έτος 3 (month 24): still 24,000 (+28 not reached) -> 24,000   (old: 33,600)
+    //   Έτος 4 (month 36): 36,000 @ +28 reached          -> 36,000
+    //   Έτος 5 (month 48): flat after the last           -> 36,000
+    // EBITDA Έτος 2 = 18,480 × 24.432 − 49,140 − 24,000 = 451,503.36 − 73,140 = 378,363.36
+    // EBITDA Έτος 3 = 20,328 × 24.432 − 49,140 − 24,000 = 496,653.696 − 73,140 = 423,513.696
 
     @Test
-    @DisplayName("OPEX + raises: 1 person 46,800 (+5% 2027, +3% 2029), Consultants $0 baseline -> 24k@2027-06 -> 36k@2029-02")
+    @DisplayName("OPEX step + raises: 1 person 46,800 (+5% 2027, +3% 2029), Consultants $0 -> 24k@2027-06 -> 36k@2029-02")
     void opexAndRaises_driveEbitda() throws Exception {
         // a clean entity with exactly the hand example (the service is not Polaris-specific)
         CompanyEntity ent = tdb.createEntity("polaris-opex", "Polaris OPEX fixture");
@@ -344,7 +353,7 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
         row.setPeriodStart(LocalDate.of(2026, 1, 1)); row.setPeriodEnd(LocalDate.of(2026, 10, 27));
         actualsRowRepository.save(row);
         for (Object[] m : new Object[][] { { LocalDate.of(2027, 6, 1), "24000" }, { LocalDate.of(2029, 2, 1), "36000" } }) {
-            CostMilestone c = new CostMilestone(); c.setEntityId(e); c.setCategory("Consultants / Audit / Legal");
+            CostMilestone c = new CostMilestone(); c.setEntityId(e); c.setCategory("Consultants");
             c.setTargetDate((LocalDate) m[0]); c.setTargetValue(new BigDecimal((String) m[1]));
             costMilestoneRepository.save(c);
         }
@@ -352,10 +361,10 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
         ForecastSummary s = summaryService.summary(e, 5, null, TODAY);
         var y = s.series();
         // hand check per year: contribution = members x 24.432; payroll = salary step at 1 Jan;
-        // opex = interpolation from $0 at month 0: 12 months is 4/20 of the way 24k -> 36k, 24 months is 16/20
+        // opex = STEP from $0: the latest target dated <= the point (24k from +8, 36k from +28)
         double[] members = { 16800, 18480, 20328, 22360.8, 24596.88 };
         double[] payroll = { 46800, 49140, 49140, 50614.20, 50614.20 };        // +5% from 2027, +3% from 2029
-        double[] opex    = { 0, 26400, 33600, 36000, 36000 };                   // 0 / 12 / 24 / 36 / 48 months
+        double[] opex    = { 0, 24000, 24000, 36000, 36000 };                   // 0 / 12 / 24 / 36 / 48 months
         for (int i = 0; i < 5; i++) {
             double expected = members[i] * CONTRIB_PER_MEMBER - payroll[i] - opex[i];
             assertEquals(members[i], y.get(i).members(), 1e-6, "members Y" + (i + 1));
@@ -363,11 +372,14 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
         }
         // Y1 carries no OPEX at all without a target near today (the $0-baseline decision)
         assertEquals(16800 * 24.432 - 46800, y.get(0).ebitda(), 1e-6);           // 363,657.60
-        // the two fully hand-written figures from the report
-        assertEquals(18480 * 24.432 - 49140 - 26400, y.get(1).ebitda(), 1e-6);   // 375,963.36
-        assertEquals(375963.36, y.get(1).ebitda(), 1e-6);
-        assertEquals(20328 * 24.432 - 49140 - 33600, y.get(2).ebitda(), 1e-6);   // 413,913.696
-        assertEquals(413913.696, y.get(2).ebitda(), 1e-6);
+        // the two fully hand-written figures (step rule)
+        assertEquals(18480 * 24.432 - 49140 - 24000, y.get(1).ebitda(), 1e-6);   // 378,363.36
+        assertEquals(378363.36, y.get(1).ebitda(), 1e-6);
+        assertEquals(20328 * 24.432 - 49140 - 24000, y.get(2).ebitda(), 1e-6);   // 423,513.696
+        assertEquals(423513.696, y.get(2).ebitda(), 1e-6);
+        // and the values the OLD interpolation rule would have produced are gone
+        assertNotEquals(375963.36, y.get(1).ebitda(), 1e-6);
+        assertNotEquals(413913.696, y.get(2).ebitda(), 1e-6);
         // horizon KPIs include OPEX
         assertEquals(y.get(4).ebitda(), s.ebitda(), 1e-6);
         assertEquals(36000 / (24596.88 * REV_PER_MEMBER) * 100, s.opexToRevenuePct(), 1e-6);
@@ -382,6 +394,90 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
         assertEquals(y.get(0).ebitda() - 10000, s2.series().get(0).ebitda(), 1e-6);   // 2026: 10,000
         assertEquals(y.get(1).ebitda() - 10000, s2.series().get(1).ebitda(), 1e-6);   // 2027: still 10,000
         assertEquals(y.get(2).ebitda() - 11000, s2.series().get(2).ebitda(), 1e-6);   // 2028: 11,000 (legacy +10%)
+    }
+
+    // ─── 5. employer_contrib_pct (30 Oct 2026): % of STAFF salaries, office-cost rows excluded ───
+    //
+    // Fixture (new entity, TODAY = 29 Oct 2026, growth 10%):
+    //   people: Athens staff 46,800 (no raises) + Athens office-cost row 10,000 (rent)
+    //   employer_contrib_pct = 18.5  -> contributions = 46,800 × 18.5% = 8,658.00 (rent carries none)
+    //   OPEX: Legal 6,000 @ 2026-10-01 (this month, month 0 -> in force from Έτος 1)
+    //   Έτος 1: 16,800 × 24.432 = 410,457.60 − 56,800 − 8,658.00 − 6,000 = 338,999.60
+    //   Έτος 2: 18,480 × 24.432 = 451,503.36 − 56,800 − 8,658.00 − 6,000 = 380,045.36
+    //   break-even (Έτος 1) = (56,800 + 8,658 + 6,000) / 24.432 = 71,458 / 24.432 = 2,924.77
+
+    @Test
+    @DisplayName("employer_contrib_pct 18.5 on 46,800 staff (+10,000 rent excluded) = 8,658.00; Y1 EBITDA 338,999.60; Y2 380,045.36")
+    void employerContributions_driveEbitda() {
+        CompanyEntity ent = tdb.createEntity("polaris-contrib", "Polaris contrib fixture");
+        UUID e = ent.getId();
+        for (String[] kv : new String[][] { { "members", "16800" }, { "member_growth_pct", "10" },
+                { "network_fee", "20" }, { "monthly_fee", "1.5" }, { "audit_fee_rate", "0.2" }, { "dental_fee", "2" },
+                { "network_payable", "15" }, { "audit_payable_rate", "0.1" }, { "dental_payable", "1.65" },
+                { "employer_contrib_pct", "18.5" } }) {
+            ForecastAssumption a = new ForecastAssumption(); a.setEntityId(e); a.setKey(kv[0]); a.setValue(new BigDecimal(kv[1]));
+            forecastAssumptionRepository.save(a);
+        }
+        PayrollPerson staff = new PayrollPerson();
+        staff.setEntityId(e); staff.setOffice("ATHENS"); staff.setName("Staff Secret");
+        staff.setSalary(new BigDecimal("46800")); staff.setRaisePct(BigDecimal.ZERO); staff.setEffectiveFromYear(2027); staff.setIsOfficeCost(false);
+        payrollPersonRepository.save(staff);
+        PayrollPerson rent = new PayrollPerson();
+        rent.setEntityId(e); rent.setOffice("ATHENS"); rent.setName("Γραφείο Αθηνών");
+        rent.setSalary(new BigDecimal("10000")); rent.setRaisePct(BigDecimal.ZERO); rent.setEffectiveFromYear(2027); rent.setIsOfficeCost(true);
+        payrollPersonRepository.save(rent);
+        CostMilestone legal = new CostMilestone(); legal.setEntityId(e); legal.setCategory("Legal");
+        legal.setTargetDate(LocalDate.of(2026, 10, 1)); legal.setTargetValue(new BigDecimal("6000"));
+        costMilestoneRepository.save(legal);
+
+        // independent hand figures
+        assertEquals(8658.00, 46800 * 18.5 / 100, EPS);
+        assertEquals(338999.60, 16800 * CONTRIB_PER_MEMBER - 56800 - 8658.00 - 6000, 1e-6);
+        assertEquals(380045.36, 18480 * CONTRIB_PER_MEMBER - 56800 - 8658.00 - 6000, 1e-6);
+
+        ForecastSummary s = summaryService.summary(e, 3, null, TODAY);
+        assertEquals(338999.60, s.series().get(0).ebitda(), 1e-6);
+        assertEquals(380045.36, s.series().get(1).ebitda(), 1e-6);
+        ForecastSummary s1 = summaryService.summary(e, 1, null, TODAY);
+        assertEquals(338999.60, s1.ebitda(), 1e-6);
+        assertEquals((56800 + 8658.00 + 6000) / CONTRIB_PER_MEMBER, s1.breakEvenMembers(), 1e-6);   // 2,924.77
+        assertEquals(2924.770793, s1.breakEvenMembers(), 1e-5);
+        // payroll KPI stays payroll-only (contributions are a separate cost line)
+        assertEquals(56800 / (16800 * REV_PER_MEMBER) * 100, s1.payrollToRevenuePct(), 1e-6);
+
+        // the itemised detail behind the Excel export carries every line
+        PolarisForecastSummaryService.ForecastDetail d = summaryService.detail(e, 3, TODAY);
+        PolarisForecastSummaryService.YearDetail y1 = d.rows().get(0);
+        assertEquals(2026, y1.calendarYear());
+        assertEquals(16800.0, y1.members(), EPS);
+        assertEquals(16800 * 20.0, y1.revenueNetworkFee(), EPS);
+        assertEquals(16800 * 1.5 * 12, y1.revenueMonthlyFee(), EPS);
+        assertEquals(16800 * 0.2 * 35, y1.revenueAuditFee(), EPS);
+        assertEquals(16800 * 2.0, y1.revenueDentalFee(), EPS);
+        assertEquals(16800 * REV_PER_MEMBER, y1.revenue(), 1e-6);
+        assertEquals(16800 * TP_PER_MEMBER, y1.thirdParty(), 1e-6);
+        assertEquals(HAND_Y1_CONTRIBUTION, y1.contribution(), 1e-6);
+        assertEquals(56800.0, y1.payrollAthens(), EPS);
+        assertEquals(0.0, y1.payrollManila(), EPS);
+        assertEquals(56800.0, y1.payroll(), EPS);
+        assertEquals(46800.0, y1.staffSalaries(), EPS);
+        assertEquals(18.5, y1.employerContribPct(), EPS);
+        assertEquals(8658.00, y1.employerContrib(), EPS);
+        assertEquals(6000.0, y1.opexByCategory().get("Legal"), EPS);
+        assertEquals(0.0, y1.opexByCategory().get("Consultants"), EPS);
+        assertEquals(9, y1.opexByCategory().size());
+        assertEquals(List.copyOf(com.next2me.next2cash.service.PolarisForecastMath.OPEX_CATEGORIES),
+            List.copyOf(y1.opexByCategory().keySet()), "export keeps the agreed category order");
+        assertEquals(6000.0, y1.opex(), EPS);
+        assertEquals(338999.60, y1.ebitda(), 1e-6);
+        assertEquals("growth", d.membersMode());
+        assertEquals(56.5, d.phpPerUsd(), EPS);   // default when fx_php_per_usd is absent
+
+        // no employer_contrib_pct row -> 0 contributions (backward compatible)
+        CompanyEntity plain = tdb.createEntity("polaris-plain", "No contrib");
+        ForecastAssumption m = new ForecastAssumption(); m.setEntityId(plain.getId()); m.setKey("members"); m.setValue(new BigDecimal("100"));
+        forecastAssumptionRepository.save(m);
+        assertEquals(0.0, summaryService.detail(plain.getId(), 1, TODAY).rows().get(0).employerContrib(), EPS);
     }
 
     @Test
