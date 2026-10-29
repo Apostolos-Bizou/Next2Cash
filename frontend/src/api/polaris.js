@@ -11,6 +11,8 @@
 //   forecast/actuals     GET admin+editor+viewer | writes admin+editor
 //   forecast/summary     GET admin+editor+viewer (computed aggregates: EBITDA,
 //                        break-even, KPIs, per-year series -- never people/assumptions)
+//   forecast/cost-milestones  GET admin+editor | writes admin   (OPEX forecast)
+//   payroll/raises            GET admin+editor | writes admin   (per-person raise steps)
 
 import api from '@/api'
 
@@ -45,3 +47,13 @@ export const peopleApi = crud('/api/polaris/payroll/people')
 export const milestonesApi = crud('/api/polaris/payroll/milestones')
 export const assumptionsApi = crud('/api/polaris/forecast/assumptions')
 export const actualsApi = crud('/api/polaris/forecast/actuals')
+/** OPEX milestones (Oct 2026): GET admin+editor | writes admin. */
+export const costMilestonesApi = crud('/api/polaris/forecast/cost-milestones')
+
+/** Payroll raise steps (Oct 2026): list is per entity, create is per person; GET admin+editor | writes admin. */
+export const raisesApi = {
+  list: async () => data(await api.get('/api/polaris/payroll/raises', params())) || [],
+  create: async (personId, body) => data(await api.post(`/api/polaris/payroll/people/${personId}/raises`, body, params())),
+  update: async (id, body) => data(await api.put(`/api/polaris/payroll/raises/${id}`, body, params())),
+  remove: async (id) => { await api.delete(`/api/polaris/payroll/raises/${id}`, params()) },
+}

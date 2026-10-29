@@ -1,9 +1,11 @@
 package com.next2me.next2cash.service;
 
 import com.next2me.next2cash.model.ActualsRow;
+import com.next2me.next2cash.model.CostMilestone;
 import com.next2me.next2cash.model.ForecastAssumption;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.repository.ActualsRowRepository;
+import com.next2me.next2cash.repository.CostMilestoneRepository;
 import com.next2me.next2cash.repository.ForecastAssumptionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -34,7 +36,75 @@ public class PolarisForecastService {
 
     private final ForecastAssumptionRepository forecastAssumptionRepository;
     private final ActualsRowRepository actualsRowRepository;
+    private final CostMilestoneRepository costMilestoneRepository;
     private final AuditLogService auditLogService;
+
+    // -------------------------------------------------------------------
+    // cost_milestones (OPEX forecast, Oct 2026)
+    // -------------------------------------------------------------------
+
+    public List<CostMilestone> listCostMilestones(UUID entityId) {
+        return costMilestoneRepository.findByEntityIdOrderByCategoryAscTargetDateAsc(entityId);
+    }
+
+    public CostMilestone getCostMilestone(UUID entityId, UUID id) {
+        return findCostMilestone(entityId, id);
+    }
+
+    @Transactional
+    public CostMilestone createCostMilestone(User user, UUID entityId, CostMilestone body) {
+        if (body == null) throw new IllegalArgumentException("Request body is required");
+        if (body.getTargetDate() == null) throw new IllegalArgumentException("targetDate is required");
+        if (body.getTargetValue() == null) throw new IllegalArgumentException("targetValue is required");
+
+        CostMilestone c = new CostMilestone();
+        c.setEntityId(entityId);
+        c.setCategory(validCategory(body.getCategory()));
+        c.setTargetDate(body.getTargetDate().withDayOfMonth(1));
+        c.setTargetValue(PolarisPayrollService.nonNegative(body.getTargetValue(), "targetValue"));
+
+        CostMilestone saved = costMilestoneRepository.save(c);
+        audit(user, entityId, "POLARIS_COST_MILESTONE_CREATE", "cost_milestones", saved.getId(),
+            "category=" + saved.getCategory() + ", targetDate=" + saved.getTargetDate());
+        return saved;
+    }
+
+    /** Partial update: null fields in the body leave the stored value unchanged. */
+    @Transactional
+    public CostMilestone updateCostMilestone(User user, UUID entityId, UUID id, CostMilestone body) {
+        if (body == null) throw new IllegalArgumentException("Request body is required");
+        CostMilestone c = findCostMilestone(entityId, id);
+
+        if (body.getCategory() != null) c.setCategory(validCategory(body.getCategory()));
+        if (body.getTargetDate() != null) c.setTargetDate(body.getTargetDate().withDayOfMonth(1));
+        if (body.getTargetValue() != null) c.setTargetValue(PolarisPayrollService.nonNegative(body.getTargetValue(), "targetValue"));
+
+        CostMilestone saved = costMilestoneRepository.save(c);
+        audit(user, entityId, "POLARIS_COST_MILESTONE_UPDATE", "cost_milestones", saved.getId(),
+            "category=" + saved.getCategory() + ", targetDate=" + saved.getTargetDate());
+        return saved;
+    }
+
+    @Transactional
+    public void deleteCostMilestone(User user, UUID entityId, UUID id) {
+        CostMilestone c = findCostMilestone(entityId, id);
+        costMilestoneRepository.delete(c);
+        audit(user, entityId, "POLARIS_COST_MILESTONE_DELETE", "cost_milestones", id, "Hard delete");
+    }
+
+    private CostMilestone findCostMilestone(UUID entityId, UUID id) {
+        return costMilestoneRepository.findByIdAndEntityId(id, entityId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cost milestone not found"));
+    }
+
+    /** 400 unless the category is one of the agreed "Λοιπά OPEX Διοίκησης" labels. */
+    private static String validCategory(String category) {
+        String c = requireText(category, "category", 200);
+        if (!PolarisForecastMath.OPEX_CATEGORIES.contains(c)) {
+            throw new IllegalArgumentException("category must be one of " + PolarisForecastMath.OPEX_CATEGORIES);
+        }
+        return c;
+    }
 
     // -------------------------------------------------------------------
     // forecast_assumptions

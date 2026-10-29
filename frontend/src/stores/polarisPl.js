@@ -15,9 +15,13 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed } from 'vue'
 import {
-  fetchMyRole, fetchPayrollSummary, peopleApi, milestonesApi, assumptionsApi, actualsApi
+  fetchMyRole, fetchPayrollSummary, peopleApi, milestonesApi, assumptionsApi, actualsApi, costMilestonesApi, raisesApi
 } from '@/api/polaris'
-import { calendarYear, nativeSalaryInYear, nativeToUsd, usdSalaryInYear } from './polarisMath'
+import {
+  calendarYear, nativeSalaryInYear, nativeToUsd, usdSalaryInYear, salaryAt,
+  interpolateMilestones, monthsFromBase, annualRunRate, OPEX_CATEGORIES, OPEX_GROUP_KEY,
+} from './polarisMath'
+export { OPEX_CATEGORIES }
 
 // ---------------- formatting (identical to the mockup) ----------------
 export function fmtUSD(n) {
@@ -118,12 +122,7 @@ function defaultPeriod() {
 const MILESTONE_BASE = new Date()
 MILESTONE_BASE.setDate(1)
 
-function monthsFromNow(monthStr) {
-  if (!monthStr) return NaN
-  const [y, m] = monthStr.split('-').map(Number)
-  if (!y || !m) return NaN
-  return (y - MILESTONE_BASE.getFullYear()) * 12 + (m - 1 - MILESTONE_BASE.getMonth())
-}
+function monthsFromNow(monthStr) { return monthsFromBase(MILESTONE_BASE, monthStr) }
 
 function readLs(key) {
   try { return localStorage.getItem(key) } catch (e) { return null }
@@ -147,12 +146,25 @@ function personFromApi(p) {
     raise: Number(p.raisePct) || 0,
     effFrom: p.effectiveFromYear,
     rent: !!p.isOfficeCost,
+    raises: [],   // [{ id, date: 'YYYY-MM-DD', pct }] from payroll_person_raises, sorted by date
   }
 }
 const PERSON_FIELD_TO_API = { salary: 'salary', raise: 'raisePct', effFrom: 'effectiveFromYear', name: 'name', role: 'roleTitle', officeCode: 'office', rent: 'isOfficeCost' }
 
+function raiseFromApi(r) {
+  return { id: r.id, personId: r.payrollPersonId, date: (r.effectiveDate || '').slice(0, 10), pct: Number(r.raisePct) || 0 }
+}
+// the legacy ΑΥΞΗΣΗ / ΙΣΧΥΣ ΑΠΟ columns mirror the FIRST raise step when there is one
+function syncLegacyFromRaises(p) {
+  p.raises.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+  if (p.raises.length) { p.raise = p.raises[0].pct; p.effFrom = Number(p.raises[0].date.slice(0, 4)) }
+}
+
 function milestoneFromApi(m) {
   return { id: m.id, month: (m.targetMonth || '').slice(0, 7), members: Number(m.membersTarget) || 0 }
+}
+function costMilestoneFromApi(c) {
+  return { id: c.id, category: c.category, month: (c.targetDate || '').slice(0, 7), value: Number(c.targetValue) || 0 }
 }
 function actualFromApi(r) {
   return {
@@ -187,6 +199,7 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
   const people = ref([])
   const payrollSummary = ref([])   // viewer only: [{ officeCode, office, salaryTotal, headcount }]
   const milestones = ref([])
+  const costMilestones = ref([])   // admin/editor: [{ id, category, month: 'YYYY-MM', value (annual $) }]
   const actualsRows = ref([])
   const actPeriod = ref(periodText(defaultPeriod()))
 
@@ -224,14 +237,22 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
       }
       const admin = role.value === 'admin'
       const editor = role.value === 'admin' || role.value === 'editor'
-      const [ppl, ms, asm, act, sum] = await Promise.all([
+      const [ppl, ms, asm, act, sum, rs, cms] = await Promise.all([
         editor ? peopleApi.list() : [],
         admin ? milestonesApi.list() : [],
         admin ? assumptionsApi.list() : [],
         actualsApi.list(),                        // any Polaris role
         editor ? [] : fetchPayrollSummary(),      // viewer: aggregate instead of people
+        editor ? raisesApi.list() : [],           // raise steps (admin+editor, same tier as people)
+        editor ? costMilestonesApi.list() : [],   // OPEX milestones (admin+editor)
       ])
       people.value = ppl.map(personFromApi)
+      for (const r of rs.map(raiseFromApi)) {
+        const p = people.value.find(x => x.id === r.personId)
+        if (p) p.raises.push(r)
+      }
+      people.value.forEach(syncLegacyFromRaises)
+      costMilestones.value = cms.map(costMilestoneFromApi)
       payrollSummary.value = sum.map(s => ({
         officeCode: s.office, office: OFFICE_LABEL[s.office] || s.office,
         salaryTotal: Number(s.salaryTotal) || 0, headcount: Number(s.headcount) || 0,
@@ -261,6 +282,7 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     }
   }
   function resetData() {
+    costMilestones.value = []
     people.value = []; payrollSummary.value = []; milestones.value = []; actualsRows.value = []
     for (const k of Object.keys(ASSUMPTION_KEYS)) { inputs[k] = ''; delete assumptionIds[k] }
     loaded.value = true
@@ -288,6 +310,8 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
   function salaryUSD(p, years) {
     return usdSalaryInYear(p, calendarYear(FORECAST_BASE_YEAR, years), num(inputs.phpPerUsd, 56.5))
   }
+  // native-currency salary in force at an ISO date (raise steps table)
+  function salaryAtDate(p, iso) { return salaryAt(p.salary, p.raises, iso) }
 
   // ---------------- payroll edits (admin) ----------------
   function updatePerson(idx, field, val) {
@@ -302,7 +326,10 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     p[field] = value
     if (field === 'officeCode') p.office = OFFICE_LABEL[value] || value
     const apiValue = field === 'role' && value === '—' ? '' : value
-    return persist(() => peopleApi.update(p.id, { [PERSON_FIELD_TO_API[field]]: apiValue }))
+    const legacy = persist(() => peopleApi.update(p.id, { [PERSON_FIELD_TO_API[field]]: apiValue }))
+    // the quick-shortcut columns also write the first raise step (the calc's source of truth)
+    if (field === 'raise' || field === 'effFrom') return legacy.then(() => syncFirstRaiseFromLegacy(p))
+    return legacy
   }
   async function removePerson(idx) {
     if (role.value !== 'admin') return
@@ -321,28 +348,95 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
   }
 
   // ---------------- member milestones (manual forecast, admin) ----------------
-  function sortedMilestonePoints(members0) {
-    const pts = milestones.value
-      .map(m => ({ months: monthsFromNow(m.month), members: Number(m.members) || 0 }))
-      .filter(p => isFinite(p.months) && p.months > 0)
-      .sort((a, b) => a.months - b.months)
-    return [{ months: 0, members: members0 }, ...pts]
-  }
-  // piecewise-linear interpolation across the milestones; flat after the last one
+  // the ONE milestone rule (polarisMath.interpolateMilestones), shared with the OPEX categories
   function membersAtMonths(members0, targetMonths) {
-    const pts = sortedMilestonePoints(members0)
-    if (targetMonths <= 0) return members0
-    const last = pts[pts.length - 1]
-    if (targetMonths >= last.months) return last.members
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1]
-      if (targetMonths >= a.months && targetMonths <= b.months) {
-        const span = b.months - a.months
-        const t = span > 0 ? (targetMonths - a.months) / span : 1
-        return a.members + (b.members - a.members) * t
-      }
+    const pts = milestones.value.map(m => ({ months: monthsFromNow(m.month), value: Number(m.members) || 0 }))
+    return interpolateMilestones(members0, targetMonths, pts)
+  }
+
+  // ---------------- OPEX milestones (Πρόβλεψη Λειτουργικών Εξόδων, admin) ----------------
+  // Baseline is $0 (decision 29 Oct 2026): a category without targets adds nothing to
+  // EBITDA until its first target. The current run-rate below is shown as a HINT and used
+  // as the default value of a new target, so the admin can anchor "today" with one click.
+  // run-rate = in-period change of the category's LATEST actuals period, annualised by days
+  const opexRunRates = computed(() => Object.fromEntries(OPEX_CATEGORIES.map(cat => {
+    const mine = actualsRows.value.filter(r => r.groupKey === OPEX_GROUP_KEY && r.label === cat && r.periodEnd)
+    if (!mine.length) return [cat, 0]
+    const latestEnd = mine.reduce((m, r) => (r.periodEnd > m ? r.periodEnd : m), mine[0].periodEnd)
+    return [cat, mine.filter(r => r.periodEnd === latestEnd).reduce((s, r) => s + annualRunRate(r.change, r.periodStart, r.periodEnd), 0)]
+  })))
+  function costMilestonesOf(cat) { return costMilestones.value.filter(c => c.category === cat) }
+  // annual $ of one category at forecast point y ((y−1)·12 months out), from the $0 baseline
+  function opexCategoryAtYear(cat, y) {
+    const pts = costMilestonesOf(cat).map(c => ({ months: monthsFromNow(c.month), value: Number(c.value) || 0 }))
+    return interpolateMilestones(0, (y - 1) * 12, pts)
+  }
+  function opexAtYear(y) { return OPEX_CATEGORIES.reduce((s, cat) => s + opexCategoryAtYear(cat, y), 0) }
+
+  function updateCostMilestone(cm, field, val) {
+    if (role.value !== 'admin') return
+    if (field === 'value') {
+      cm.value = parseFloat(val) || 0
+      return persist(() => costMilestonesApi.update(cm.id, { targetValue: cm.value }))
     }
-    return last.members
+    if (!val) return  // backend: targetDate is required -- keep the stored month
+    cm.month = val
+    return persist(() => costMilestonesApi.update(cm.id, { targetDate: `${val}-01` }))
+  }
+  async function removeCostMilestone(cm) {
+    if (role.value !== 'admin') return
+    const ok = await persist(async () => { await costMilestonesApi.remove(cm.id); return true })
+    if (ok) costMilestones.value.splice(costMilestones.value.indexOf(cm), 1)
+  }
+  async function addCostMilestone(category) {
+    if (role.value !== 'admin') return
+    // default: next month at the category's current run-rate -- i.e. the "anchor today" target the intro banner describes
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1)
+    const created = await persist(() => costMilestonesApi.create({
+      category, targetDate: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`,
+      targetValue: Math.round(opexRunRates.value[category] || 0),
+    }))
+    if (created) costMilestones.value.push(costMilestoneFromApi(created))
+  }
+
+  // ---------------- payroll raise steps (admin) ----------------
+  function updateRaise(p, r, field, val) {
+    if (role.value !== 'admin') return
+    if (field === 'pct') {
+      r.pct = parseFloat(val) || 0
+      syncLegacyFromRaises(p)
+      return persist(() => raisesApi.update(r.id, { raisePct: r.pct }))
+    }
+    if (!val) return  // backend: effectiveDate is required -- keep the stored date
+    r.date = val
+    syncLegacyFromRaises(p)
+    return persist(() => raisesApi.update(r.id, { effectiveDate: val }))
+  }
+  async function removeRaise(p, r) {
+    if (role.value !== 'admin') return
+    const ok = await persist(async () => { await raisesApi.remove(r.id); return true })
+    if (ok) { p.raises.splice(p.raises.indexOf(r), 1); syncLegacyFromRaises(p) }
+  }
+  async function addRaise(p) {
+    if (role.value !== 'admin') return
+    // default: 1 January after the last step (or next year), 0% -- the admin fills in the rate
+    const lastYear = p.raises.length ? Number(p.raises[p.raises.length - 1].date.slice(0, 4)) : new Date().getFullYear()
+    const created = await persist(() => raisesApi.create(p.id, { effectiveDate: `${lastYear + 1}-01-01`, raisePct: 0 }))
+    if (created) { p.raises.push(raiseFromApi(created)); syncLegacyFromRaises(p) }
+  }
+  // the legacy ΑΥΞΗΣΗ / ΙΣΧΥΣ ΑΠΟ columns are a shortcut that writes the FIRST raise step
+  async function syncFirstRaiseFromLegacy(p) {
+    if (!p.raise) return   // 0% legacy raise = no step to store
+    const body = { effectiveDate: `${p.effFrom}-01-01`, raisePct: p.raise }
+    if (p.raises.length) {
+      const first = p.raises[0]
+      first.date = body.effectiveDate; first.pct = body.raisePct
+      await persist(() => raisesApi.update(first.id, body))
+    } else {
+      const created = await persist(() => raisesApi.create(p.id, body))
+      if (created) p.raises.push(raiseFromApi(created))
+    }
+    syncLegacyFromRaises(p)
   }
   function updateMilestone(idx, field, val) {
     if (role.value !== 'admin') return
@@ -469,22 +563,24 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     const dentalFee = num(inputs.dentalFee), netPay = num(inputs.netPay), auditPay = num(inputs.auditPay)
     const dentalPay = num(inputs.dentalPay)
     // the whole P&L is consolidated in USD; payroll (people + office-cost rows)
-    // converted per person via salaryUSD(), so EBITDA = contribution − TOTAL offices cost
+    // converted per person via salaryUSD(), OPEX from the category milestones,
+    // so EBITDA = contribution − TOTAL offices cost − OPEX (same as the server summary)
     const revenue = members * netFee + members * monthlyFee * 12 + members * auditRate * claims + members * dentalFee
     const thirdParty = members * netPay * (1 + netVat) + members * claims * auditPay * (1 + auditVat) + members * dentalPay * (1 + dentalVat)
     const contribution = revenue - thirdParty
     const payroll = people.value.reduce((s, p) => s + salaryUSD(p, y), 0)
-    const ebitda = contribution - payroll
-    return { members, revenue, thirdParty, contribution, payroll, ebitda }
+    const opex = opexAtYear(y)
+    const ebitda = contribution - payroll - opex
+    return { members, revenue, thirdParty, contribution, payroll, opex, ebitda }
   }
 
-  // break-even members at the selected horizon's cost base & per-member contribution
+  // break-even members at the selected horizon's fixed-cost base (payroll + OPEX) & per-member contribution
   const cur = computed(() => pnlAtYear(horizon.value))
   const lastYear1Ebitda = computed(() => pnlAtYear(1).ebitda)
   const breakEvenMembers = computed(() => {
     const c = cur.value
     const contribPerMember = c.members ? c.contribution / c.members : 0
-    return contribPerMember > 0 ? c.payroll / contribPerMember : NaN
+    return contribPerMember > 0 ? (c.payroll + c.opex) / contribPerMember : NaN
   })
   const breakEvenDistance = computed(() => cur.value.members - breakEvenMembers.value)
   const ebitdaMargin = computed(() => cur.value.revenue ? (cur.value.ebitda / cur.value.revenue * 100) : 0)
@@ -534,9 +630,12 @@ export const usePolarisPlStore = defineStore('polarisPl', () => {
     role, loading, loaded, loadError, saveError, load,
     horizon, memberForecastMode, granularity, inputs, actPeriod, people, milestones, actualsData,
     hasAccess, isAdmin, canEdit, setHorizon, setGranularity, setMemberForecastMode,
-    phpToUsd, isManila, projectedSalary, salaryUSD,
+    phpToUsd, isManila, projectedSalary, salaryUSD, salaryAtDate,
     updatePerson, removePerson, addPerson,
     updateMilestone, removeMilestone, addMilestone,
+    costMilestones, opexRunRates, costMilestonesOf, opexCategoryAtYear, opexAtYear,
+    addCostMilestone, updateCostMilestone, removeCostMilestone,
+    addRaise, updateRaise, removeRaise,
     saveAssumption,
     periodDates, activePeriod, updateActualAmount, revSum, expSum, netSum,
     pnlAtYear, cur, lastYear1Ebitda, breakEvenMembers, breakEvenDistance, ebitdaMargin,

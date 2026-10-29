@@ -2,13 +2,19 @@ package com.next2me.next2cash.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.next2me.next2cash.BaseIntegrationTest;
+import com.next2me.next2cash.model.ActualsRow;
 import com.next2me.next2cash.model.CompanyEntity;
+import com.next2me.next2cash.model.CostMilestone;
 import com.next2me.next2cash.model.ForecastAssumption;
 import com.next2me.next2cash.model.PayrollMilestone;
 import com.next2me.next2cash.model.PayrollPerson;
+import com.next2me.next2cash.model.PayrollPersonRaise;
 import com.next2me.next2cash.model.User;
+import com.next2me.next2cash.repository.ActualsRowRepository;
+import com.next2me.next2cash.repository.CostMilestoneRepository;
 import com.next2me.next2cash.repository.ForecastAssumptionRepository;
 import com.next2me.next2cash.repository.PayrollMilestoneRepository;
+import com.next2me.next2cash.repository.PayrollPersonRaiseRepository;
 import com.next2me.next2cash.repository.PayrollPersonRepository;
 import com.next2me.next2cash.service.PolarisForecastSummaryService;
 import com.next2me.next2cash.service.PolarisForecastSummaryService.ForecastSummary;
@@ -52,6 +58,9 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
     @Autowired private PayrollPersonRepository payrollPersonRepository;
     @Autowired private PayrollMilestoneRepository payrollMilestoneRepository;
     @Autowired private ForecastAssumptionRepository forecastAssumptionRepository;
+    @Autowired private PayrollPersonRaiseRepository payrollPersonRaiseRepository;
+    @Autowired private CostMilestoneRepository costMilestoneRepository;
+    @Autowired private ActualsRowRepository actualsRowRepository;
     @Autowired private PolarisForecastSummaryService summaryService;
 
     private CompanyEntity polaris;
@@ -149,10 +158,21 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
         for (String forbidden : List.of("name", "salary", "salaryTotal", "raisePct", "roleTitle", "office", "key", "value",
                                         "network_fee", "monthly_fee", "audit_fee_rate", "dental_fee",
                                         "network_payable", "audit_payable_rate", "dental_payable", "fx_php_per_usd", "member_growth_pct",
-                                        "members_mode")) {
+                                        "members_mode",
+                                        // OPEX milestones + raises (Oct 2026): aggregates only
+                                        "category", "targetDate", "targetValue", "targetMonth", "membersTarget",
+                                        "effectiveDate", "payrollPersonId", "groupKey", "changeAmount", "beginAmount")) {
             assertFalse(fieldNames.contains(forbidden), "response leaks field '" + forbidden + "': " + fieldNames);
         }
+        // the only 'label' fields are the series axis labels ("Έτος N"), never an actuals category label
+        for (JsonNode pt : root.path("data").path("series")) {
+            assertTrue(pt.path("label").asText().startsWith("Έτος "), "unexpected series label: " + pt.path("label").asText());
+        }
         assertFalse(body.contains("Secret"), "response must not contain person names: " + body);
+        for (String cat : com.next2me.next2cash.service.PolarisForecastMath.OPEX_CATEGORIES) {
+            assertFalse(body.contains(cat), "response must not contain OPEX category names: " + body);
+        }
+        assertFalse(body.contains("2027-01-01") || body.contains("2027-06"), "response must not contain milestone/raise dates: " + body);
         assertFalse(body.contains("62400") || body.contains("2034000"), "response must not contain per-person salaries: " + body);
         assertFalse(root.path("data").has("revenue") || root.path("data").has("payroll"),
             "totals that are not on the hero/KPI block are not echoed");
@@ -292,6 +312,76 @@ class PolarisForecastSummaryTest extends BaseIntegrationTest {
         forecastAssumptionRepository.findByEntityIdAndKey(polaris.getId(), "members_mode")
             .ifPresent(a -> { a.setValue(BigDecimal.ZERO); forecastAssumptionRepository.save(a); });
         assertEquals("growth", summaryService.summary(polaris.getId(), 3, null, TODAY).membersMode());
+    }
+
+    // ─── 4. OPEX milestones + payroll raise steps wired into EBITDA (hand-verified) ───
+
+    @Test
+    @DisplayName("OPEX + raises: 1 person 46,800 (+5% 2027, +3% 2029), Consultants $0 baseline -> 24k@2027-06 -> 36k@2029-02")
+    void opexAndRaises_driveEbitda() throws Exception {
+        // a clean entity with exactly the hand example (the service is not Polaris-specific)
+        CompanyEntity ent = tdb.createEntity("polaris-opex", "Polaris OPEX fixture");
+        UUID e = ent.getId();
+        for (String[] kv : new String[][] { { "members", "16800" }, { "member_growth_pct", "10" },
+                { "network_fee", "20" }, { "monthly_fee", "1.5" }, { "audit_fee_rate", "0.2" }, { "dental_fee", "2" },
+                { "network_payable", "15" }, { "audit_payable_rate", "0.1" }, { "dental_payable", "1.65" } }) {
+            ForecastAssumption a = new ForecastAssumption(); a.setEntityId(e); a.setKey(kv[0]); a.setValue(new BigDecimal(kv[1]));
+            forecastAssumptionRepository.save(a);
+        }
+        PayrollPerson p = new PayrollPerson();
+        p.setEntityId(e); p.setOffice("ATHENS"); p.setName("Accounting Manager Secret");
+        p.setSalary(new BigDecimal("46800")); p.setRaisePct(BigDecimal.ZERO); p.setEffectiveFromYear(2027); p.setIsOfficeCost(false);
+        UUID pid = payrollPersonRepository.save(p).getId();
+        for (Object[] r : new Object[][] { { LocalDate.of(2029, 1, 1), "3" }, { LocalDate.of(2027, 1, 1), "5" } }) {
+            PayrollPersonRaise pr = new PayrollPersonRaise(); pr.setPayrollPersonId(pid);
+            pr.setEffectiveDate((LocalDate) r[0]); pr.setRaisePct(new BigDecimal((String) r[1]));
+            payrollPersonRaiseRepository.save(pr);
+        }
+        // actuals rows do NOT feed the forecast baseline (decision 29 Oct 2026: OPEX starts at $0 until the first target)
+        ActualsRow row = new ActualsRow();
+        row.setEntityId(e); row.setGroupKey("adminOpexOther"); row.setLabel("Consultants / Audit / Legal");
+        row.setBeginAmount(new BigDecimal("11634")); row.setChangeAmount(new BigDecimal("8857"));
+        row.setPeriodStart(LocalDate.of(2026, 1, 1)); row.setPeriodEnd(LocalDate.of(2026, 10, 27));
+        actualsRowRepository.save(row);
+        for (Object[] m : new Object[][] { { LocalDate.of(2027, 6, 1), "24000" }, { LocalDate.of(2029, 2, 1), "36000" } }) {
+            CostMilestone c = new CostMilestone(); c.setEntityId(e); c.setCategory("Consultants / Audit / Legal");
+            c.setTargetDate((LocalDate) m[0]); c.setTargetValue(new BigDecimal((String) m[1]));
+            costMilestoneRepository.save(c);
+        }
+
+        ForecastSummary s = summaryService.summary(e, 5, null, TODAY);
+        var y = s.series();
+        // hand check per year: contribution = members x 24.432; payroll = salary step at 1 Jan;
+        // opex = interpolation from $0 at month 0: 12 months is 4/20 of the way 24k -> 36k, 24 months is 16/20
+        double[] members = { 16800, 18480, 20328, 22360.8, 24596.88 };
+        double[] payroll = { 46800, 49140, 49140, 50614.20, 50614.20 };        // +5% from 2027, +3% from 2029
+        double[] opex    = { 0, 26400, 33600, 36000, 36000 };                   // 0 / 12 / 24 / 36 / 48 months
+        for (int i = 0; i < 5; i++) {
+            double expected = members[i] * CONTRIB_PER_MEMBER - payroll[i] - opex[i];
+            assertEquals(members[i], y.get(i).members(), 1e-6, "members Y" + (i + 1));
+            assertEquals(expected, y.get(i).ebitda(), 1e-6, "EBITDA Y" + (i + 1));
+        }
+        // Y1 carries no OPEX at all without a target near today (the $0-baseline decision)
+        assertEquals(16800 * 24.432 - 46800, y.get(0).ebitda(), 1e-6);           // 363,657.60
+        // the two fully hand-written figures from the report
+        assertEquals(18480 * 24.432 - 49140 - 26400, y.get(1).ebitda(), 1e-6);   // 375,963.36
+        assertEquals(375963.36, y.get(1).ebitda(), 1e-6);
+        assertEquals(20328 * 24.432 - 49140 - 33600, y.get(2).ebitda(), 1e-6);   // 413,913.696
+        assertEquals(413913.696, y.get(2).ebitda(), 1e-6);
+        // horizon KPIs include OPEX
+        assertEquals(y.get(4).ebitda(), s.ebitda(), 1e-6);
+        assertEquals(36000 / (24596.88 * REV_PER_MEMBER) * 100, s.opexToRevenuePct(), 1e-6);
+        assertEquals((50614.20 + 36000) / CONTRIB_PER_MEMBER, s.breakEvenMembers(), 1e-6);   // fixed costs incl. OPEX
+
+        // a person WITHOUT raise rows still uses the legacy single raise (backward compatibility)
+        PayrollPerson legacy = new PayrollPerson();
+        legacy.setEntityId(e); legacy.setOffice("ATHENS"); legacy.setName("Legacy Secret");
+        legacy.setSalary(new BigDecimal("10000")); legacy.setRaisePct(new BigDecimal("10")); legacy.setEffectiveFromYear(2028); legacy.setIsOfficeCost(false);
+        payrollPersonRepository.save(legacy);
+        ForecastSummary s2 = summaryService.summary(e, 3, null, TODAY);
+        assertEquals(y.get(0).ebitda() - 10000, s2.series().get(0).ebitda(), 1e-6);   // 2026: 10,000
+        assertEquals(y.get(1).ebitda() - 10000, s2.series().get(1).ebitda(), 1e-6);   // 2027: still 10,000
+        assertEquals(y.get(2).ebitda() - 11000, s2.series().get(2).ebitda(), 1e-6);   // 2028: 11,000 (legacy +10%)
     }
 
     @Test

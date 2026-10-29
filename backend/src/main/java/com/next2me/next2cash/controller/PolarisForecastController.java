@@ -1,6 +1,7 @@
 package com.next2me.next2cash.controller;
 
 import com.next2me.next2cash.model.ActualsRow;
+import com.next2me.next2cash.model.CostMilestone;
 import com.next2me.next2cash.model.ForecastAssumption;
 import com.next2me.next2cash.model.User;
 import com.next2me.next2cash.service.PolarisForecastService;
@@ -23,10 +24,11 @@ import java.util.*;
  *      class-level gate, so VIEWER can never reach a POST/PUT/DELETE (Invariant 1).
  *   2. entity_roles for the Polaris entity, checked per endpoint here:
  *
- *        resource     | GET            | POST / PUT / DELETE
- *        -------------+----------------+--------------------
- *        assumptions  | admin                  | admin
- *        actuals      | admin, editor, viewer  | admin, editor
+ *        resource        | GET                    | POST / PUT / DELETE
+ *        ----------------+------------------------+--------------------
+ *        assumptions     | admin                  | admin
+ *        actuals         | admin, editor, viewer  | admin, editor
+ *        cost-milestones | admin, editor          | admin   (OPEX forecast, Oct 2026)
  *
  * Endpoints:
  *   GET    /api/polaris/forecast/assumptions?entityId=X
@@ -175,6 +177,61 @@ public class PolarisForecastController {
         User user = userAccessService.getCurrentUser(authHeader);
         userAccessService.assertPolarisAdminOrEditor(user, entityId);
         polarisForecastService.deleteActual(user, entityId, id);
+        return deleted(id);
+    }
+
+    // -------------------------------------------------------------------
+    // cost_milestones -- GET: admin+editor, writes: admin (never VIEWER: class gate)
+    // -------------------------------------------------------------------
+
+    @GetMapping("/cost-milestones")
+    public ResponseEntity<?> listCostMilestones(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam UUID entityId) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOrEditor(user, entityId);
+        return okList(polarisForecastService.listCostMilestones(entityId));
+    }
+
+    @GetMapping("/cost-milestones/{id}")
+    public ResponseEntity<?> getCostMilestone(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOrEditor(user, entityId);
+        return ok(polarisForecastService.getCostMilestone(entityId, id));
+    }
+
+    @PostMapping("/cost-milestones")
+    public ResponseEntity<?> createCostMilestone(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam UUID entityId,
+            @RequestBody CostMilestone body) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOnly(user, entityId);
+        return ok(polarisForecastService.createCostMilestone(user, entityId, body));
+    }
+
+    @PutMapping("/cost-milestones/{id}")
+    public ResponseEntity<?> updateCostMilestone(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId,
+            @RequestBody CostMilestone body) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOnly(user, entityId);
+        return ok(polarisForecastService.updateCostMilestone(user, entityId, id, body));
+    }
+
+    @DeleteMapping("/cost-milestones/{id}")
+    public ResponseEntity<?> deleteCostMilestone(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable UUID id,
+            @RequestParam UUID entityId) {
+        User user = userAccessService.getCurrentUser(authHeader);
+        userAccessService.assertPolarisAdminOnly(user, entityId);
+        polarisForecastService.deleteCostMilestone(user, entityId, id);
         return deleted(id);
     }
 

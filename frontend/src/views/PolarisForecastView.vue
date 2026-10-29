@@ -11,7 +11,8 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { Chart, registerables } from 'chart.js'
 import PolarisStatus from '@/components/PolarisStatus.vue'
-import { usePolarisPlStore, fmtUSD, fmtUSD2, fmtPct, fmtInt, groupSum3, rowEnd } from '@/stores/polarisPl'
+import PolarisIntroBanner from '@/components/PolarisIntroBanner.vue'
+import { usePolarisPlStore, fmtUSD, fmtUSD2, fmtPct, fmtInt, groupSum3, rowEnd, OPEX_CATEGORIES } from '@/stores/polarisPl'
 import '@/styles/polaris-pl.css'
 
 Chart.register(...registerables)
@@ -116,6 +117,9 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
 <template>
   <div class="polaris-pl">
     <PolarisStatus :allowed="pl.hasAccess">
+
+    <!-- one-time intro for the OPEX / raises features: roles that can write here, until dismissed (per user) -->
+    <PolarisIntroBanner v-if="pl.canEdit" />
 
     <div class="page-head">
       <div>
@@ -225,6 +229,44 @@ onBeforeUnmount(() => { if (chartInstance) { chartInstance.destroy(); chartInsta
           </div>
           <div class="sec-note" style="margin-top:8px">
             Η καμπύλη μελών παρεμβάλλεται γραμμικά ανάμεσα στο σήμερα (<span>{{ fmtInt(parseFloat(pl.inputs.members) || 0) }} μέλη</span>) και τους στόχους που ορίζεις· μετά τον τελευταίο στόχο τα μέλη παραμένουν σταθερά στην τιμή του.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Admin only: OPEX forecast — date-based milestones per "Λοιπά OPEX Διοίκησης" category (same rule as members) ===== -->
+    <div class="section">
+      <div class="sec-head">
+        <div class="sec-title"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18M7 16l4-6 4 3 5-8"/></svg>Πρόβλεψη Λειτουργικών Εξόδων</div>
+        <div class="sec-note">μόνο admin — ετήσιος ρυθμός ($/έτος) ανά κατηγορία · κάθε κατηγορία ξεκινάει στα $0 μέχρι τον πρώτο στόχο · ανάμεσα σε στόχους γραμμική παρεμβολή · μετά τον τελευταίο σταθερός</div>
+      </div>
+      <div class="sec-body">
+        <div class="agg-row" style="margin-bottom:14px">
+          <div><div class="l">Σύνολο OPEX σήμερα</div><div class="v tnum">{{ fmtUSD(pl.opexAtYear(1)) }}</div></div>
+          <div><div class="l">Σύνολο OPEX (ορίζοντας)</div><div class="v tnum">{{ fmtUSD(pl.cur.opex) }}</div></div>
+          <div><div class="l">OPEX / Έσοδα (ορίζοντας)</div><div class="v tnum">{{ fmtPct(pl.cur.revenue ? pl.cur.opex / pl.cur.revenue * 100 : 0) }}</div></div>
+        </div>
+        <div v-for="cat in OPEX_CATEGORIES" :key="cat" class="actuals-group">
+          <div class="actuals-group-title">
+            {{ cat }}
+            <span class="hint">σημερινό run-rate (Αστρολάβος) {{ fmtUSD(pl.opexRunRates[cat]) }}/έτος · στο μοντέλο σήμερα {{ fmtUSD(pl.opexCategoryAtYear(cat, 1)) }} · ορίζοντας {{ fmtUSD(pl.opexCategoryAtYear(cat, pl.horizon)) }}/έτος</span>
+          </div>
+          <div class="sec-note" style="display:flex;align-items:center;justify-content:space-between">
+            <span>Στόχοι ετήσιου ρυθμού για συγκεκριμένο μήνα/έτος. Ο πρώτος νέος στόχος προτείνεται στον επόμενο μήνα με το σημερινό run-rate, για να μετρήσει και το σημερινό κόστος.</span>
+            <button class="btn btn-add" @click="pl.addCostMilestone(cat)">+ Προσθήκη στόχου</button>
+          </div>
+          <div class="table-wrap" style="margin-top:8px">
+            <table style="min-width:0">
+              <thead><tr><th>Μέχρι (μήνας/έτος)</th><th>Στόχος ($/έτος)</th><th></th></tr></thead>
+              <tbody>
+                <tr v-if="pl.costMilestonesOf(cat).length === 0"><td colspan="3" style="color:var(--text-muted)">Δεν έχουν οριστεί στόχοι — ο ρυθμός θεωρείται σταθερός στον τρέχοντα.</td></tr>
+                <tr v-for="cm in pl.costMilestonesOf(cat)" :key="cm.id">
+                  <td><input class="cell-input" type="month" :value="cm.month || ''" @change="pl.updateCostMilestone(cm, 'month', $event.target.value)"></td>
+                  <td><input class="cell-input tnum" type="number" step="100" :value="cm.value" @change="pl.updateCostMilestone(cm, 'value', $event.target.value)"></td>
+                  <td><button class="row-del" @click="pl.removeCostMilestone(cm)" title="Αφαίρεση">✕</button></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
